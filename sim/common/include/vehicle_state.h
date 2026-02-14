@@ -5,7 +5,8 @@ class VehicleState {
 
     public:
         /* Write Functions */
-        void accelerate(float amount);
+        void accelerate(float amount); // accelerate by amount (m/s)
+        void move(float distance);     // move by distance (meters)
         
         /* Read Functions */
         float getSpeed() const;
