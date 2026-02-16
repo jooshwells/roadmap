@@ -8,6 +8,9 @@ message("------------ UCF Senior Design ------------")
 message("-------------- Summer 2026 ----------------")
 message("-------------------------------------------")
 
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 add_subdirectory(common)
 
 add_executable(sim main.cpp)
