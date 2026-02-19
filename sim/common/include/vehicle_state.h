@@ -8,7 +8,8 @@ class VehicleState {
         void accelerate(float amount); // accelerate by amount (m/s)
         void move(float distance);     // move by distance (meters)
         void setLeader(VehicleState* newLeader);
-        
+        void update(float dt);
+
         /* Read Functions */
         float getSpeed() const;
         float getPos() const;
@@ -24,7 +25,7 @@ class VehicleState {
         int id;
         inline static int count = 0;
 
-        VehicleState* leader;
+        VehicleState* leader =nullptr;
 };
 
 
