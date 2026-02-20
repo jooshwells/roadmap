@@ -12,9 +12,11 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_subdirectory(common)
+add_subdirectory(physics)
 
 add_executable(sim main.cpp)
 
 target_link_libraries(sim PRIVATE
     RoadMap::common
+    RoadMap::physics
 )

@@ -1,4 +1,5 @@
 #include "vehicle_state.h"
+#include "physics_processor.h"
 #include <memory>
 #include <iostream>
 
@@ -17,6 +18,10 @@ int main()
     float dt = 0;       // delta t, our time variable for the physics equations
     float maxT = 10;  // runtime of the sim, currently set for 1200 seconds (20 mins)
     
+    PhysicsProcessor controller;
+    controller.addVehicle(vhcl1);
+    controller.addVehicle(vhcl2);
+
     /**
      * This loop simulates physics every 0.1 seconds of sim time. Note this
      * does not equate to 0.1 seconds of real time, as this loop will run
@@ -24,9 +29,11 @@ int main()
      */
     while (dt < maxT)
     {
-        // need to refine update() in vehicle state.cpp
-        vhcl2->update(dt);
-        vhcl1->update(dt);
+        // // need to refine update() in vehicle state.cpp
+        // vhcl2->update(dt);
+        // vhcl1->update(dt);
+
+        controller.update(dt);
 
         // check gap for braking logic
         float gap = vhcl2->getPos() - vhcl1->getPos();

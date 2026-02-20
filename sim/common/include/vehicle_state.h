@@ -8,12 +8,13 @@ class VehicleState {
         void accelerate(float amount); // accelerate by amount (m/s)
         void move(float distance);     // move by distance (meters)
         void setLeader(VehicleState* newLeader);
-        void update(float dt);
+        // void update(float dt); moved to physics
 
         /* Read Functions */
         float getSpeed() const;
         float getPos() const;
         int getCount() const;
+        VehicleState* getLeader() const;
 
         VehicleState(float initialSpeed, float initialPosition);
         ~VehicleState();

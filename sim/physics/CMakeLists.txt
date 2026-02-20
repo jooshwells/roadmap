@@ -5,6 +5,10 @@ target_include_directories(physics PUBLIC
     $<INSTALL_INTERFACE:include>
 )
 
+target_link_libraries(physics PRIVATE
+    RoadMap::common
+)
+
 add_subdirectory(src)
 
 add_library(RoadMap::physics ALIAS physics)
