@@ -4,18 +4,11 @@
 #include "vehicle_state.h"
 #include <vector>
 
-struct PhysicsUpdate 
-{
-    float brakePower;
-    float newPosition;
-
-    PhysicsUpdate(float a, float b) : brakePower(a), newPosition(b) {}
-};
-
 class PhysicsProcessor 
 {
     public:
         void update(float dt);
+        float IDM(VehicleState* vhcl);
         void addVehicle(VehicleState* vhcl);
 
         PhysicsProcessor();
@@ -23,7 +16,7 @@ class PhysicsProcessor
 
     private:
         std::vector<VehicleState*> vehicleList;
-        std::vector<PhysicsUpdate> vehicleUpdates;        
+        std::vector<float> vehicleUpdates;        
 };
 
 

@@ -1,6 +1,7 @@
 #include "physics_processor.h"
 #include "vehicle_state.h"
 #include <vector>
+#include <math.h>
 
 PhysicsProcessor::PhysicsProcessor() : vehicleList(), vehicleUpdates() {}
 
@@ -25,15 +26,13 @@ void PhysicsProcessor::update(float dt)
                 // vhcl->accelerate(brakePower);
             }
         }
-
-        float new_position = vhcl->getSpeed() * dt;
         
         // no negative speed 
         if (vhcl->getSpeed() + brakePower < 0.0f) {
             brakePower = 0;
         }
 
-        vehicleUpdates.push_back(PhysicsUpdate(brakePower, new_position));
+        vehicleUpdates.push_back(brakePower);
     }
 
     int i = 0;
@@ -41,11 +40,16 @@ void PhysicsProcessor::update(float dt)
     // Actually perform all of the updates on our vehicles
     for (VehicleState* vhcl : vehicleList)
     {
-        vhcl->accelerate(vehicleUpdates[i].brakePower);
-        vhcl->move(vehicleUpdates[i].newPosition);
+        vhcl->accelerate(vehicleUpdates[i]);
+        vhcl->move(vhcl->getSpeed() * dt);
         
         i++;
     }
+}
+
+float PhysicsProcessor::IDM(VehicleState* vhcl)
+{
+    float freeRoadRatio = pow((vhcl->getSpeed() / vhcl->getDesiredSpeed()), vhcl->getAccelExp());
 }
 
 void PhysicsProcessor::addVehicle(VehicleState* vhcl)
@@ -57,7 +61,7 @@ PhysicsProcessor::~PhysicsProcessor()
 {
     for (VehicleState* v : vehicleList)
     {
-        free(v);
+        delete(v);
     }
 }
 

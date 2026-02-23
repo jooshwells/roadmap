@@ -16,34 +16,21 @@ void VehicleState::setLeader(VehicleState* newLeader)
     leader = newLeader;
 }
 
-// getters
-float VehicleState::getSpeed() const 
-{
-    return m_speed;
-}
-
-float VehicleState::getPos() const 
-{
-    return m_pos;
-}
-
-int VehicleState::getCount() const 
-{
-    return count;
-}
-
-VehicleState* VehicleState::getLeader() const
-{
-    return leader;
-}
-
-
 // Implement if memory needs to be freed up
 VehicleState::~VehicleState() {}
 
-VehicleState::VehicleState(float initialSpeed, float initialPosition) : m_speed(initialSpeed), id(count), m_pos(initialPosition)
+VehicleState::VehicleState(float iS, float iP, float aExp, float mA, float dS, float mG, float sB, float sTH) :
+ m_speed(iS),
+ m_pos(iP),
+ accelExp(aExp),
+ maxAccel(mA),
+ desiredSpeed(dS),
+ minGap(mG),
+ safeBrakePower(sB),
+ safeTimeHeadway(sTH),
+ id(count)
 { 
-    std::cout << "State instantiated" << std::endl; 
+    // std::cout << "State instantiated" << std::endl; 
     count++; 
 }
 
