@@ -1,6 +1,17 @@
 #ifndef VEHICLE_STATE_H
 #define VEHICLE_STATE_H
 
+// add struct for diff "types" of drivers, easier to pass in args
+// can add in initial speed and pos later, exlucde for ease of testign for now
+struct IDMParameters {
+    float accelExp;        // delta: acceleration exponent
+    float maxAccel;        // a: max acceleration
+    float desiredSpeed;    // v0: desired speed
+    float minGap;          // s0: minimum gap
+    float safeBrakePower;  // b: comfortable braking deceleration
+    float safeTimeHeadway; // T: safe time headway
+};
+
 class VehicleState {
 
     public:
@@ -19,10 +30,11 @@ class VehicleState {
         inline float getMinGap() const            { return minGap; }
         inline float getSafeBrakePower() const    { return safeBrakePower; }
         inline float getSafeTimeHeadway() const   { return safeTimeHeadway; }
-        
         inline VehicleState* getLeader() const    { return leader; }
+        inline float getMaxAccel() const          { return maxAccel; }
 
-        VehicleState(float iS, float iP, float aExp, float mA, float dS, float mG, float sB, float sTH);
+        // now takes struct for remaining args
+        VehicleState(float iS, float iP, const IDMParameters& params);
         ~VehicleState();
 
     private:
