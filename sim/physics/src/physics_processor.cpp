@@ -46,7 +46,9 @@ float PhysicsProcessor::IDM(VehicleState* vhcl)
     float interactionTerm = 0.0f;
     VehicleState* leader = vhcl->getLeader();
     if(leader != nullptr) {
-        float currGap = (leader->getPos()) - (vhcl->getPos()); // technically need to factor in car length, worry later
+        float currGap = leader->getPos() - vhcl->getPos() - leader->getLength(); // updated to factor in length
+
+        if (currGap <=0.0001f) currGap=0.001f; // prevent division by 0
         float deltaV = vhcl->getSpeed() - leader->getSpeed(); // how fast car is approaching
         
         //rightmost fraction part of S*()

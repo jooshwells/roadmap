@@ -10,6 +10,7 @@ struct IDMParameters {
     float minGap;          // s0: minimum gap
     float safeBrakePower;  // b: comfortable braking deceleration
     float safeTimeHeadway; // T: safe time headway
+    float length; // vehicle length m
 };
 
 class VehicleState {
@@ -32,6 +33,7 @@ class VehicleState {
         inline float getSafeTimeHeadway() const   { return safeTimeHeadway; }
         inline VehicleState* getLeader() const    { return leader; }
         inline float getMaxAccel() const          { return maxAccel; }
+        inline float getLength() const            { return m_length;}
 
         // now takes struct for remaining args
         VehicleState(float iS, float iP, const IDMParameters& params);
@@ -46,6 +48,7 @@ class VehicleState {
         float minGap; // how close is this car willing to get to their leader?
         float safeBrakePower; // preferred braking force
         float safeTimeHeadway; // ideal time gap between this car and leader
+        float m_length;
     
         int id;
         inline static int count = 0;

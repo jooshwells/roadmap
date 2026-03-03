@@ -29,7 +29,8 @@ VehicleState::VehicleState(float iS, float iP, const IDMParameters& params) :
     minGap(params.minGap),
     safeBrakePower(params.safeBrakePower),
     safeTimeHeadway(params.safeTimeHeadway),
-    id(count)
+    id(count),
+    m_length(params.length)
 { 
     // std::cout << "State instantiated" << std::endl; 
     count++; 

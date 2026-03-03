@@ -13,7 +13,8 @@ int main()
         32.0f,   // desiredSpeed (v0) ~70mph
         2.0f,       // minGap (s0)
         1.5f,       // safeBrakePower (b)
-        1.5f        // safeTimeHeadway (T)
+        1.5f,       // safeTimeHeadway (T)
+        4.5f        // car length
     };
     // testing with more "agressive driver" behind first car
     IDMParameters aggressiveDriver = {
@@ -22,7 +23,8 @@ int main()
         40.0f,      // desiredSpeed ~90mph
         1.0f,       // minGap
         2.5f,       // safeBrakePower
-        0.8f        // safeTimeHeadway
+        0.8f,        // safeTimeHeadway
+        4.5f        // car lenght
     };
     /* Start with vehicles positioned at x = 5 and 55 meters respectively */
     /* Also assume our test road has a speed limit of 70 mph (31.2928 m/s) */
