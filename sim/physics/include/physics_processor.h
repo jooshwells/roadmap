@@ -10,6 +10,7 @@ class PhysicsProcessor
         void update(float dt);
         float IDM(VehicleState* vhcl);
         void addVehicle(VehicleState* vhcl);
+        bool MOBIL(VehicleState* vhcl, int targetLane);
 
         PhysicsProcessor();
         ~PhysicsProcessor();
