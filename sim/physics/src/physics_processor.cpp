@@ -74,6 +74,44 @@ void PhysicsProcessor::addVehicle(VehicleState* vhcl)
     vehicleList.push_back(vhcl);
 }
 
+bool  PhysicsProcessor::MOBIL(VehicleState* vhcl, int targetLane)
+{
+    // need to implement spatial logic for finding leaders and followers
+    // VehicleState* newLeader = getLeader(vhcl, targetLane);
+    // VehicleState* newFollower = getFollower(vhcl, targetLane);
+    // VehicleState* oldFollower = getFollower(vhcl, vhcl->curLane);
+
+    float politeness = 0.2f; // 0 is selfish, 1 is selfless
+    float safeBrake = 2.0f; // b_safe, max deceleration vehicle can cause on new follower
+    float threshold = 0.1f; // delta a_th, min acceleration gain needed to be "worth" to switch lanes
+
+
+    // saftey criterion, check if lane change is safe to do 
+    // float newFollowerAccel = IDM(newFollower, vhcl);
+    // if (newFollowerAccel < -safeBraking) { note accel is negative for braking
+    //     return false; // not safe to change
+    // }
+
+    // incentive criterion, acceralation gained
+    // float curAccel = IDM(vhcl, curLeader);
+    // float newAccel = IDM(vhcl, newLeader);
+    // float newAccelGain = newAccel - curAccel;
+
+    // effect on new follower
+    // float newFAccelBefore =IDM(newFollower, newLeader);
+    // float newFollowerGain = newFollowerAccel - newFAccelBefore;
+
+    // effect on new follower 
+    // float oldFollowerAccel = IDM(oldFollower, vhcl);
+    // float oldFAccelAfter = IDM(oldFollower, vhcl->leader);
+    // float oldFollowerGain = oldFAccelAfter - oldFollowerAccel;
+
+    // float incentive= newAccelGain +politeness*(newFollowerGain + oldFollowerGain);
+    // return incentive > threshold;
+    
+
+}
+
 PhysicsProcessor::~PhysicsProcessor() 
 {
     for (VehicleState* v : vehicleList)

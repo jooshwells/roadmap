@@ -44,30 +44,40 @@ int main()
         0.8f,        // safeTimeHeadway
         4.5f        // car lenght
     };
-    /* Start with vehicles positioned at x = 5 and 55 meters respectively */
-    /* Also assume our test road has a speed limit of 70 mph (31.2928 m/s) */
+    // Semi-truck, slower accel, max speed, needs more braking room
+    IDMParameters semiTruck = {
+        4.0f,       // accelExp
+        0.8f,       // maxAccel 
+        25.0f,      // desiredSpeed abt 55mph
+        4.0f,       // minGap 
+        1.0f,       // safeBrakePower 
+        2.5f,       // safeTimeHeadway 
+        18.0f       // car length 
+    };
+   
     
-    // testing faster car to test braking
-    VehicleState* vhcl1 = new VehicleState(32, 0, aggressiveDriver);
-    // std::cout << "We have " << vhcl1->getCount() << " vehicles." << std::endl;
-    VehicleState* vhcl2 = new VehicleState(29, 250, basicDriver);
-    // std::cout << "We have " << vhcl1->getCount() << " vehicles." << std::endl;
+    // testing 3 cars now, normal driver, aggressive, then semi truck
+    VehicleState* vhcl1 = new VehicleState(29, 300, basicDriver);
+    VehicleState* vhcl2 = new VehicleState(32, 150, aggressiveDriver);
+    VehicleState* vhcl3 = new VehicleState(20, 0, semiTruck);
 
-    vhcl1->setLeader(vhcl2);
+    vhcl2->setLeader(vhcl1); // aggressive follows basic
+    vhcl3->setLeader(vhcl2); //truck follows aggressive
+
     float dt = 0.1;       // should be a set time step, before we were technically doing update(0.1) then udpate(0.2) etc.. oops
     float currentTime = 0.0f; // total elapsed time
-    float maxT = 100;  // runtime of the sim, currently set for 1200 seconds (20 mins)
-    
+    float maxT = 75;  // runtime of the sim,
     PhysicsProcessor controller;
     controller.addVehicle(vhcl1);
     controller.addVehicle(vhcl2);
+    controller.addVehicle(vhcl3);
 
-    // testing output
+    // testing output with 3 cars
     std::cout << std::fixed << std::setprecision(2);
-    std::cout << "===============================================================\n";
-    std::cout << "Time (s) | Car 1 (Trailing)  | Car 2 (Leading)   | Gap (m) \n";
-    std::cout << "         | Speed   | Pos     | Speed   | Pos     |         \n";
-    std::cout << "===============================================================\n";
+  std::cout << "=========================================================================================================\n";
+    std::cout << "Time (s) | Car 1 (Norm/Front)| Car 2 (Aggr/Mid)  | Car 3 (Semi/Back)    | Gaps (m) \n";
+    std::cout << "         | Speed   | Pos     | Speed   | Pos     | Speed      | Pos     | 2->1    | 3->2 \n";
+    std::cout << "=========================================================================================================\n";
 
     /**
      * This loop simulates physics every 0.1 seconds of sim time. Note this
@@ -77,7 +87,8 @@ int main()
     while (currentTime < maxT)
     {
         controller.update(dt);
-        float gap = vhcl2->getPos() - vhcl1->getPos();
+        float gap21 = vhcl1->getPos() - vhcl2->getPos();
+        float gap32 = vhcl2->getPos() - vhcl3->getPos();
 
        // Print formatted row
         std::cout << std::setw(8)  << currentTime << " | "
@@ -85,7 +96,10 @@ int main()
                   << std::setw(7)  << vhcl1->getPos() << " | "
                   << std::setw(7)  << vhcl2->getSpeed() << " | "
                   << std::setw(7)  << vhcl2->getPos() << " | "
-                  << std::setw(7)  << gap << "\n";
+                  << std::setw(7)  << vhcl3->getSpeed() << " | "
+                  << std::setw(7)  << vhcl3->getPos() << " | "
+                  << std::setw(7)  << gap21 << " | "
+                  << std::setw(7)  << gap32 << "\n";
 
         currentTime += dt;
   
