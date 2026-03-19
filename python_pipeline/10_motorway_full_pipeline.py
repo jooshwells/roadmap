@@ -11,11 +11,14 @@ What "simplify" means here:
 - We merge the two edges into one longer edge
 - We keep intersections and endpoints (degree != 2)
 
+Fixed json NaN and changed to null
+
 """
 
 from pathlib import Path
 import json
 import re
+import math
 
 import geopandas as gpd
 import networkx as nx
@@ -83,6 +86,30 @@ def oneway_status(val):
     if s in ["-1", "reverse"]:
         return "-1"
     return "no"
+
+def clean_json_value(val):
+    """
+    Convert pandas/GeoPandas NaN values into None so JSON writes them as null.
+    Also leaves normal strings, numbers, and None alone.
+    """
+    if val is None:
+        return None
+
+    # catches float('nan') and numpy/pandas NaN-like values
+    try:
+        if math.isnan(val):
+            return None
+    except (TypeError, ValueError):
+        pass
+
+    return val
+
+
+def clean_json_obj(obj):
+    """
+    Clean every value in a dict before json export.
+    """
+    return {k: clean_json_value(v) for k, v in obj.items()}
 
 
 # Defaults for motorways if tags are missing
@@ -293,49 +320,52 @@ nodes_out = []
 next_id = 1
 
 for node in H.nodes():
-    node_to_id[node] = next_id
-    nodes_out.append({
+    node_dict = {
         "id": next_id,
         "lon": float(H.nodes[node]["lon"]),
         "lat": float(H.nodes[node]["lat"]),
-    })
+    }
+    node_to_id[node] = next_id
+    nodes_out.append(clean_json_obj(node_dict))
     next_id += 1
 
 edges_out = []
 for u, v, data in H.edges(data=True):
-    edges_out.append({
+    edge_dict = {
         "u": node_to_id[u],
         "v": node_to_id[v],
         "length_m": round(float(data.get("length_m", 0.0)), 3),
         "speed_mps": round(float(data.get("speed_mps", DEFAULT_SPEED_MPS)), 3),
         "lanes": int(data.get("lanes", DEFAULT_LANES)),
-        "oneway": data.get("oneway"),
-        "highway": data.get("highway"),
+        "oneway": clean_json_value(data.get("oneway")),
+        "highway": clean_json_value(data.get("highway")),
 
         # nice-to-haves
-        "name": data.get("name"),
-        "ref": data.get("ref"),
-        "bridge": data.get("bridge"),
-        "tunnel": data.get("tunnel"),
-        "layer": data.get("layer"),
-        "surface": data.get("surface"),
-        "access": data.get("access"),
-        "motor_vehicle": data.get("motor_vehicle"),
-        "service": data.get("service"),
+        "name": clean_json_value(data.get("name")),
+        "ref": clean_json_value(data.get("ref")),
+        "bridge": clean_json_value(data.get("bridge")),
+        "tunnel": clean_json_value(data.get("tunnel")),
+        "layer": clean_json_value(data.get("layer")),
+        "surface": clean_json_value(data.get("surface")),
+        "access": clean_json_value(data.get("access")),
+        "motor_vehicle": clean_json_value(data.get("motor_vehicle")),
+        "service": clean_json_value(data.get("service")),
 
         # debug
-        "source_feature_id": data.get("source_feature_id"),
-    })
+        "source_feature_id": clean_json_value(data.get("source_feature_id")),
+    }
+
+    edges_out.append(clean_json_obj(edge_dict))
 
 print("Writing:", OUT_NODES)
 with open(OUT_NODES, "w", encoding="utf-8") as f:
     for n in nodes_out:
-        f.write(json.dumps(n) + "\n")
+        f.write(json.dumps(n, allow_nan=False) + "\n")
 
 print("Writing:", OUT_EDGES)
 with open(OUT_EDGES, "w", encoding="utf-8") as f:
     for e in edges_out:
-        f.write(json.dumps(e) + "\n")
+        f.write(json.dumps(e, allow_nan=False) + "\n")
 
 print("DONE")
 print("Nodes file:", OUT_NODES)
