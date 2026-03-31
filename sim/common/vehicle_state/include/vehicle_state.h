@@ -20,11 +20,13 @@ class VehicleState {
         void accelerate(float amount); // accelerate by amount (m/s)
         void move(float distance);     // move by distance (meters)
         void setLeader(VehicleState* newLeader);
-        // void update(float dt); moved to physics
+        void setLane(int newLane);
 
         /* Read Functions */
         inline float getSpeed() const             { return m_speed; }
         inline float getPos() const               { return m_pos; }
+        inline int   getLane() const              { return m_lane; }
+
         inline int   getCount() const             { return count; }
         inline float getDesiredSpeed() const      { return desiredSpeed; }
         inline float getAccelExp() const          { return accelExp; }
@@ -35,13 +37,15 @@ class VehicleState {
         inline float getMaxAccel() const          { return maxAccel; }
         inline float getLength() const            { return m_length;}
 
-        // now takes struct for remaining args
-        VehicleState(float iS, float iP, const IDMParameters& params);
+        // now takes struct for remaining args AND starting lane number
+        VehicleState(float iS, float iP, int startingLane, const IDMParameters& params);
         ~VehicleState();
 
     private:
         float m_speed;
         float m_pos; // x position as of testing with one dimension
+        int m_lane; // keep track of lane number
+
         float accelExp; // determines how smooth acceleration is
         float maxAccel;
         float desiredSpeed; // velocity driver is trying to reach
