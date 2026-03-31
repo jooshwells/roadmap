@@ -15,7 +15,7 @@ void PhysicsProcessor::update(float dt)
     // don't affect subsequent changes)
     for (VehicleState* vhcl : vehicleList)
     {
-        float acceleration = IDM(vhcl);
+        float acceleration = IDM(vhcl, vhcl->getLeader());
         float dv = acceleration *dt; 
 
         // no negative speed 
@@ -37,14 +37,14 @@ void PhysicsProcessor::update(float dt)
     }
 }
 
-float PhysicsProcessor::IDM(VehicleState* vhcl)
+float PhysicsProcessor::IDM(VehicleState* vhcl, VehicleState* leader )
 {
     // free road (no cars ahead)
     float freeRoadRatio = pow((vhcl->getSpeed() / vhcl->getDesiredSpeed()), vhcl->getAccelExp());
 
     // add logic for "interatction term"
     float interactionTerm = 0.0f;
-    VehicleState* leader = vhcl->getLeader();
+
     if(leader != nullptr) {
         float currGap = leader->getPos() - vhcl->getPos() - leader->getLength(); // updated to factor in length
 
@@ -77,40 +77,58 @@ void PhysicsProcessor::addVehicle(VehicleState* vhcl)
 bool  PhysicsProcessor::MOBIL(VehicleState* vhcl, int targetLane)
 {
     // need to implement spatial logic for finding leaders and followers
-    // VehicleState* newLeader = getLeader(vhcl, targetLane);
-    // VehicleState* newFollower = getFollower(vhcl, targetLane);
-    // VehicleState* oldFollower = getFollower(vhcl, vhcl->curLane);
+    VehicleState* newLeader = getLeader(vhcl, targetLane);
+    VehicleState* newFollower = getFollower(vhcl, targetLane);
+    VehicleState* oldFollower = getFollower(vhcl, vhcl->getLane());
+    VehicleState* curLeader = vhcl->getLeader();
 
     float politeness = 0.2f; // 0 is selfish, 1 is selfless
     float safeBrake = 2.0f; // b_safe, max deceleration vehicle can cause on new follower
-    float threshold = 0.1f; // delta a_th, min acceleration gain needed to be "worth" to switch lanes
+    float threshold = 0.1f; // delta a_th, min acceleration gain needed to be "worth" to switch lanescle
 
 
     // saftey criterion, check if lane change is safe to do 
-    // float newFollowerAccel = IDM(newFollower, vhcl);
-    // if (newFollowerAccel < -safeBraking) { note accel is negative for braking
-    //     return false; // not safe to change
-    // }
+    
+    float newFollowerAccel = 0.0f;
+    if (newFollower != nullptr) {
+        newFollowerAccel = IDM(newFollower, vhcl);
+        if (newFollowerAccel < -safeBrake) { //note accel is negative for braking
+            return false; // not safe to change
+        }
+    }
 
     // incentive criterion, acceralation gained
-    // float curAccel = IDM(vhcl, curLeader);
-    // float newAccel = IDM(vhcl, newLeader);
-    // float newAccelGain = newAccel - curAccel;
+    float curAccel = IDM(vhcl, curLeader);
+    float newAccel = IDM(vhcl, newLeader);
+    float newAccelGain = newAccel - curAccel;
 
     // effect on new follower
-    // float newFAccelBefore =IDM(newFollower, newLeader);
-    // float newFollowerGain = newFollowerAccel - newFAccelBefore;
+    float newFAccelBefore =IDM(newFollower, newLeader);
+    float newFollowerGain = newFollowerAccel - newFAccelBefore;
 
     // effect on new follower 
-    // float oldFollowerAccel = IDM(oldFollower, vhcl);
-    // float oldFAccelAfter = IDM(oldFollower, vhcl->leader);
-    // float oldFollowerGain = oldFAccelAfter - oldFollowerAccel;
+    float oldFollowerAccel = IDM(oldFollower, vhcl);
+    float oldFAccelAfter = IDM(oldFollower, curLeader);
+    float oldFollowerGain = oldFAccelAfter - oldFollowerAccel;
 
-    // float incentive= newAccelGain +politeness*(newFollowerGain + oldFollowerGain);
-    // return incentive > threshold;
+    float incentive= newAccelGain +politeness*(newFollowerGain + oldFollowerGain);
+    return incentive > threshold;
     
+}
+
+VehicleState* PhysicsProcessor::getLeader(VehicleState* vhcl, int targetLane)
+{
+
 
 }
+
+
+VehicleState* PhysicsProcessor::getFollower(VehicleState* vhcl, int targetLane)
+{
+
+
+}
+
 
 PhysicsProcessor::~PhysicsProcessor() 
 {

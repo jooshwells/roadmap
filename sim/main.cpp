@@ -57,16 +57,16 @@ int main()
    
     
     // testing 3 cars now, normal driver, aggressive, then semi truck
-    VehicleState* vhcl1 = new VehicleState(29, 300, basicDriver);
-    VehicleState* vhcl2 = new VehicleState(32, 150, aggressiveDriver);
-    VehicleState* vhcl3 = new VehicleState(20, 0, semiTruck);
+    VehicleState* vhcl1 = new VehicleState(29, 300, 0, basicDriver);
+    VehicleState* vhcl2 = new VehicleState(32, 150, 0, aggressiveDriver);
+    VehicleState* vhcl3 = new VehicleState(20, 0, 0, semiTruck);
 
     vhcl2->setLeader(vhcl1); // aggressive follows basic
     vhcl3->setLeader(vhcl2); //truck follows aggressive
 
     float dt = 0.1;       // should be a set time step, before we were technically doing update(0.1) then udpate(0.2) etc.. oops
     float currentTime = 0.0f; // total elapsed time
-    float maxT = 75;  // runtime of the sim,
+    float maxT = 50;  // runtime of the sim,
     PhysicsProcessor controller;
     controller.addVehicle(vhcl1);
     controller.addVehicle(vhcl2);
