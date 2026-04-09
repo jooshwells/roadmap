@@ -2,12 +2,25 @@
 #include "vehicle_state.h"
 #include <vector>
 #include <math.h>
+#include <limits> 
 
 PhysicsProcessor::PhysicsProcessor() : vehicleList(), vehicleUpdates() {}
 
 void PhysicsProcessor::update(float dt)
 {
+    // check for MOBIL
+    for (VehicleState* vhcl : vehicleList)
+        {
+            int currentLane = vhcl->getLane();
+            
+            // just testing 2 lanes for now
+            int targetLane = (currentLane == 0) ? 1 : 0; 
 
+            if (MOBIL(vhcl, targetLane)) 
+            {
+                vhcl->setLane(targetLane);
+            }
+        }
     vehicleUpdates.clear();
     
     // Calculate physics updates for each vehicle in our master list
@@ -15,6 +28,8 @@ void PhysicsProcessor::update(float dt)
     // don't affect subsequent changes)
     for (VehicleState* vhcl : vehicleList)
     {
+        // recheck leader in case of MOBIL
+        vhcl->setLeader(getLeader(vhcl, vhcl->getLane()));
         float acceleration = IDM(vhcl, vhcl->getLeader());
         float dv = acceleration *dt; 
 
@@ -103,13 +118,19 @@ bool  PhysicsProcessor::MOBIL(VehicleState* vhcl, int targetLane)
     float newAccelGain = newAccel - curAccel;
 
     // effect on new follower
-    float newFAccelBefore =IDM(newFollower, newLeader);
-    float newFollowerGain = newFollowerAccel - newFAccelBefore;
+    float newFollowerGain = 0.0f;
+    if (newFollower != nullptr) {
+        float newFAccelBefore = IDM(newFollower, newLeader); 
+        newFollowerGain = newFollowerAccel - newFAccelBefore;
+    }
 
     // effect on new follower 
-    float oldFollowerAccel = IDM(oldFollower, vhcl);
-    float oldFAccelAfter = IDM(oldFollower, curLeader);
-    float oldFollowerGain = oldFAccelAfter - oldFollowerAccel;
+    float oldFollowerGain = 0.0f;
+    if (oldFollower != nullptr) {
+        float oldFollowerAccel = IDM(oldFollower, vhcl);
+        float oldFAccelAfter = IDM(oldFollower, curLeader);
+        oldFollowerGain = oldFAccelAfter - oldFollowerAccel;
+    }
 
     float incentive= newAccelGain +politeness*(newFollowerGain + oldFollowerGain);
     return incentive > threshold;
@@ -118,17 +139,61 @@ bool  PhysicsProcessor::MOBIL(VehicleState* vhcl, int targetLane)
 
 VehicleState* PhysicsProcessor::getLeader(VehicleState* vhcl, int targetLane)
 {
+    VehicleState* closestLeader = nullptr;
+    float minDistance = std::numeric_limits<float>::max();
 
+    for (VehicleState* other : vehicleList)
+    {
+        if (other == vhcl) continue;
 
+        // lane check
+        if (other->getLane() == targetLane)
+        {
+            //check ahead
+            if (other->getPos() > vhcl->getPos())
+            {
+                float distance = other->getPos() - vhcl->getPos();
+                
+                // save closest
+                if (distance < minDistance)
+                {
+                    minDistance = distance;
+                    closestLeader = other;
+                }
+            }
+        }
+    }
+    return closestLeader;
 }
-
 
 VehicleState* PhysicsProcessor::getFollower(VehicleState* vhcl, int targetLane)
 {
+    VehicleState* closestFollower = nullptr;
+    float minDistance = std::numeric_limits<float>::max();
 
+    for (VehicleState* other : vehicleList)
+    {
+        if (other == vhcl) continue;
 
+        //lane check
+        if (other->getLane() == targetLane)
+        {
+            // check behind
+            if (other->getPos() < vhcl->getPos())
+            {
+                float distance = vhcl->getPos() - other->getPos();
+                
+                // save closest
+                if (distance < minDistance)
+                {
+                    minDistance = distance;
+                    closestFollower = other;
+                }
+            }
+        }
+    }
+    return closestFollower;
 }
-
 
 PhysicsProcessor::~PhysicsProcessor() 
 {

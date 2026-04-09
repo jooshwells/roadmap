@@ -15,14 +15,14 @@ int main()
         "../python_pipeline/sample_output/edges_motorways_simplified.jsonl"
     );
 
-    // 2. Verify it worked (Optional)
-    Node* origin = orlandoMap.getNode(1);
-    if (origin) {
-        std::cout << "Origin loaded at X: " << origin->getX() << " Y: " << origin->getY() << "\n";
-        std::cout << "Origin has " << origin->outgoingEdges.size() << " connected roads.\n";
-    }
+    // // 2. Verify it worked (Optional)
+    // Node* origin = orlandoMap.getNode(1);
+    // if (origin) {
+    //     std::cout << "Origin loaded at X: " << origin->getX() << " Y: " << origin->getY() << "\n";
+    //     std::cout << "Origin has " << origin->outgoingEdges.size() << " connected roads.\n";
+    // }
 
-   orlandoMap.visualizeNetwork();
+   //orlandoMap.visualizeNetwork();
 
     // generic IDM parameters for new driver struct, 
     IDMParameters basicDriver = {
