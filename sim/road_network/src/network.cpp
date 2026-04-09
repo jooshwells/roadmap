@@ -1,14 +1,20 @@
 #include "network.h"
 #include <cstdint>
 #include <iostream>
+#include <fstream>
 
-void Network::addNode(std::uint64_t id, double lat, double lon)
+void Network::addNode(std::uint64_t id, double lat, double lon, double x, double y)
 {
-    nodes.try_emplace(id, id, lat, lon);
-    numNodes++;
+    auto [iterator, inserted] = nodes.try_emplace(id, id, lat, lon, x, y);
+    
+    if (inserted)
+    {
+        nodeIds.push_back(id);
+        numNodes++;
+    }
 }
 
-Node* Network::getNode(int id)
+Node* Network::getNode(uint64_t id)
 {
     auto it = nodes.find(id);
 
@@ -20,11 +26,33 @@ Node* Network::getNode(int id)
     return nullptr;
 }
 
-void Network::addDirectedEdge(int fromId, int toId, double dist, double speedLimit, int lanes)
+Node* Network::getRandomNode(std::mt19937& rng)
+{
+    // Safety check in case the map is empty
+    if (nodeIds.empty()) 
+    {
+        return nullptr; 
+    }
+
+    // Define a distribution range from 0 to the last index
+    std::uniform_int_distribution<std::size_t> dist(0, nodeIds.size() - 1);
+    
+    // Pick a random index
+    std::size_t randomIndex = dist(rng);
+    
+    // Get the ID and return the corresponding Node pointer
+    uint64_t randomId = nodeIds[randomIndex];
+    return getNode(randomId);
+}
+
+void Network::addDirectedEdge(uint64_t fromId, uint64_t toId, double dist, double speedLimit, int lanes)
 {
     if (nodes.find(fromId) != nodes.end() && nodes.find(toId) != nodes.end())
     {
-        nodes[fromId].outgoingEdges.emplace_back(toId, dist, speedLimit, lanes);
+        // NEW: Pass nextEdgeId to the Road constructor, then increment it
+        nodes[fromId].outgoingEdges.emplace_back(nextEdgeId++, toId, dist, speedLimit, lanes);
+        
+        nodes[toId].incomingEdgeNodeIds.push_back(fromId);
     }
     else
     {
@@ -34,11 +62,11 @@ void Network::addDirectedEdge(int fromId, int toId, double dist, double speedLim
 
 void Network::visualizeNetwork()
 {
-    for (int i = 1; i < numNodes; i++)
+    for (uint64_t i = 1; i < numNodes; i++)
     {
         std::cout << "Node " << i << " connects to: ";
-        int n = getNode(i)->outgoingEdges.size();
-        int j = 0;
+        uint64_t n = getNode(i)->outgoingEdges.size();
+        uint64_t j = 0;
         for (Road e : getNode(i)->outgoingEdges)
         {
             std::cout << e.getDest();
@@ -47,6 +75,42 @@ void Network::visualizeNetwork()
         }
         std::cout << "\n";
     }
+}
+
+void Network::visualizeNetworkForPython() {
+    std::string filename = "network_graph.csv";
+    std::ofstream outFile(filename);
+    
+    if (!outFile.is_open()) {
+        std::cerr << "Error: Could not open " << filename << " for writing.\n";
+        return;
+    }
+
+    // UPDATE: Added edge_id to the CSV header
+    outFile << "source,target,length,source_x,source_y,edge_id\n";
+
+    for (const auto& pair : nodes) {
+        std::uint64_t sourceId = pair.first;
+        const Node& node = pair.second;
+        
+        if (node.outgoingEdges.empty()) {
+            // Write the dead-end, leaving target, length, and edge_id blank
+            outFile << sourceId << ",,," << node.getX() << "," << node.getY() << ",\n"; 
+        } else {
+            for (const Road& road : node.outgoingEdges) {
+                // UPDATE: Output the unique edge ID at the end of the line
+                outFile << sourceId << "," 
+                        << road.getDest() << "," 
+                        << road.getLength() << "," 
+                        << node.getX() << "," 
+                        << node.getY() << "," 
+                        << road.getEdgeId() << "\n";
+            }
+        }
+    }
+
+    outFile.close();
+    std::cout << "Network successfully exported to: " << filename << "\n";
 }
 
 Network::Network(){ numNodes = 0; }

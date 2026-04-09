@@ -2,6 +2,7 @@
 #define NETWORK_BUILDER_H
 
 #include "network.h"
+#include <string>
 
 class NetworkBuilder {
 
