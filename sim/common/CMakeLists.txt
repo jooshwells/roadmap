@@ -1,2 +1,3 @@
 add_subdirectory(vehicle_state)
+add_subdirectory(pathfinding_utils)
 add_subdirectory(road_state)

@@ -20,12 +20,15 @@ add_subdirectory(external/json)
 add_subdirectory(common)
 add_subdirectory(physics)
 add_subdirectory(road_network)
+add_subdirectory(driver_logic)
 
 add_executable(sim main.cpp)
 
 target_link_libraries(sim PRIVATE
     RoadMap::common::road_state
     RoadMap::common::vehicle_state
+    RoadMap::common::heuristics
+    RoadMap::driver_logic::pathfinding
     RoadMap::physics
     RoadMap::network
 )

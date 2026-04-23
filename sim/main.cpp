@@ -2,10 +2,56 @@
 #include "physics_processor.h"
 #include <memory>
 #include <iostream>
+#include <fstream>
 #include <iomanip> // Needed for std::setw and std::fixed
+
 #include "node.h"
 #include "network_builder.h"
 #include "network.h"
+#include "dstarlite.h"
+#include "heuristics3d.h"
+
+std::vector<int> ExtractRoute(Network& map, Node* start, Node* goal) {
+    std::vector<int> path;
+    Node* current = start;
+
+    std::cout << "\nExtracting computed route...\n";
+    
+    // Safety check in case no path exists (start->g == infinity)
+    if (start->g == std::numeric_limits<double>::infinity()) {
+        std::cout << "Error: No path exists to the goal!\n";
+        return path; 
+    }
+
+    while (current != goal && current != nullptr) {
+        path.push_back(current->getId());
+        
+        double min_cost = std::numeric_limits<double>::infinity();
+        Node* best_next = nullptr;
+
+        // D* Lite calculates gradients. To find the next step, we pick the 
+        // outgoing edge that minimizes: (Edge Cost + Successor's g-value)
+        for (Road& edge : current->outgoingEdges) {
+            Node* succ = map.getNode(edge.getDest());
+            if (!succ) continue;
+
+            double cost = edge.getLength() + succ->g;
+            if (cost < min_cost) {
+                min_cost = cost;
+                best_next = succ;
+            }
+        }
+
+        if (!best_next) {
+            std::cout << "Path dead-ended unexpectedly!\n";
+            break; 
+        }
+        current = best_next;
+    }
+    
+    path.push_back(goal->getId());
+    return path;
+}
 
 int main()
 {
@@ -17,12 +63,25 @@ int main()
 
     // 2. Verify it worked (Optional)
     Node* origin = orlandoMap.getNode(1);
-    if (origin) {
-        std::cout << "Origin loaded at X: " << origin->getX() << " Y: " << origin->getY() << "\n";
-        std::cout << "Origin has " << origin->outgoingEdges.size() << " connected roads.\n";
-    }
+    Node* dest = orlandoMap.getNode(100);
+    // if (origin) {
+    //     std::cout << "Origin loaded at X: " << origin->getX() << " Y: " << origin->getY() << "\n";
+    //     std::cout << "Origin has " << origin->outgoingEdges.size() << " connected roads.\n";
+    // }
 
-   orlandoMap.visualizeNetwork();
+    DStarLite router(&orlandoMap, origin, dest, Heuristics3D::Euclidean);
+    router.ComputeShortestPath();
+
+    std::vector<int> vehicleRoute = ExtractRoute(orlandoMap, origin, dest);
+
+    for (int nodeId : vehicleRoute)
+    {
+        std::cout << nodeId << " -> ";
+    }
+    std::cout << "GOAL\n\n";
+
+    orlandoMap.visualizeNetwork();
+    orlandoMap.visualizeNetworkForPython();
 
     // generic IDM parameters for new driver struct, 
     IDMParameters basicDriver = {

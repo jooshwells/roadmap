@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <vector>
+#include <limits>
 #include "road.h"
 #include <GeographicLib/LocalCartesian.hpp>
 
@@ -10,18 +11,28 @@ class Node
 {
     public:
         // Getters
-        inline double getLon() { return lon; }
-        inline double getLat() { return lat; }
-        inline int getId()    { return id;  }
-        inline double getX()  { return x;   }
-        inline double getY()  { return y;   }
+        inline double getLon() const { return lon; }
+        inline double getLat() const { return lat; }
+        inline uint64_t    getId()  const { return id;  }
+        inline double getX()   const { return x;   }
+        inline double getY()   const { return y;   }
+        inline double getZ()   const { return z;   }
 
         // Setters
         inline void setLon(double newLon) { lon = newLon; }
         inline void setLat(double newLat) { lat = newLat; }
-        inline void setId(int newId)     {id = newId;}
+        inline void setId(uint64_t newId)      {id = newId;}
 
         std::vector<Road> outgoingEdges;
+        std::vector<uint64_t> incomingEdgeNodeIds;
+        
+        bool operator==(const Node& other) const 
+        {
+            return id == other.id;
+        }
+
+        double g = std::numeric_limits<double>::infinity();
+        double rhs = std::numeric_limits<double>::infinity();
 
         Node(std::uint64_t initId, double iLon, double iLat);
         Node();
