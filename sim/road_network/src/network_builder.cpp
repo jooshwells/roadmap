@@ -35,7 +35,9 @@ Network NetworkBuilder::buildNetworkFromJSONL(const std::string& nodePath, const
                 roadNetwork.addNode(
                     j["id"],
                     j["lat"],
-                    j["lon"]
+                    j["lon"],
+                    j["x"],
+                    j["y"]
                 );
             }
             catch(const json::exception& e)

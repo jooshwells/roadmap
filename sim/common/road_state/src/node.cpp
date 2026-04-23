@@ -1,9 +1,9 @@
 #include "node.h"
 #include <GeographicLib/LocalCartesian.hpp>
 
-Node::Node(std::uint64_t initId, double iLon, double iLat) : id(initId), lon(iLon), lat(iLat) 
+Node::Node(std::uint64_t initId, double iLon, double iLat, double iX, double iY) : id(initId), lon(iLon), lat(iLat), x(iX), y(iY), z(0.0)
 {
-    projectNodes();
+    // projectNodes(); // now grabbing x and y from python json
 }
 
 Node::Node() {}

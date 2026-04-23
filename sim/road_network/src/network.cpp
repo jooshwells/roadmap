@@ -3,9 +3,9 @@
 #include <iostream>
 #include <fstream>
 
-void Network::addNode(std::uint64_t id, double lat, double lon)
+void Network::addNode(std::uint64_t id, double lat, double lon, double x, double y)
 {
-    nodes.try_emplace(id, id, lat, lon);
+    nodes.try_emplace(id, id, lat, lon, x, y);
     numNodes++;
 }
 

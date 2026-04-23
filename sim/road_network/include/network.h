@@ -10,7 +10,7 @@ class Network {
 
     public:
         
-        void addNode(std::uint64_t id, double lat, double lon);
+        void addNode(std::uint64_t id, double lat, double lon, double x, double y);
         
         /**
          * WARNING!!!!

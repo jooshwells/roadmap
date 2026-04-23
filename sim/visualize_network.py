@@ -51,24 +51,24 @@ def visualize_graph_from_csv(csv_file):
         if node not in pos_dict:
             pos_dict[node] = (0.0, 0.0) 
 
-    plt.figure(figsize=(16, 12))
+    # Increase figure size for a higher resolution canvas
+    plt.figure(figsize=(24, 18), facecolor='white')
 
-    # We now pass our custom pos_dict directly! 
-    # Notice we completely removed the slow spring_layout algorithm.
+    # Optimized drawing parameters for massive networks
     nx.draw(G, pos_dict,
-            with_labels=True,
-            node_color='#A0CBE2',     
-            node_size=100,            # Shrunk slightly for tighter geographic mapping
-            edge_color='gray',        
-            linewidths=1,
-            font_size=6,              # Shrunk text so it doesn't overlap on dense roads
-            font_weight='bold',
-            arrows=True,              
-            arrowsize=8)
+            with_labels=False,        # Turned off to prevent overlapping text blackouts
+            node_color='red',         # Changed for contrast, though nodes will be tiny
+            node_size=0.1,            # Drastically shrunk nodes
+            edge_color='#333333',     # Dark gray for roads
+            width=0.2,                # Very thin lines for edges
+            alpha=0.5,                # Transparency so dense areas don't clump into a solid block
+            arrows=False)             # Turned off arrows; they add too much visual noise
 
-    plt.title("Geospatially Accurate Road Network", fontsize=16)
+    plt.title("Geospatially Accurate Road Network", fontsize=24)
     plt.gca().set_aspect('equal', adjustable='box')
-    plt.savefig("network_visualization.png", bbox_inches="tight", dpi=300)
+    
+    # Use a higher DPI for crisp lines on zooming
+    plt.savefig("network_visualization.png", bbox_inches="tight", dpi=600)
     plt.close()
     
     print("Graph generated instantly and saved to network_visualization.png")

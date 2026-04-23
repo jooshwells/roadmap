@@ -57,8 +57,8 @@ int main()
 {
 
     Network orlandoMap = NetworkBuilder::buildNetworkFromJSONL(
-        "../python_pipeline/sample_output/nodes_motorways_simplified.jsonl", 
-        "../python_pipeline/sample_output/edges_motorways_simplified.jsonl"
+        "../python_pipeline/sample_out/nodes_orange_allroads_offline_xy.jsonl", 
+        "../python_pipeline/sample_out/edges_orange_allroads_offline_xy.jsonl"
     );
 
     // 2. Verify it worked (Optional)
