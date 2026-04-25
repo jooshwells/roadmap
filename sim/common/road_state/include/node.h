@@ -5,7 +5,7 @@
 #include <vector>
 #include <limits>
 #include "road.h"
-#include <GeographicLib/LocalCartesian.hpp>
+// #include <GeographicLib/LocalCartesian.hpp>
 
 class Node
 {
@@ -38,7 +38,7 @@ class Node
         Node();
         ~Node();
     private:
-        void projectNodes();
+        // void projectNodes();
 
         std::uint64_t id;
 

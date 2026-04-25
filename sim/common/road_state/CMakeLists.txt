@@ -6,7 +6,7 @@ target_include_directories(road_state PUBLIC
 )
 
 target_link_libraries(road_state PUBLIC
-    GeographicLib
+    # GeographicLib
 )
 
 add_subdirectory(src)

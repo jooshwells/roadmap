@@ -11,6 +11,17 @@ void VehicleState::move(float distance)
     m_pos += distance;
 }
 
+void VehicleState::setPos(float new_pos)
+{
+    m_pos = new_pos;
+}
+
+void VehicleState::setDesiredSpeed(float new_des_speed)
+{
+    desiredSpeed = new_des_speed;
+}
+
+
 void VehicleState::setLeader(VehicleState* newLeader) 
 {
     leader = newLeader;

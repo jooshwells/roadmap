@@ -1,6 +1,9 @@
 #ifndef VEHICLE_STATE_H
 #define VEHICLE_STATE_H
 
+#include <vector>
+#include <cstdint>
+
 // add struct for diff "types" of drivers, easier to pass in args
 // can add in initial speed and pos later, exlucde for ease of testign for now
 struct IDMParameters {
@@ -19,7 +22,9 @@ class VehicleState {
         /* Write Functions */
         void accelerate(float amount); // accelerate by amount (m/s)
         void move(float distance);     // move by distance (meters)
+        void setPos(float new_pos);
         void setLeader(VehicleState* newLeader);
+        void setDesiredSpeed(float new_des_speed);
         // void update(float dt); moved to physics
 
         /* Read Functions */
@@ -38,6 +43,9 @@ class VehicleState {
         // now takes struct for remaining args
         VehicleState(float iS, float iP, const IDMParameters& params);
         ~VehicleState();
+
+        std::vector<uint64_t> currentRoute;
+        uint64_t currentRouteIndex;
 
     private:
         float m_speed;

@@ -4,6 +4,7 @@
 #include <iostream>
 #include <fstream>
 #include <iomanip> // Needed for std::setw and std::fixed
+#include <cstdint>
 
 #include "node.h"
 #include "network_builder.h"
@@ -11,8 +12,8 @@
 #include "dstarlite.h"
 #include "heuristics3d.h"
 
-std::vector<int> ExtractRoute(Network& map, Node* start, Node* goal) {
-    std::vector<int> path;
+std::vector<uint64_t> ExtractRoute(Network& map, Node* start, Node* goal) {
+    std::vector<uint64_t> path;
     Node* current = start;
 
     std::cout << "\nExtracting computed route...\n";
@@ -72,16 +73,19 @@ int main()
     DStarLite router(&orlandoMap, origin, dest, Heuristics3D::Euclidean);
     router.ComputeShortestPath();
 
-    std::vector<int> vehicleRoute = ExtractRoute(orlandoMap, origin, dest);
+    std::vector<uint64_t> vehicleRoute = ExtractRoute(orlandoMap, origin, dest);
 
-    for (int nodeId : vehicleRoute)
+    for (uint64_t nodeId : vehicleRoute)
     {
         std::cout << nodeId << " -> ";
     }
     std::cout << "GOAL\n\n";
 
-    orlandoMap.visualizeNetwork();
-    orlandoMap.visualizeNetworkForPython();
+    /**
+     * Debug
+     */
+    // orlandoMap.visualizeNetwork();
+    // orlandoMap.visualizeNetworkForPython();
 
     // generic IDM parameters for new driver struct, 
     IDMParameters basicDriver = {
@@ -109,15 +113,21 @@ int main()
     // testing faster car to test braking
     VehicleState* vhcl1 = new VehicleState(32, 0, aggressiveDriver);
     // std::cout << "We have " << vhcl1->getCount() << " vehicles." << std::endl;
-    VehicleState* vhcl2 = new VehicleState(29, 250, basicDriver);
+    VehicleState* vhcl2 = new VehicleState(29, 50, basicDriver);
     // std::cout << "We have " << vhcl1->getCount() << " vehicles." << std::endl;
+
+    vhcl1->currentRoute = vehicleRoute;
+    vhcl1->currentRouteIndex = 0;
+
+    vhcl2->currentRoute = vehicleRoute;
+    vhcl2->currentRouteIndex = 0;
 
     vhcl1->setLeader(vhcl2);
     float dt = 0.1;       // should be a set time step, before we were technically doing update(0.1) then udpate(0.2) etc.. oops
     float currentTime = 0.0f; // total elapsed time
     float maxT = 100;  // runtime of the sim, currently set for 1200 seconds (20 mins)
     
-    PhysicsProcessor controller;
+    PhysicsProcessor controller(&orlandoMap);
     controller.addVehicle(vhcl1);
     controller.addVehicle(vhcl2);
 
@@ -136,9 +146,11 @@ int main()
     while (currentTime < maxT)
     {
         controller.update(dt);
-        float gap = vhcl2->getPos() - vhcl1->getPos();
+        
+        // Use the controller's multi-edge gap calculator instead of naive subtraction
+        float gap = controller.calculateTrueGap(vhcl1, vhcl2);
 
-       // Print formatted row
+        // Print formatted row
         std::cout << std::setw(8)  << currentTime << " | "
                   << std::setw(7)  << vhcl1->getSpeed() << " | "
                   << std::setw(7)  << vhcl1->getPos() << " | "
@@ -147,7 +159,6 @@ int main()
                   << std::setw(7)  << gap << "\n";
 
         currentTime += dt;
-  
     }
 
     return 0;
