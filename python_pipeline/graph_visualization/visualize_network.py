@@ -1,3 +1,10 @@
+"""
+This file takes in a csv called network_graph.csv, and produces
+a png visualizing the graph. The csv may be obtained from the 
+visualizeNetworkForPython function of the Network class in the sim
+project.
+"""
+
 import matplotlib
 matplotlib.use('Agg') 
 import matplotlib.pyplot as plt
