@@ -20,6 +20,28 @@ void PhysicsProcessor::update(float dt)
             {
                 vhcl->setLane(targetLane);
             }
+
+        //    skeleton for multiple lanes and lane parsing from graph
+        //     also need to adjust MOBIL to not be boolean, return -999 if unsafe, otherwise return incentive math
+        
+        //     int totalLanes = vhcl->getCurrentEdge()->getLanes(); 
+        //     int bestLane = currentLane;
+        //     if (currentLane > 0) {
+        //        if (MOBIL(vhcl, currentLane - 1)) {
+        //            bestLane = currentLane - 1;
+        //        }
+        //    }
+
+        //    if (currentLane < totalLanes - 1) {
+        //        if (MOBIL(vhcl, currentLane + 1)) {
+        //            bestLane = currentLane + 1;
+        //        }
+        //    }
+
+        //    if (bestLane != currentLane) {
+        //        vhcl->setLane(bestLane);
+        //    }
+    
         }
     vehicleUpdates.clear();
     
