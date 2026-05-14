@@ -7,7 +7,7 @@
 #include "SimulationManager.generated.h"
 
 UCLASS()
-class ROADMAPTEST_API ASimulationManager : public AActor
+class SD1TEST_API ASimulationManager : public AActor
 {
 	GENERATED_BODY()
 	
