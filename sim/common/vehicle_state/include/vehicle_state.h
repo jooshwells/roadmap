@@ -1,6 +1,6 @@
 #ifndef VEHICLE_STATE_H
 #define VEHICLE_STATE_H
-#include "road_state/include/road.h"
+#include "road.h"
 
 // add struct for diff "types" of drivers, easier to pass in args
 // can add in initial speed and pos later, exlucde for ease of testign for now

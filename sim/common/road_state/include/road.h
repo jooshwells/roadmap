@@ -18,9 +18,9 @@ class Road {
 
     private:
         int destId;
+        double length;
         double speedLimit;
         int lanes;
-        double length;
 };
 
 #endif

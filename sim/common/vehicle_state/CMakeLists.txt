@@ -5,6 +5,10 @@ target_include_directories(vehicle_state PUBLIC
     $<INSTALL_INTERFACE:include>
 )
 
+target_link_libraries(vehicle_state PUBLIC
+    RoadMap::common::road_state
+)
+
 add_subdirectory(src)
 
 add_library(RoadMap::common::vehicle_state ALIAS vehicle_state)

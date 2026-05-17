@@ -57,16 +57,8 @@ Network NetworkBuilder::buildNetworkFromJSONL(const std::string& nodePath, const
             try
             {
                 json j = json::parse(line); // parse object
-                
-                // get lane count data, defaults to 1 if no data
-                int lanes = 1; 
-                if (j.contains("lanes")) {
-                    if (j["lanes"].is_string()) {
-                        lanes = std::stoi(j["lanes"].get<std::string>());
-                    } else if (j["lanes"].is_number_integer()) {
-                        lanes = j["lanes"].get<int>();
-                    }
-                }
+                int lanes = j.value("lanes", 1);
+               
                 roadNetwork.addDirectedEdge(
                     j["u"],
                     j["v"],
