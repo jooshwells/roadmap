@@ -8,9 +8,14 @@ class PhysicsProcessor
 {
     public:
         void update(float dt);
-        float IDM(VehicleState* vhcl);
+        float IDM(VehicleState* vhcl, VehicleState* leader); // now takes leader for MOBIL to use
         void addVehicle(VehicleState* vhcl);
+        float MOBIL(VehicleState* vhcl, int targetLane);
 
+
+        VehicleState* getLeader(VehicleState* vhcl, int targetLane);
+        VehicleState* getFollower(VehicleState* vhcl, int targetLane);
+        
         PhysicsProcessor();
         ~PhysicsProcessor();
 

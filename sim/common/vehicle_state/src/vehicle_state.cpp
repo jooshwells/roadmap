@@ -20,9 +20,10 @@ void VehicleState::setLeader(VehicleState* newLeader)
 VehicleState::~VehicleState() {}
 
 
-VehicleState::VehicleState(float iS, float iP, const IDMParameters& params) :
+VehicleState::VehicleState(float iS, float iP, int startingLane, const IDMParameters& params) :
     m_speed(iS),
     m_pos(iP),
+    m_lane(startingLane),
     accelExp(params.accelExp),
     maxAccel(params.maxAccel),
     desiredSpeed(params.desiredSpeed),
@@ -34,4 +35,19 @@ VehicleState::VehicleState(float iS, float iP, const IDMParameters& params) :
 { 
     // std::cout << "State instantiated" << std::endl; 
     count++; 
+}
+
+void VehicleState::setLane(int newLane) 
+{
+    m_lane = newLane;
+}
+
+Road* VehicleState::getCurrentEdge() const 
+{
+    return currentEdge;
+}
+
+void VehicleState::setCurrentEdge(Road* edge) 
+{
+    currentEdge = edge;
 }

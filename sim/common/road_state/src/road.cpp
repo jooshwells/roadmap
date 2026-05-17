@@ -1,4 +1,4 @@
 #include "road.h"
 
-Road::Road(int dest, double sL, double le) : destId(dest), speedLimit(sL), length(le) {}
+Road::Road(int dest, double dist, double sL, int l) : destId(dest), length(dist), speedLimit(sL), lanes(l) {}
 Road::~Road() {}

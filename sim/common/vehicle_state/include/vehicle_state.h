@@ -1,5 +1,6 @@
 #ifndef VEHICLE_STATE_H
 #define VEHICLE_STATE_H
+#include "road.h"
 
 // add struct for diff "types" of drivers, easier to pass in args
 // can add in initial speed and pos later, exlucde for ease of testign for now
@@ -20,11 +21,13 @@ class VehicleState {
         void accelerate(float amount); // accelerate by amount (m/s)
         void move(float distance);     // move by distance (meters)
         void setLeader(VehicleState* newLeader);
-        // void update(float dt); moved to physics
+        void setLane(int newLane);
 
         /* Read Functions */
         inline float getSpeed() const             { return m_speed; }
         inline float getPos() const               { return m_pos; }
+        inline int   getLane() const              { return m_lane; }
+
         inline int   getCount() const             { return count; }
         inline float getDesiredSpeed() const      { return desiredSpeed; }
         inline float getAccelExp() const          { return accelExp; }
@@ -35,13 +38,18 @@ class VehicleState {
         inline float getMaxAccel() const          { return maxAccel; }
         inline float getLength() const            { return m_length;}
 
-        // now takes struct for remaining args
-        VehicleState(float iS, float iP, const IDMParameters& params);
+        Road* getCurrentEdge() const;
+        void setCurrentEdge(Road* edge);
+
+        // now takes struct for remaining args AND starting lane number
+        VehicleState(float iS, float iP, int startingLane, const IDMParameters& params);
         ~VehicleState();
 
     private:
         float m_speed;
         float m_pos; // x position as of testing with one dimension
+        int m_lane; // keep track of lane number
+
         float accelExp; // determines how smooth acceleration is
         float maxAccel;
         float desiredSpeed; // velocity driver is trying to reach
@@ -49,6 +57,8 @@ class VehicleState {
         float safeBrakePower; // preferred braking force
         float safeTimeHeadway; // ideal time gap between this car and leader
         float m_length;
+
+        Road* currentEdge = nullptr; //tracks curr road
     
         int id;
         inline static int count = 0;

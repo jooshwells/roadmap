@@ -12,7 +12,7 @@ class Network {
         
         void addNode(std::uint64_t id, double lat, double lon);
         Node* getNode(int id);
-        void addDirectedEdge(int fromId, int toId, double dist, double speedLimit);
+        void addDirectedEdge(int fromId, int toId, double dist, double speedLimit, int lanes);
         void visualizeNetwork();
 
         Network();

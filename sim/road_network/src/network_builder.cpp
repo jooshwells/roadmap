@@ -57,12 +57,14 @@ Network NetworkBuilder::buildNetworkFromJSONL(const std::string& nodePath, const
             try
             {
                 json j = json::parse(line); // parse object
-
+                int lanes = j.value("lanes", 1);
+               
                 roadNetwork.addDirectedEdge(
                     j["u"],
                     j["v"],
                     j["length_m"],
-                    j["speed_mps"]
+                    j["speed_mps"],
+                    lanes
                 );
             }
             catch(const json::exception& e)
