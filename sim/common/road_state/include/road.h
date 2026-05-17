@@ -13,7 +13,7 @@ class Road {
         inline void setSpeedLimit(double sL) { speedLimit = sL; }
         inline void setLanes(int l)         { lanes = l; }
 
-        Road(int dest, double sL, double le);
+        Road(int dest, double le, double sl, int l); // take in lane count
         ~Road();
 
     private:
