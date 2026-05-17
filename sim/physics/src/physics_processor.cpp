@@ -12,35 +12,35 @@ void PhysicsProcessor::update(float dt)
     for (VehicleState* vhcl : vehicleList)
         {
             int currentLane = vhcl->getLane();
-            
-            // just testing 2 lanes for now
-            int targetLane = (currentLane == 0) ? 1 : 0; 
 
-            if (MOBIL(vhcl, targetLane)) 
-            {
-                vhcl->setLane(targetLane);
-            }
+            int totalLanes = vhcl->getCurrentEdge()->getLanes(); 
+            int bestLane = currentLane;
 
-        //    skeleton for multiple lanes and lane parsing from graph
-        //     also need to adjust MOBIL to not be boolean, return -999 if unsafe, otherwise return incentive math
+            // use to track best lane MOBIL incentive
+            float threshold = 0.1f; 
+            float bestIncentive = threshold;
+
+            //check left
+            if (currentLane > 0) {
+                float leftIncentive = MOBIL(vhcl, currentLane - 1);
+                if (leftIncentive > bestIncentive) {
+                   bestLane = currentLane - 1;
+                   bestIncentive = leftIncentive;
+               }
+           }
         
-        //     int totalLanes = vhcl->getCurrentEdge()->getLanes(); 
-        //     int bestLane = currentLane;
-        //     if (currentLane > 0) {
-        //        if (MOBIL(vhcl, currentLane - 1)) {
-        //            bestLane = currentLane - 1;
-        //        }
-        //    }
-
-        //    if (currentLane < totalLanes - 1) {
-        //        if (MOBIL(vhcl, currentLane + 1)) {
-        //            bestLane = currentLane + 1;
-        //        }
-        //    }
-
-        //    if (bestLane != currentLane) {
-        //        vhcl->setLane(bestLane);
-        //    }
+           //check right
+           if (currentLane < totalLanes - 1) {
+                float rightIncentive = MOBIL(vhcl, currentLane + 1);
+                if (rightIncentive > bestIncentive) {
+                   bestLane = currentLane + 1;
+                   bestIncentive = rightIncentive;
+               }
+           }
+            // take lane with best MOBIL incentive
+           if (bestLane != currentLane) {
+               vhcl->setLane(bestLane);
+           }
     
         }
     vehicleUpdates.clear();
@@ -111,7 +111,7 @@ void PhysicsProcessor::addVehicle(VehicleState* vhcl)
     vehicleList.push_back(vhcl);
 }
 
-bool  PhysicsProcessor::MOBIL(VehicleState* vhcl, int targetLane)
+float  PhysicsProcessor::MOBIL(VehicleState* vhcl, int targetLane)
 {
     // need to implement spatial logic for finding leaders and followers
     VehicleState* newLeader = getLeader(vhcl, targetLane);
@@ -121,8 +121,6 @@ bool  PhysicsProcessor::MOBIL(VehicleState* vhcl, int targetLane)
 
     float politeness = 0.2f; // 0 is selfish, 1 is selfless
     float safeBrake = 2.0f; // b_safe, max deceleration vehicle can cause on new follower
-    float threshold = 0.1f; // delta a_th, min acceleration gain needed to be "worth" to switch lanescle
-
 
     // saftey criterion, check if lane change is safe to do 
     
@@ -130,7 +128,7 @@ bool  PhysicsProcessor::MOBIL(VehicleState* vhcl, int targetLane)
     if (newFollower != nullptr) {
         newFollowerAccel = IDM(newFollower, vhcl);
         if (newFollowerAccel < -safeBrake) { //note accel is negative for braking
-            return false; // not safe to change
+            return -999.0f; // not safe to change
         }
     }
 
@@ -155,7 +153,7 @@ bool  PhysicsProcessor::MOBIL(VehicleState* vhcl, int targetLane)
     }
 
     float incentive= newAccelGain +politeness*(newFollowerGain + oldFollowerGain);
-    return incentive > threshold;
+    return incentive;
     
 }
 

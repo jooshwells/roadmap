@@ -10,7 +10,7 @@ class PhysicsProcessor
         void update(float dt);
         float IDM(VehicleState* vhcl, VehicleState* leader); // now takes leader for MOBIL to use
         void addVehicle(VehicleState* vhcl);
-        bool MOBIL(VehicleState* vhcl, int targetLane);
+        float MOBIL(VehicleState* vhcl, int targetLane);
 
 
         VehicleState* getLeader(VehicleState* vhcl, int targetLane);
