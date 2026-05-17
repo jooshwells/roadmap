@@ -20,11 +20,11 @@ Node* Network::getNode(int id)
     return nullptr;
 }
 
-void Network::addDirectedEdge(int fromId, int toId, double dist, double speedLimit)
+void Network::addDirectedEdge(int fromId, int toId, double dist, double speedLimit, int lanes)
 {
     if (nodes.find(fromId) != nodes.end() && nodes.find(toId) != nodes.end())
     {
-        nodes[fromId].outgoingEdges.emplace_back(toId, dist, speedLimit);
+        nodes[fromId].outgoingEdges.emplace_back(toId, dist, speedLimit, lanes);
     }
     else
     {

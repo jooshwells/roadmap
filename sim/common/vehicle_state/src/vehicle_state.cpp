@@ -41,3 +41,13 @@ void VehicleState::setLane(int newLane)
 {
     m_lane = newLane;
 }
+
+Road* VehicleState::getCurrentEdge() const 
+{
+    return currentEdge;
+}
+
+void VehicleState::setCurrentEdge(Road* edge) 
+{
+    currentEdge = edge;
+}

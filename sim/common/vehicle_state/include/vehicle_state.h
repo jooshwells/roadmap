@@ -1,5 +1,6 @@
 #ifndef VEHICLE_STATE_H
 #define VEHICLE_STATE_H
+#include "road_state\include\road.h"
 
 // add struct for diff "types" of drivers, easier to pass in args
 // can add in initial speed and pos later, exlucde for ease of testign for now
@@ -37,6 +38,9 @@ class VehicleState {
         inline float getMaxAccel() const          { return maxAccel; }
         inline float getLength() const            { return m_length;}
 
+        Road* getCurrentEdge() const;
+        void setCurrentEdge(Road* edge);
+
         // now takes struct for remaining args AND starting lane number
         VehicleState(float iS, float iP, int startingLane, const IDMParameters& params);
         ~VehicleState();
@@ -53,6 +57,8 @@ class VehicleState {
         float safeBrakePower; // preferred braking force
         float safeTimeHeadway; // ideal time gap between this car and leader
         float m_length;
+
+        Road* currentEdge = nullptr; //tracks curr road
     
         int id;
         inline static int count = 0;
