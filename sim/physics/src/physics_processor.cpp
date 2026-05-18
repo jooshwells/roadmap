@@ -417,8 +417,23 @@ PhysicsProcessor::~PhysicsProcessor()
     {
         delete(v);
     }
+    
+    
     for (VehicleState* v : vehiclesToDestroy)
     {
         delete(v);
     }
+}
+
+// --- Intersection Logic from intersection branch ---
+
+void PhysicsProcessor::updateIntersections(float dt)
+{
+    // remember to update getLeader and main update function
+}
+
+bool PhysicsProcessor::canVehicleEnter(VehicleState* vhcl, Node* destNode)
+{
+    
+    return true; 
 }

@@ -4,8 +4,8 @@
 #include <cstdint>
 #include <vector>
 #include <limits>
+#include <string> 
 #include "road.h"
-// #include <GeographicLib/LocalCartesian.hpp>
 
 class Node
 {
@@ -24,22 +24,28 @@ class Node
         inline void setId(uint64_t newId)      {id = newId;}
 
         std::vector<Road> outgoingEdges;
-        std::vector<uint64_t> incomingEdgeNodeIds;
+        std::vector<uint64_t> incomingEdgeNodeIds; 
         
         bool operator==(const Node& other) const 
         {
             return id == other.id;
         }
 
+        // pathfinding stuff 
         double g = std::numeric_limits<double>::infinity();
         double rhs = std::numeric_limits<double>::infinity();
 
-        Node(std::uint64_t initId, double iLon, double iLat, double x, double y);
+        // intersection stuff 
+        enum IntersectionType { PASS_THROUGH, FOUR_WAY_STOP, TRAFFIC_LIGHT };
+        IntersectionType type = PASS_THROUGH;
+
+        // updated constructor
+        Node(std::uint64_t initId, double iLon, double iLat, double x, double y, const std::string& typeStr);
+        
         Node();
         ~Node();
-    private:
-        // void projectNodes();
 
+    private:
         std::uint64_t id;
 
         double lon;
