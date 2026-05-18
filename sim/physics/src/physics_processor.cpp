@@ -84,6 +84,7 @@ float PhysicsProcessor::calculateDistanceToDestination(VehicleState* vhcl)
 void PhysicsProcessor::update(float dt)
 {
     spatialHash->rebuild(vehicleList);
+    updateIntersections(dt);
     // check for MOBIL
     for (VehicleState* vhcl : vehicleList)
     {
@@ -250,6 +251,14 @@ void PhysicsProcessor::update(float dt)
     for (VehicleState* deadVhcl : vehiclesToDestroy)
     {
         delete deadVhcl;
+        // If the dying vehicle is currently occupying an intersection, clear it
+        if (network != nullptr) {
+            for (auto& pair : intersections) {
+                if (pair.second.currentOccupant == deadVhcl) {
+                    pair.second.currentOccupant = nullptr;
+                }
+            }
+        }
     }
     vehiclesToDestroy.clear();
 
