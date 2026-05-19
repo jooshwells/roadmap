@@ -433,7 +433,47 @@ void PhysicsProcessor::updateIntersections(float dt)
 }
 
 bool PhysicsProcessor::canVehicleEnter(VehicleState* vhcl, Node* destNode)
-{
+{   
+    // destNode represents intersection at end of a road
+    if (destNode == nullptr || destNode->type == Node::PASS_THROUGH) return true;
     
+    // Upgraded to uint64_t to safely match the Node ID size
+    uint64_t nodeId = destNode->getId(); 
+    IntersectionState& state = intersections[nodeId];
+
+    // four way stop
+    if (destNode->type == Node::FOUR_WAY_STOP) {
+        // allow car to move thru intersection
+        if (state.currentOccupant == vhcl) return true;
+
+        // setup queue for cars approaching stop
+        bool inQueue = false;
+        std::queue<VehicleState*> tempQueue = state.waitQueue;
+        while (!tempQueue.empty()) {
+            if (tempQueue.front() == vhcl) {
+                inQueue = true;
+                break;
+            }
+            tempQueue.pop();
+        }
+
+        if (!inQueue) {
+            state.waitQueue.push(vhcl);
+        }
+        return false; // car cannot enter
+    }
+
+    // simple for now, need to create struct for light phases for diff directions
+    if (destNode->type == Node::TRAFFIC_LIGHT) {
+        
+        // 0 = green, 1,2 = yellow, red
+        if (state.currentPhase == 0) {
+            return true; 
+        } 
+        else { 
+            return false; // red/yellow light
+        }
+    }
+
     return true; 
 }
