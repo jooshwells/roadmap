@@ -6,13 +6,14 @@
 #include <vector>
 #include <cstdint>
 #include <random>
-
+#include <string>
 
 class Network {
 
     public:
         
-        void addNode(std::uint64_t id, double lat, double lon, double x, double y);
+        // Combined signature: takes offline X/Y AND the intersection type string
+        void addNode(std::uint64_t id, double lat, double lon, double x, double y, const std::string& typeStr);
         
         /**
          * WARNING!!!!
@@ -37,7 +38,6 @@ class Network {
         uint64_t numNodes;
         uint64_t nextEdgeId = 1;
         
-
 };
 
 #endif

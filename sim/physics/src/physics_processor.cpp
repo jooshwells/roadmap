@@ -403,7 +403,48 @@ float  PhysicsProcessor::MOBIL(VehicleState* vhcl, int targetLane)
 
 VehicleState* PhysicsProcessor::getLeader(VehicleState* vhcl, int targetLane)
 {
-    return spatialHash->getLeader(vhcl, targetLane, network);
+    // 1. Get the physical car ahead using the optimized spatial hash (from your teammate)
+    VehicleState* physicalLeader = spatialHash->getLeader(vhcl, targetLane, network);
+    
+    // Calculate distance to the physical leader
+    float physicalDistance = std::numeric_limits<float>::max();
+    if (physicalLeader != nullptr) {
+        physicalDistance = calculateTrueGap(vhcl, physicalLeader);
+    }
+
+    // 2. Check intersection and place virtual/ghost vehicle if needed (from your branch)
+    if (network != nullptr) {
+        Road* currentRoad = vhcl->getCurrentEdge();
+        
+        if (currentRoad != nullptr) {
+            uint64_t destNodeId = currentRoad->getDest();
+            Node* destNode = network->getNode(destNodeId);
+
+            // If the vehicle cannot enter the intersection...
+            if (destNode != nullptr && !canVehicleEnter(vhcl, destNode)) {
+    
+                float distanceToStopLine = currentRoad->getLength() - vhcl->getPos();
+                
+                // If the stop line is closer than the physical leader, yield to the stop line
+                if (distanceToStopLine > 0.0f && distanceToStopLine < physicalDistance) {
+                    
+                    // unique key for specific lane and road
+                    std::pair<Road*, int> laneKey = std::make_pair(currentRoad, vhcl->getLane());
+                    
+                    // spawn ghost vehicle if one doesnt exist
+                    if (ghostVehicles.find(laneKey) == ghostVehicles.end()) {
+                        IDMParameters dummyParams = {1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 0.0f};
+                        ghostVehicles[laneKey] = new VehicleState(0.0f, currentRoad->getLength(), vhcl->getLane(), dummyParams);
+                    }
+                    
+                    return ghostVehicles[laneKey];
+                }
+            }
+        }
+    }
+
+    // 3. Otherwise, return the physical leader (or nullptr if the road is completely clear)
+    return physicalLeader;
 }
 
 VehicleState* PhysicsProcessor::getFollower(VehicleState* vhcl, int targetLane)
@@ -418,20 +459,26 @@ PhysicsProcessor::~PhysicsProcessor()
         delete(v);
     }
     
-    
+    // --- Memory Cleanup from main ---
     for (VehicleState* v : vehiclesToDestroy)
     {
         delete(v);
     }
+
+    // --- Delete ghost vehicles from intersection branch ---
+    for (auto& pair : ghostVehicles) 
+    {
+        delete pair.second;
+    }
 }
 
-// --- Intersection Logic from intersection branch ---
+// --- Intersection Logic ---
 
+// gets called in update(), maybe need to look at performance 
 void PhysicsProcessor::updateIntersections(float dt)
 {
-    // remember to update getLeader and main update function
+    // Add logic here when ready
 }
-
 bool PhysicsProcessor::canVehicleEnter(VehicleState* vhcl, Node* destNode)
 {   
     // destNode represents intersection at end of a road

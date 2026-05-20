@@ -3,9 +3,11 @@
 #include <iostream>
 #include <fstream>
 
-void Network::addNode(std::uint64_t id, double lat, double lon, double x, double y)
+// Combined signature to take offline x/y AND the intersection type string
+void Network::addNode(std::uint64_t id, double lat, double lon, double x, double y, const std::string& typeStr)
 {
-    auto [iterator, inserted] = nodes.try_emplace(id, id, lat, lon, x, y);
+    // Pass ALL variables down into the Node constructor
+    auto [iterator, inserted] = nodes.try_emplace(id, id, lat, lon, x, y, typeStr);
     
     if (inserted)
     {

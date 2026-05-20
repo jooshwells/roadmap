@@ -7,6 +7,8 @@
 #include <vector>
 #include <queue>          
 #include <unordered_map>
+#include <map>
+#include <utility>
 
 // keep track of intersection queues and traffic lights
 struct IntersectionState {
@@ -55,6 +57,8 @@ class PhysicsProcessor
         
         // intersection stuff
         std::unordered_map<uint64_t, IntersectionState> intersections; 
+        std::map<std::pair<Road*, int>, VehicleState*> ghostVehicles; // ghost vehicles for each lane in intersection
+        
         bool canVehicleEnter(VehicleState* vhcl, Node* destNode);
         void updateIntersections(float dt);
 };
