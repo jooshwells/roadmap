@@ -250,7 +250,6 @@ void PhysicsProcessor::update(float dt)
     // ==========================================
     for (VehicleState* deadVhcl : vehiclesToDestroy)
     {
-        delete deadVhcl;
         // If the dying vehicle is currently occupying an intersection, clear it
         if (network != nullptr) {
             for (auto& pair : intersections) {
@@ -259,6 +258,8 @@ void PhysicsProcessor::update(float dt)
                 }
             }
         }
+        delete deadVhcl;
+        
     }
     vehiclesToDestroy.clear();
 
