@@ -477,8 +477,57 @@ PhysicsProcessor::~PhysicsProcessor()
 // gets called in update(), maybe need to look at performance 
 void PhysicsProcessor::updateIntersections(float dt)
 {
-    // Add logic here when ready
+    if (network == nullptr) return;
+
+    for (auto& pair : intersections) {
+        // Upgraded to uint64_t to match the map key we fixed earlier
+        uint64_t nodeId = pair.first; 
+        IntersectionState& state = pair.second;
+        Node* node = network->getNode(nodeId);
+
+        if (node == nullptr) continue;
+
+        // 4 way stop logic
+        if (node->type == Node::FOUR_WAY_STOP) {
+            
+            // check if there is car already in intersection
+            if (state.currentOccupant != nullptr) {
+                Road* currentEdge = state.currentOccupant->getCurrentEdge();
+                
+                // check if car has cleared intersection
+                if (currentEdge && state.currentOccupant->getPos() > currentEdge->getLength() + 5.0f) {
+                    state.currentOccupant = nullptr; // free intersection
+                }
+            }
+
+            // pop queue
+            if (state.currentOccupant == nullptr && !state.waitQueue.empty()) {
+                state.currentOccupant = state.waitQueue.front();
+                state.waitQueue.pop();
+            }
+        }
+        
+        // traffic light logic, will have to rework better for multiple directions
+        else if (node->type == Node::TRAFFIC_LIGHT) {
+            state.lightTimer += dt;
+            // Basic cycle for now 10s Green into 2s Yellow into 10s Red
+            if (state.currentPhase == 0 && state.lightTimer >= 10.0f) {
+                state.currentPhase = 1; // yellow
+                state.lightTimer = 0.0f;
+            } 
+            else if (state.currentPhase == 1 && state.lightTimer >= 2.0f) {
+                state.currentPhase = 2; // red
+                state.lightTimer = 0.0f;
+            }
+            else if (state.currentPhase == 2 && state.lightTimer >= 10.0f) {
+                state.currentPhase = 0; // green
+                state.lightTimer = 0.0f;
+            }
+        }
+    }
 }
+    
+
 bool PhysicsProcessor::canVehicleEnter(VehicleState* vhcl, Node* destNode)
 {   
     // destNode represents intersection at end of a road
