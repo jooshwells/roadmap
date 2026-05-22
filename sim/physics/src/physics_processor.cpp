@@ -548,6 +548,8 @@ void PhysicsProcessor::updateIntersections(float dt)
         }
     }
 }
+    
+
 bool PhysicsProcessor::canVehicleEnter(VehicleState* vhcl, Node* destNode)
 {   
     // destNode represents intersection at end of a road
