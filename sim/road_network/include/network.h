@@ -1,7 +1,7 @@
 #ifndef NETWORK_INTIALIZER_H
 #define NETWORK_INTIALIZER_H
 
-#include "node.h"
+#include "../../common/road_state/include/node.h"
 #include <unordered_map>
 #include <cstdint>
 

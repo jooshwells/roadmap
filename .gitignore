@@ -39,6 +39,7 @@
 *.opensdf
 *.sdf
 *.VC.db
+*.VC.dbtest
 *.VC.opendb
 .vsconfig
 
