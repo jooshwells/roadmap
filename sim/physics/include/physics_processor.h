@@ -2,6 +2,7 @@
 #define PHYSICS_PROCESSOR_H
 
 #include "vehicle_state.h"
+#include "network.h"
 #include <vector>
 
 class PhysicsProcessor 
@@ -16,12 +17,28 @@ class PhysicsProcessor
         VehicleState* getLeader(VehicleState* vhcl, int targetLane);
         VehicleState* getFollower(VehicleState* vhcl, int targetLane);
         
-        PhysicsProcessor();
+        // Helper to get the length of a specific segment in a vehicle's route
+        float getRouteSegmentLength(VehicleState* vhcl, int routeIndex);
+        // Helper to calculate the true gap across multiple edges
+        float calculateTrueGap(VehicleState* follower, VehicleState* leader);
+
+        float calculateDistanceToDestination(VehicleState* vhcl);
+
+        const std::vector<VehicleState*>& getActiveVehicles() const { 
+            return vehicleList; 
+        }
+
+        PhysicsProcessor(Network* mapNetwork);
         ~PhysicsProcessor();
 
     private:
+        Network* network;
         std::vector<VehicleState*> vehicleList;
-        std::vector<float> vehicleUpdates;        
+        std::vector<float> vehicleUpdates;
+
+        std::vector<VehicleState*> vehiclesToRemove;
+        std::vector<VehicleState*> vehiclesToDestroy;
+        
 };
 
 

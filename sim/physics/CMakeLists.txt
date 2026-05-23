@@ -7,6 +7,8 @@ target_include_directories(physics PUBLIC
 
 target_link_libraries(physics PRIVATE
     RoadMap::common::vehicle_state
+    RoadMap::common::road_state
+    RoadMap::network
 )
 
 add_subdirectory(src)

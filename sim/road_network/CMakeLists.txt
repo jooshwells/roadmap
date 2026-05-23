@@ -7,6 +7,10 @@ target_include_directories(network PUBLIC
 
 target_link_libraries(network PRIVATE
     RoadMap::common::road_state
+    RoadMap::common::idm_profiles
+    RoadMap::common::heuristics
+    RoadMap::physics
+    RoadMap::driver_logic::pathfinding
     json
 )
 

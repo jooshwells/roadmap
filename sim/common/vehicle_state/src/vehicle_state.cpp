@@ -11,19 +11,51 @@ void VehicleState::move(float distance)
     m_pos += distance;
 }
 
+void VehicleState::setPos(float new_pos)
+{
+    m_pos = new_pos;
+}
+
+void VehicleState::setDesiredSpeed(float new_des_speed)
+{
+    desiredSpeed = new_des_speed;
+}
+
 void VehicleState::setLeader(VehicleState* newLeader) 
 {
     leader = newLeader;
 }
 
-// Implement if memory needs to be freed up
+// NEW: Store the current acceleration calculated by the physics step
+void VehicleState::setAcceleration(float accel) 
+{
+    m_acceleration = accel;
+}
+
+// NEW: Accumulate wait time if moving below the threshold (e.g., 0.5 m/s)
+void VehicleState::updateWaitTime(float dt, float speedThreshold) 
+{
+    if (m_speed < speedThreshold) 
+    {
+        m_waitTime += dt;
+    }
+}
+
+// NEW: Safely get the current road's ID
+uint64_t VehicleState::getEdgeId() const 
+{
+    return (currentEdge != nullptr) ? currentEdge->getEdgeId() : 0;
+}
+
 VehicleState::~VehicleState() {}
 
-
-VehicleState::VehicleState(float iS, float iP, int startingLane, const IDMParameters& params) :
+// NEW: Constructor now accepts and initializes origin and destination
+VehicleState::VehicleState(uint64_t originNode, uint64_t destNode, float iS, float iP, int startingLane, const IDMParameters& params) :
     m_speed(iS),
     m_pos(iP),
     m_lane(startingLane),
+    m_origin(originNode),       // INITIALIZE
+    m_destination(destNode),    // INITIALIZE
     accelExp(params.accelExp),
     maxAccel(params.maxAccel),
     desiredSpeed(params.desiredSpeed),
@@ -33,7 +65,6 @@ VehicleState::VehicleState(float iS, float iP, int startingLane, const IDMParame
     id(count),
     m_length(params.length)
 { 
-    // std::cout << "State instantiated" << std::endl; 
     count++; 
 }
 
