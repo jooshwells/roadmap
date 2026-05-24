@@ -11,3 +11,5 @@ target_link_libraries(idm_profiles INTERFACE
 )
 
 add_library(RoadMap::common::idm_profiles ALIAS idm_profiles)
+
+install(DIRECTORY include DESTINATION include)

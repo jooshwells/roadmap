@@ -12,3 +12,7 @@ target_link_libraries(road_state PUBLIC
 add_subdirectory(src)
 
 add_library(RoadMap::common::road_state ALIAS road_state)
+
+install(TARGETS road_state ARCHIVE DESTINATION lib)
+
+install(DIRECTORY include DESTINATION include)

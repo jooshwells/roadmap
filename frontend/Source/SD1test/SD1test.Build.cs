@@ -1,14 +1,17 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
+using System.IO;
 
 public class SD1test : ModuleRules
 {
 	public SD1test(ReadOnlyTargetRules Target) : base(Target)
 	{
-		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
+        string SimDirectory = Path.GetFullPath(Path.Combine(ModuleDirectory, "../../..", "sim"));
+        PublicIncludePaths.Add(SimDirectory);
+        PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 	
-		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine"});
+		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "RoadMapSimLibrary"});
 
 		PrivateDependencyModuleNames.AddRange(new string[] {  });
 

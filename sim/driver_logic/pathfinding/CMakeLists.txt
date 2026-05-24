@@ -13,3 +13,7 @@ target_link_libraries(pathfinding PUBLIC
 )
 
 add_library(RoadMap::driver_logic::pathfinding ALIAS pathfinding)
+
+install(TARGETS pathfinding ARCHIVE DESTINATION lib)
+
+install(DIRECTORY include DESTINATION include)

@@ -12,3 +12,7 @@ target_link_libraries(heuristics PUBLIC
 add_subdirectory(src)
 
 add_library(RoadMap::common::heuristics ALIAS heuristics)
+
+install(TARGETS heuristics ARCHIVE DESTINATION lib)
+
+install(DIRECTORY include DESTINATION include)

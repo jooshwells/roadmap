@@ -5,10 +5,7 @@
 #include "Components/SplineComponent.h"
 
 // Your existing C++ classes — adjust include paths to match your project layout
-#include "../../../sim/road_network/include/network.h"
-#include "./sim/road_network/include/network_builder.h"
-#include "./sim/common/road_state/include/node.h"
-#include "./sim//common/road_state/include/road.h"
+class Node; // forward declaration
 
 #include "RoadNetworkSpawner.generated.h"
 

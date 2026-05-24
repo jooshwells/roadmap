@@ -17,3 +17,7 @@ target_link_libraries(network PRIVATE
 add_subdirectory(src)
 
 add_library(RoadMap::network ALIAS network)
+
+install(TARGETS network ARCHIVE DESTINATION lib)
+
+install(DIRECTORY include DESTINATION include)

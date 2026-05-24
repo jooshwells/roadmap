@@ -13,3 +13,7 @@ target_link_libraries(tm_logger INTERFACE
 # 4. Create an alias (Best Practice)
 # This allows you to link it using the namespace format, e.g., target_link_libraries(my_exe RoadMap::tm_logger)
 add_library(RoadMap::tm_logger ALIAS tm_logger)
+
+install(TARGETS tm_logger ARCHIVE DESTINATION lib)
+
+install(DIRECTORY include DESTINATION include)

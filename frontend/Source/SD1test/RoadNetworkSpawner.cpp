@@ -3,6 +3,13 @@
 #include "Engine/World.h"
 #include "Components/SplineComponent.h"
 
+THIRD_PARTY_INCLUDES_START
+#include "network.h"
+#include "network_builder.h"
+#include "node.h"
+#include "road.h"
+THIRD_PARTY_INCLUDES_END
+
 ARoadNetworkSpawner::ARoadNetworkSpawner()
 {
     PrimaryActorTick.bCanEverTick = false;

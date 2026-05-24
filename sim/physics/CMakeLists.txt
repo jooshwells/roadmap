@@ -14,3 +14,7 @@ target_link_libraries(physics PRIVATE
 add_subdirectory(src)
 
 add_library(RoadMap::physics ALIAS physics)
+
+install(TARGETS physics ARCHIVE DESTINATION lib)
+
+install(DIRECTORY include DESTINATION include)
