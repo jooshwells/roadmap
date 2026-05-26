@@ -434,7 +434,9 @@ VehicleState* PhysicsProcessor::getLeader(VehicleState* vhcl, int targetLane)
                     // spawn ghost vehicle if one doesnt exist
                     if (ghostVehicles.find(laneKey) == ghostVehicles.end()) {
                         IDMParameters dummyParams = {1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 0.0f};
-                        ghostVehicles[laneKey] = new VehicleState(0.0f, currentRoad->getLength(), vhcl->getLane(), dummyParams);
+                        
+                        // spawn ghost at end of road
+                        ghostVehicles[laneKey] = new VehicleState(0, 0, 0.0f, (float)currentRoad->getLength(), vhcl->getLane(), dummyParams);
                     }
                     
                     return ghostVehicles[laneKey];
@@ -477,10 +479,9 @@ PhysicsProcessor::~PhysicsProcessor()
 // gets called in update(), maybe need to look at performance 
 void PhysicsProcessor::updateIntersections(float dt)
 {
-    if (network == nullptr) return;
+     if (network == nullptr) return;
 
     for (auto& pair : intersections) {
-        // Upgraded to uint64_t to match the map key we fixed earlier
         uint64_t nodeId = pair.first; 
         IntersectionState& state = pair.second;
         Node* node = network->getNode(nodeId);
@@ -494,9 +495,20 @@ void PhysicsProcessor::updateIntersections(float dt)
             if (state.currentOccupant != nullptr) {
                 Road* currentEdge = state.currentOccupant->getCurrentEdge();
                 
-                // check if car has cleared intersection
-                if (currentEdge && state.currentOccupant->getPos() > currentEdge->getLength() + 5.0f) {
-                    state.currentOccupant = nullptr; // free intersection
+                if (currentEdge) {
+                    // Check if the car has transitioned to the next road segment
+                    // (Its destination is no longer this intersection)
+                    if (currentEdge->getDest() != nodeId) {
+                        
+                        // Wait for the car to drive 5 meters into the new road to clear the box
+                        if (state.currentOccupant->getPos() > 5.0f) {
+                            state.currentOccupant = nullptr; // free intersection
+                        }
+                    } 
+                    // Fallback for dead ends (where the car never changes roads)
+                    else if (state.currentOccupant->getPos() > currentEdge->getLength() + 5.0f) {
+                        state.currentOccupant = nullptr; 
+                    }
                 }
             }
 
@@ -526,8 +538,6 @@ void PhysicsProcessor::updateIntersections(float dt)
         }
     }
 }
-    
-
 bool PhysicsProcessor::canVehicleEnter(VehicleState* vhcl, Node* destNode)
 {   
     // destNode represents intersection at end of a road
