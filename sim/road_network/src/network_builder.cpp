@@ -31,14 +31,17 @@ Network NetworkBuilder::buildNetworkFromJSONL(const std::string& nodePath, const
             try
             {
                 json j = json::parse(line); // parse object
-                std::string nodeType = j.value("type", "PASS_THROUGH"); // get node type, default to pass through
+                std::string controlType = "none";
+                if (j.contains("traffic_control") && !j["traffic_control"].is_null()) {
+                    controlType = j["traffic_control"].get<std::string>();
+                }
                 roadNetwork.addNode(
                     j["id"],
                     j["lat"],
                     j["lon"],
                     j["x"],
                     j["y"],
-                    nodeType
+                    controlType
                 );
             }
             catch(const json::exception& e)
