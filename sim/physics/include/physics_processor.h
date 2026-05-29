@@ -16,12 +16,17 @@ struct IntersectionState {
     VehicleState* currentOccupant = nullptr;
     float lightTimer = 0.0f;
     int currentPhase = 0;
+    bool isInitialized = false; 
+    
+    // group edges by direction
+    std::map<int, std::vector<uint64_t>> phaseAllowedEdges;
 };
 
 class PhysicsProcessor 
 {
     public:
         inline void setNetwork(Network* net) { network = net; } // physics can read nodes now
+        std::string getUpcomingTurnDirection(VehicleState* vhcl); // testing turn lanes
 
         void update(float dt);
         float IDM(VehicleState* vhcl, VehicleState* leader, bool mobil); // now takes leader for MOBIL to use

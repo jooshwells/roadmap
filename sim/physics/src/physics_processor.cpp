@@ -529,20 +529,61 @@ void PhysicsProcessor::updateIntersections(float dt)
             }
         }
         
-        // traffic light logic, will have to rework better for multiple directions
+        // traffic light logic, working on multi directional phases
         else if (node->type == Node::TRAFFIC_LIGHT) {
+            
+            if (!state.isInitialized) {
+                state.isInitialized = true;
+                
+                //get incoming directions
+                std::vector<uint64_t> incomingEdges;
+                for (uint64_t predNodeId : node->incomingEdgeNodeIds) {
+                    Node* predNode = network->getNode(predNodeId);
+                    if (!predNode) continue;
+                    
+                    for (Road& edge : predNode->outgoingEdges) {
+                        if (edge.getDest() == nodeId) {
+                            incomingEdges.push_back(edge.getEdgeId());
+                        }
+                    }
+                }
+                
+                // split roads into phases
+                for (size_t i = 0; i < incomingEdges.size(); i++) {
+                    if (i % 2 == 0) {
+                        state.phaseAllowedEdges[0].push_back(incomingEdges[i]);
+                    } else {
+                        state.phaseAllowedEdges[3].push_back(incomingEdges[i]);
+                    }
+                }
+            }
+
+            // 6 phases now, green, yellow, red, repeats for N/S and E/W
+            
             state.lightTimer += dt;
-            // Basic cycle for now 10s Green into 2s Yellow into 10s Red
-            if (state.currentPhase == 0 && state.lightTimer >= 10.0f) {
-                state.currentPhase = 1; // yellow
+            
+            if (state.currentPhase == 0 && state.lightTimer >= 15.0f) {
+                state.currentPhase = 1; //  Yellow N/S
                 state.lightTimer = 0.0f;
             } 
-            else if (state.currentPhase == 1 && state.lightTimer >= 2.0f) {
-                state.currentPhase = 2; // red
+            else if (state.currentPhase == 1 && state.lightTimer >= 4.0f) {
+                state.currentPhase = 2; // all red
                 state.lightTimer = 0.0f;
             }
-            else if (state.currentPhase == 2 && state.lightTimer >= 10.0f) {
-                state.currentPhase = 0; // green
+            else if (state.currentPhase == 2 && state.lightTimer >= 2.0f) {
+                state.currentPhase = 3; // green E/W
+                state.lightTimer = 0.0f;
+            }
+            else if (state.currentPhase == 3 && state.lightTimer >= 15.0f) {
+                state.currentPhase = 4; // Yellow E/W
+                state.lightTimer = 0.0f;
+            }
+            else if (state.currentPhase == 4 && state.lightTimer >= 4.0f) {
+                state.currentPhase = 5; // all red
+                state.lightTimer = 0.0f;
+            }
+            else if (state.currentPhase == 5 && state.lightTimer >= 2.0f) {
+                state.currentPhase = 0; // green N/S
                 state.lightTimer = 0.0f;
             }
         }
@@ -579,17 +620,55 @@ bool PhysicsProcessor::canVehicleEnter(VehicleState* vhcl, Node* destNode)
         return false; // car cannot enter
     }
 
-    // simple for now, need to create struct for light phases for diff directions
+    // testing multi phase trafic lights
     if (destNode->type == Node::TRAFFIC_LIGHT) {
         
-        // 0 = green, 1,2 = yellow, red
-        if (state.currentPhase == 0) {
+        uint64_t myEdgeId = vhcl->getEdgeId();
+        
+        // list of edges allowed during phase
+        std::vector<uint64_t>& allowedList = state.phaseAllowedEdges[state.currentPhase];
+        
+        // go if edge is allowed and light is green
+        if (std::find(allowedList.begin(), allowedList.end(), myEdgeId) != allowedList.end()) {
             return true; 
         } 
         else { 
-            return false; // red/yellow light
+            return false;
         }
     }
 
-    return true; 
+    return true;
+}
+
+// looking into using cross product for determining when to turn
+std::string PhysicsProcessor::getUpcomingTurnDirection(VehicleState* vhcl) 
+{
+    // end of route, no turns
+    if (vhcl->currentRouteIndex >= vhcl->currentRoute.size() - 2) return "through";
+
+    uint64_t prevNodeId = vhcl->currentRoute[vhcl->currentRouteIndex];
+    uint64_t currNodeId = vhcl->currentRoute[vhcl->currentRouteIndex + 1];
+    uint64_t nextNodeId = vhcl->currentRoute[vhcl->currentRouteIndex + 2];
+
+    Node* prev = network->getNode(prevNodeId);
+    Node* curr = network->getNode(currNodeId);
+    Node* next = network->getNode(nextNodeId);
+
+    if (!prev || !curr || !next) return "through";
+
+    // current road
+    double v1x = curr->getX() - prev->getX();
+    double v1y = curr->getY() - prev->getY();
+
+    // road after intersection
+    double v2x = next->getX() - curr->getX();
+    double v2y = next->getY() - curr->getY();
+
+    double crossProduct = (v1x * v2y) - (v1y * v2x);
+
+    // use product to dtermine left or right
+    if (crossProduct > 10.0) return "left";
+    if (crossProduct < -10.0) return "right";
+    
+    return "through"; // default to go straight
 }
