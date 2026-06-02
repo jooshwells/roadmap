@@ -2,6 +2,7 @@
 #include "Misc/Paths.h"
 #include "Engine/World.h"
 #include "Components/SplineComponent.h"
+#include <iostream>
 
 THIRD_PARTY_INCLUDES_START
 #include "network.h"
@@ -32,10 +33,12 @@ void ARoadNetworkSpawner::GenerateRoadNetwork()
 
     // ── 1. Build the network from the two JSONL files ─────────────────
     const FString ContentDir = FPaths::ProjectContentDir();
-    const std::string NodePath = TCHAR_TO_UTF8(*(ContentDir / NodesJsonLPath));
-    const std::string EdgePath = TCHAR_TO_UTF8(*(ContentDir / EdgesJsonLPath));
+    const FString NodePath = ContentDir / NodesJsonLPath;
+    const FString EdgePath = ContentDir / EdgesJsonLPath;
+    UE_LOG(LogTemp, Log, TEXT("\nNodePath: %s \nEdgePath: %s\n"), *FString(NodePath), *FString(EdgePath));
 
-    Network RoadNetwork = NetworkBuilder::buildNetworkFromJSONL(NodePath, EdgePath);
+    // convert FString into sd::string
+    Network RoadNetwork = NetworkBuilder::buildNetworkFromJSONL(TCHAR_TO_UTF8(*NodePath), TCHAR_TO_UTF8(*EdgePath));
 
     UE_LOG(LogTemp, Log, TEXT("RoadNetworkSpawner: Network built. Walking edges to spawn roads..."));
 
@@ -54,20 +57,27 @@ void ARoadNetworkSpawner::GenerateRoadNetwork()
     // Your data uses sequential IDs starting at 1.
     for (int NodeId = 1; ; ++NodeId)
     {
+       // UE_LOG(LogTemp, Log, TEXT("\ninside for loop 1\n"));
+
+        //getNode(NodeId) returns null on first iteration
         Node* FromNode = RoadNetwork.getNode(NodeId);
+
+        //this line below breaks
+   
         if (!FromNode) break;   // Past the last node
+
+       // UE_LOG(LogTemp, Log, TEXT("\npast front node check\n"));
 
         const FVector FromPos = NodeToUEPosition(FromNode);
 
         for (Road& Edge : FromNode->outgoingEdges)
         {
+            UE_LOG(LogTemp, Log, TEXT("\ninside for loop 2\n"));
             const int ToId = Edge.getDest();
             Node* ToNode = RoadNetwork.getNode(ToId);
             if (!ToNode)
             {
-                UE_LOG(LogTemp, Warning,
-                    TEXT("RoadNetworkSpawner: Edge %d->%d references missing destination node."),
-                    NodeId, ToId);
+                UE_LOG(LogTemp, Warning,TEXT("RoadNetworkSpawner: Edge %d->%d references missing destination node."),NodeId, ToId);
                 continue;
             }
 
@@ -82,6 +92,7 @@ void ARoadNetworkSpawner::GenerateRoadNetwork()
 
             for (Road& NeighEdge : FromNode->outgoingEdges)
             {
+                //UE_LOG(LogTemp, Log, TEXT("\ninside for loop 3\n"));
                 if (NeighEdge.getDest() != ToId)
                 {
                     Node* Prev = RoadNetwork.getNode(NeighEdge.getDest());
@@ -116,21 +127,18 @@ void ARoadNetworkSpawner::GenerateRoadNetwork()
             AActor* RoadActor = World->SpawnActor<AActor>(RoadActorClass, SpawnTransform, SpawnParams);
             if (!RoadActor)
             {
-                UE_LOG(LogTemp, Warning,
-                    TEXT("RoadNetworkSpawner: SpawnActor failed for edge %d->%d."), NodeId, ToId);
+                UE_LOG(LogTemp, Warning,TEXT("RoadNetworkSpawner: SpawnActor failed for edge %d->%d."), NodeId, ToId);
                 continue;
             }
 
-            RoadActor->SetActorLabel(
-                FString::Printf(TEXT("Road_%d_%d_%d"), EdgeIndex++, NodeId, ToId));
+            RoadActor->SetActorLabel(FString::Printf(TEXT("Road_%d_%d_%d"), EdgeIndex++, NodeId, ToId));
             SpawnedRoads.Add(RoadActor);
 
             // ── Configure the spline ──────────────────────────────────
             USplineComponent* Spline = RoadActor->FindComponentByClass<USplineComponent>();
             if (!Spline)
             {
-                UE_LOG(LogTemp, Warning,
-                    TEXT("RoadNetworkSpawner: Road actor has no USplineComponent (edge %d->%d)."), NodeId, ToId);
+                UE_LOG(LogTemp, Warning,TEXT("RoadNetworkSpawner: Road actor has no USplineComponent (edge %d->%d)."), NodeId, ToId);
                 continue;
             }
 
@@ -180,9 +188,9 @@ FVector ARoadNetworkSpawner::NodeToUEPosition(Node* InNode) const
     // Multiply by MetresToCm (default 100) to convert metres → centimetres.
 
     return FVector(
-        InNode->getY() * MetresToCm,   // North → UE X
-        InNode->getX() * MetresToCm,   // East  → UE Y
-        0.0f                            // flat; replace with landscape trace if needed
+        (InNode->getY() - 3000000) * MetresToCm,  // North → UE X
+        (InNode->getX() - 400000) * MetresToCm,   // East  → UE Y
+        0.0                                       // flat; replace with landscape trace if needed
     );
 }
 
