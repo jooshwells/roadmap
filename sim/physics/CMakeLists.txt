@@ -9,6 +9,7 @@ target_link_libraries(physics PRIVATE
     RoadMap::common::vehicle_state
     RoadMap::common::road_state
     RoadMap::network
+    RoadMap::spatial_logic
 )
 
 add_subdirectory(src)

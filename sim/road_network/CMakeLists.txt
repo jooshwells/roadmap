@@ -11,6 +11,7 @@ target_link_libraries(network PRIVATE
     RoadMap::common::heuristics
     RoadMap::physics
     RoadMap::driver_logic::pathfinding
+    RoadMap::spatial_logic
     json
 )
 

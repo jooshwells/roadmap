@@ -3,13 +3,14 @@
 
 #include "vehicle_state.h"
 #include "network.h"
+#include "spatial_hash.h"
 #include <vector>
 
 class PhysicsProcessor 
 {
     public:
         void update(float dt);
-        float IDM(VehicleState* vhcl, VehicleState* leader); // now takes leader for MOBIL to use
+        float IDM(VehicleState* vhcl, VehicleState* leader, bool mobil); // now takes leader for MOBIL to use
         void addVehicle(VehicleState* vhcl);
         float MOBIL(VehicleState* vhcl, int targetLane);
 
@@ -28,13 +29,14 @@ class PhysicsProcessor
             return vehicleList; 
         }
 
-        PhysicsProcessor(Network* mapNetwork);
+        PhysicsProcessor(Network* mapNetwork, VehicleSpatialHash* spatialObj);
         ~PhysicsProcessor();
 
     private:
         Network* network;
         std::vector<VehicleState*> vehicleList;
         std::vector<float> vehicleUpdates;
+        VehicleSpatialHash* spatialHash; // Store the pointer here
 
         std::vector<VehicleState*> vehiclesToRemove;
         std::vector<VehicleState*> vehiclesToDestroy;

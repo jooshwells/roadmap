@@ -49,7 +49,6 @@ void Network::addDirectedEdge(uint64_t fromId, uint64_t toId, double dist, doubl
 {
     if (nodes.find(fromId) != nodes.end() && nodes.find(toId) != nodes.end())
     {
-        // NEW: Pass nextEdgeId to the Road constructor, then increment it
         nodes[fromId].outgoingEdges.emplace_back(nextEdgeId++, toId, dist, speedLimit, lanes);
         
         nodes[toId].incomingEdgeNodeIds.push_back(fromId);
@@ -86,7 +85,6 @@ void Network::visualizeNetworkForPython() {
         return;
     }
 
-    // UPDATE: Added edge_id to the CSV header
     outFile << "source,target,length,source_x,source_y,edge_id\n";
 
     for (const auto& pair : nodes) {

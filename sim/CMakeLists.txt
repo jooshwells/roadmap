@@ -19,6 +19,7 @@ add_subdirectory(external/json)
 
 add_subdirectory(common)
 add_subdirectory(diagnostics)
+add_subdirectory(spatial_logic)
 add_subdirectory(physics)
 add_subdirectory(road_network)
 add_subdirectory(driver_logic)
@@ -33,6 +34,7 @@ target_link_libraries(sim PRIVATE
     RoadMap::physics
     RoadMap::network
     RoadMap::tm_logger
+    RoadMap::spatial_logic
 )
 
 # Install the simulation executable

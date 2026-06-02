@@ -23,13 +23,13 @@ void TrafficManager::update(float dt)
 
 void TrafficManager::spawnRandomVehicle() 
 {
-    // 1. Pick a random origin and destination from your network
+    // Pick a random origin and destination from your network
     Node* origin = network->getRandomNode(rng);
     Node* destination = network->getRandomNode(rng);
 
     if (origin == destination) return; // Prevent 0-length routes
 
-    // 2. Compute the route
+    // Compute the route
     DStarLite router(network, origin, destination, Heuristics3D::Euclidean);
     router.ComputeShortestPath();
     std::vector<uint64_t> route = DStarLite::ExtractRoute(*network, origin, destination);
@@ -37,12 +37,10 @@ void TrafficManager::spawnRandomVehicle()
     if (route.empty()) return; // Map is disconnected, no route found
 
     // Extract the IDs for telemetry and routing checks
-    // (Assuming your Node class has a getId() or similar public attribute)
     uint64_t originId = origin->getId();
     uint64_t destId = destination->getId();
 
-    // ---> CRITICAL SPAWN SAFETY CHECK <---
-    // Do this BEFORE allocating the new car to save memory operations
+    // spawn safety check
     bool isSpawnClear = true;
     for (VehicleState* vhcl : physicsLoop->getActiveVehicles())
     {
@@ -50,7 +48,6 @@ void TrafficManager::spawnRandomVehicle()
         if (!vhcl->currentRoute.empty() && vhcl->currentRoute[vhcl->currentRouteIndex] == originId)
         {
             // Check if they are physically too close to the spawn line (0.0m)
-            // We use the vehicle length plus a 5-meter safety buffer
             if (vhcl->getPos() < (vhcl->getLength() + 5.0f)) 
             {
                 isSpawnClear = false;
@@ -62,11 +59,11 @@ void TrafficManager::spawnRandomVehicle()
     // Abort spawn if the intersection is blocked
     if (!isSpawnClear) return; 
 
-    // 3. Create the vehicle (NEW CONSTRUCTOR)
+    // 3. Create the vehicle
     VehicleState* newCar = new VehicleState(
         originId, 
         destId, 
-        30.0f, // Initial Speed (You might want to set this to 0.0f so they accelerate from a stop!)
+        30.0f, // Initial Speed
         0.0f,  // Initial Pos
         0,     // Starting Lane
         IDM_Profiles::getBasicDriverProfile()
