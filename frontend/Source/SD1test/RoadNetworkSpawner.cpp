@@ -55,35 +55,27 @@ void ARoadNetworkSpawner::GenerateRoadNetwork()
     // Network::nodes is private, so we iterate by ID.
     // numNodes is also private — we rely on getNode() returning nullptr to stop.
     // Your data uses sequential IDs starting at 1.
-    for (int NodeId = 1; ; ++NodeId)
+    for (uint64_t NodeId : RoadNetwork.getAllNodeIds())
     {
-       // UE_LOG(LogTemp, Log, TEXT("\ninside for loop 1\n"));
-
-        //getNode(NodeId) returns null on first iteration
         Node* FromNode = RoadNetwork.getNode(NodeId);
-
-        //this line below breaks
-   
-        if (!FromNode) break;   // Past the last node
-
-       // UE_LOG(LogTemp, Log, TEXT("\npast front node check\n"));
+        if (!FromNode) continue; // Use continue, not break!
 
         const FVector FromPos = NodeToUEPosition(FromNode);
 
         for (Road& Edge : FromNode->outgoingEdges)
         {
-            UE_LOG(LogTemp, Log, TEXT("\ninside for loop 2\n"));
-            const int ToId = Edge.getDest();
+            const uint64_t ToId = Edge.getDest(); // changed to uint64_t
             Node* ToNode = RoadNetwork.getNode(ToId);
+
             if (!ToNode)
             {
-                UE_LOG(LogTemp, Warning,TEXT("RoadNetworkSpawner: Edge %d->%d references missing destination node."),NodeId, ToId);
+                UE_LOG(LogTemp, Warning, TEXT("RoadNetworkSpawner: Edge references missing node."));
                 continue;
             }
 
             const FVector ToPos = NodeToUEPosition(ToNode);
 
-            // ── Catmull-Rom tangents ──────────────────────────────────
+            // ── Catmull-Rom tangents ───────────────────────────────
             // For the start tangent: look for any neighbour of FromNode that isn't ToNode
             // For the end tangent:   look for any neighbour of ToNode   that isn't FromNode
             const FVector* StartPrev = nullptr;
@@ -131,7 +123,7 @@ void ARoadNetworkSpawner::GenerateRoadNetwork()
                 continue;
             }
 
-            RoadActor->SetActorLabel(FString::Printf(TEXT("Road_%d_%d_%d"), EdgeIndex++, NodeId, ToId));
+            RoadActor->SetActorLabel(FString::Printf(TEXT("Road_%d_%llu_%llu"), EdgeIndex++, NodeId, ToId));
             SpawnedRoads.Add(RoadActor);
 
             // ── Configure the spline ──────────────────────────────────
@@ -175,22 +167,16 @@ void ARoadNetworkSpawner::ClearGeneratedRoads()
 
 FVector ARoadNetworkSpawner::NodeToUEPosition(Node* InNode) const
 {
-    // GeographicLib LocalCartesian convention:
-    //   x = East  (metres from origin)
-    //   y = North (metres from origin)
-    //   z = Up    (metres, 0 for flat data)
-    //
-    // UE5 default world axes:
-    //   X = Forward → map to North  (GeographicLib y)
-    //   Y = Right   → map to East   (GeographicLib x)
-    //   Z = Up      → keep as-is    (GeographicLib z, likely 0)
-    //
-    // Multiply by MetresToCm (default 100) to convert metres → centimetres.
+    // These are the raw UTM coordinates you provided. 
+    // By subtracting them, the first node will spawn exactly at Unreal's (0, 0, 0),
+    // and the rest of the map will build outwards from there.
+    const double ReferenceNorthingY = 3147224.29;
+    const double ReferenceEastingX = 464374.50;
 
     return FVector(
-        (InNode->getY() - 3000000) * MetresToCm,  // North → UE X
-        (InNode->getX() - 400000) * MetresToCm,   // East  → UE Y
-        0.0                                       // flat; replace with landscape trace if needed
+        (InNode->getY() - ReferenceNorthingY) * MetresToCm,  // North → UE X
+        (InNode->getX() - ReferenceEastingX) * MetresToCm,   // East  → UE Y
+        0.0                                                  // Flat Z
     );
 }
 

@@ -39,6 +39,13 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Road Network|Spawning")
     float MetresToCm = 100.0;
 
+    // Shift the entire network along the X and Y axes in Unreal
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Road Network|Spawning")
+    double OriginOffsetX = 0.0;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Road Network|Spawning")
+    double OriginOffsetY = 0.0;
+
     // ── Editor actions ────────────────────────────────────────────────
     UFUNCTION(CallInEditor, BlueprintCallable, Category = "Road Network")
     void GenerateRoadNetwork();

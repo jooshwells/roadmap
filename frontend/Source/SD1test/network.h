@@ -11,7 +11,7 @@
 class Network {
 
     public:
-        
+        const std::vector<uint64_t>& getAllNodeIds() const { return nodeIds; }
         void addNode(std::uint64_t id, double lat, double lon, double x, double y);
         
         /**
