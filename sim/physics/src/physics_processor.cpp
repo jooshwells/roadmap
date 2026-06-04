@@ -1,4 +1,5 @@
 #include "physics_processor.h"
+#include "spatial_hash.h"
 #include "vehicle_state.h"
 #include "node.h"
 #include "road.h"
@@ -8,7 +9,7 @@
 #include <iostream>
 #include <algorithm>
 
-PhysicsProcessor::PhysicsProcessor(Network* mapNetwork) : network(mapNetwork), vehicleList(), vehicleUpdates() {}
+PhysicsProcessor::PhysicsProcessor(Network* mapNetwork, VehicleSpatialHash* spatialObj) : network(mapNetwork), spatialHash(spatialObj), vehicleList(), vehicleUpdates() {}
 
 float PhysicsProcessor::getRouteSegmentLength(VehicleState* vhcl, int routeIndex) {
     // Safety bounds check
@@ -82,41 +83,42 @@ float PhysicsProcessor::calculateDistanceToDestination(VehicleState* vhcl)
 
 void PhysicsProcessor::update(float dt)
 {
+    spatialHash->rebuild(vehicleList);
     // check for MOBIL
     for (VehicleState* vhcl : vehicleList)
-        {
-            int currentLane = vhcl->getLane();
+    {
+        int currentLane = vhcl->getLane();
 
-            int totalLanes = vhcl->getCurrentEdge()->getLanes(); 
-            int bestLane = currentLane;
+        int totalLanes = vhcl->getCurrentEdge()->getLanes(); 
+        int bestLane = currentLane;
 
-            // use to track best lane MOBIL incentive
-            float threshold = 0.1f; 
-            float bestIncentive = threshold;
+        // use to track best lane MOBIL incentive
+        float threshold = 0.1f; 
+        float bestIncentive = threshold;
 
-            //check left
-            if (currentLane > 0) {
-                float leftIncentive = MOBIL(vhcl, currentLane - 1);
-                if (leftIncentive > bestIncentive) {
-                   bestLane = currentLane - 1;
-                   bestIncentive = leftIncentive;
-               }
-           }
-        
-           //check right
-           if (currentLane < totalLanes - 1) {
-                float rightIncentive = MOBIL(vhcl, currentLane + 1);
-                if (rightIncentive > bestIncentive) {
-                   bestLane = currentLane + 1;
-                   bestIncentive = rightIncentive;
-               }
-           }
-            // take lane with best MOBIL incentive
-           if (bestLane != currentLane) {
-               vhcl->setLane(bestLane);
-           }
-    
+        //check left
+        if (currentLane > 0) {
+            float leftIncentive = MOBIL(vhcl, currentLane - 1);
+            if (leftIncentive > bestIncentive) {
+                bestLane = currentLane - 1;
+                bestIncentive = leftIncentive;
+            }
         }
+    
+        //check right
+        if (currentLane < totalLanes - 1) {
+            float rightIncentive = MOBIL(vhcl, currentLane + 1);
+            if (rightIncentive > bestIncentive) {
+                bestLane = currentLane + 1;
+                bestIncentive = rightIncentive;
+            }
+        }
+        // take lane with best MOBIL incentive
+        if (bestLane != currentLane) {
+            vhcl->setLane(bestLane);
+        }
+
+    }
     vehicleUpdates.clear();
     
     // ==========================================
@@ -137,7 +139,7 @@ void PhysicsProcessor::update(float dt)
 
         // recheck leader in case of MOBIL
         vhcl->setLeader(getLeader(vhcl, vhcl->getLane()));
-        float acceleration = IDM(vhcl, vhcl->getLeader());
+        float acceleration = IDM(vhcl, vhcl->getLeader(), false);
         float dv = acceleration *dt;
 
         // ---> NEW: TELEMETRY TRACKING <---
@@ -227,6 +229,11 @@ void PhysicsProcessor::update(float dt)
                         if (edge.getDest() == newNextNodeId) {
                             vhcl->setDesiredSpeed(edge.getSpeedLimit());
                             vhcl->setCurrentEdge(&edge);
+
+                            if (vhcl->getLane() >= edge.getLanes()) {
+                                vhcl->setLane(edge.getLanes() - 1); 
+                            }
+
                             break;
                         }
                     }
@@ -268,7 +275,7 @@ void PhysicsProcessor::update(float dt)
     vehiclesToRemove.clear();
 }
 
-float PhysicsProcessor::IDM(VehicleState* vhcl, VehicleState* leader )
+float PhysicsProcessor::IDM(VehicleState* vhcl, VehicleState* leader, bool mobil )
 {
     float safeDesiredSpeed = std::max(vhcl->getDesiredSpeed(), 0.001f);
     float freeRoadRatio = pow((vhcl->getSpeed() / safeDesiredSpeed), vhcl->getAccelExp());
@@ -313,9 +320,17 @@ float PhysicsProcessor::IDM(VehicleState* vhcl, VehicleState* leader )
         float desiredGap = vhcl->getMinGap() + std::max(0.0f, dynamicGap);
         
         interactionTerm = pow((desiredGap / effectiveGap), 2);
+
     }
 
-    return vhcl->getMaxAccel() * (1.0f - freeRoadRatio - interactionTerm);
+    float finalAccel = vhcl->getMaxAccel() * (1.0f - freeRoadRatio - interactionTerm);
+
+    // Apply a realistic physical limit for a hard emergency stop.
+    // Tires lose grip around -9.8 m/s^2. Clamping it here prevents math explosions
+    // while still simulating heavy emergency braking telemetry.
+    float maxPhysicalDeceleration = -10.0f; 
+
+    return std::max(maxPhysicalDeceleration, finalAccel);
 }
 
 void PhysicsProcessor::addVehicle(VehicleState* vhcl)
@@ -355,29 +370,29 @@ float  PhysicsProcessor::MOBIL(VehicleState* vhcl, int targetLane)
     
     float newFollowerAccel = 0.0f;
     if (newFollower != nullptr) {
-        newFollowerAccel = IDM(newFollower, vhcl);
+        newFollowerAccel = IDM(newFollower, vhcl, true);
         if (newFollowerAccel < -safeBrake) { //note accel is negative for braking
             return -999.0f; // not safe to change
         }
     }
 
     // incentive criterion, acceralation gained
-    float curAccel = IDM(vhcl, curLeader);
-    float newAccel = IDM(vhcl, newLeader);
+    float curAccel = IDM(vhcl, curLeader, true);
+    float newAccel = IDM(vhcl, newLeader, true);
     float newAccelGain = newAccel - curAccel;
 
     // effect on new follower
     float newFollowerGain = 0.0f;
     if (newFollower != nullptr) {
-        float newFAccelBefore = IDM(newFollower, newLeader); 
+        float newFAccelBefore = IDM(newFollower, newLeader, true); 
         newFollowerGain = newFollowerAccel - newFAccelBefore;
     }
 
     // effect on new follower 
     float oldFollowerGain = 0.0f;
     if (oldFollower != nullptr) {
-        float oldFollowerAccel = IDM(oldFollower, vhcl);
-        float oldFAccelAfter = IDM(oldFollower, curLeader);
+        float oldFollowerAccel = IDM(oldFollower, vhcl, true);
+        float oldFAccelAfter = IDM(oldFollower, curLeader, true);
         oldFollowerGain = oldFAccelAfter - oldFollowerAccel;
     }
 
@@ -388,72 +403,12 @@ float  PhysicsProcessor::MOBIL(VehicleState* vhcl, int targetLane)
 
 VehicleState* PhysicsProcessor::getLeader(VehicleState* vhcl, int targetLane)
 {
-    VehicleState* closestLeader = nullptr;
-    float minDistance = std::numeric_limits<float>::max();
-
-    for (VehicleState* other : vehicleList)
-    {
-        if (other == vhcl) continue;
-
-        if (other->getLane() == targetLane)
-        {
-            // TRULY check if the other car is ahead using the route index!
-            bool isAhead = false;
-            if (other->currentRouteIndex > vhcl->currentRouteIndex) {
-                isAhead = true; // On a future road segment
-            } else if (other->currentRouteIndex == vhcl->currentRouteIndex && other->getPos() > vhcl->getPos()) {
-                isAhead = true; // On the same road segment, but further down
-            }
-
-            if (isAhead)
-            {
-                // Rely on the robust multi-segment gap logic to get the true distance
-                float distance = calculateTrueGap(vhcl, other);
-                
-                if (distance < minDistance)
-                {
-                    minDistance = distance;
-                    closestLeader = other;
-                }
-            }
-        }
-    }
-    return closestLeader;
+    return spatialHash->getLeader(vhcl, targetLane, network);
 }
 
 VehicleState* PhysicsProcessor::getFollower(VehicleState* vhcl, int targetLane)
 {
-    VehicleState* closestFollower = nullptr;
-    float minDistance = std::numeric_limits<float>::max();
-
-    for (VehicleState* other : vehicleList)
-    {
-        if (other == vhcl) continue;
-
-        if (other->getLane() == targetLane)
-        {
-            // TRULY check if the other car is behind using the route index!
-            bool isBehind = false;
-            if (other->currentRouteIndex < vhcl->currentRouteIndex) {
-                isBehind = true; // On a previous road segment
-            } else if (other->currentRouteIndex == vhcl->currentRouteIndex && other->getPos() < vhcl->getPos()) {
-                isBehind = true; // On the same road segment, but further back
-            }
-
-            if (isBehind)
-            {
-                // In this dynamic, 'vhcl' is the leader and 'other' is the follower
-                float distance = calculateTrueGap(other, vhcl);
-                
-                if (distance < minDistance)
-                {
-                    minDistance = distance;
-                    closestFollower = other;
-                }
-            }
-        }
-    }
-    return closestFollower;
+    return spatialHash->getFollower(vhcl, targetLane, network);
 }
 
 PhysicsProcessor::~PhysicsProcessor() 
