@@ -89,36 +89,52 @@ void PhysicsProcessor::update(float dt)
     for (VehicleState* vhcl : vehicleList)
     {
         int currentLane = vhcl->getLane();
-
         int totalLanes = vhcl->getCurrentEdge()->getLanes(); 
-        int bestLane = currentLane;
 
-        // use to track best lane MOBIL incentive
-        float threshold = 0.1f; 
-        float bestIncentive = threshold;
+        // if within 150 meters of intersection, check if car needs to turn/move lanes
+        float distanceToIntersection = vhcl->getCurrentEdge()->getLength() - vhcl->getPos();
+        std::string upcomingTurn = "through";
+        if (distanceToIntersection < 150.0f) {
+            upcomingTurn = getUpcomingTurnDirection(vhcl);
+        }
+
+        int bestLane = currentLane;
+        float bestIncentive = 0.1f;
 
         //check left
         if (currentLane > 0) {
             float leftIncentive = MOBIL(vhcl, currentLane - 1);
-            if (leftIncentive > bestIncentive) {
-                bestLane = currentLane - 1;
-                bestIncentive = leftIncentive;
-            }
-        }
-    
-        //check right
-        if (currentLane < totalLanes - 1) {
-            float rightIncentive = MOBIL(vhcl, currentLane + 1);
-            if (rightIncentive > bestIncentive) {
-                bestLane = currentLane + 1;
-                bestIncentive = rightIncentive;
-            }
-        }
-        // take lane with best MOBIL incentive
-        if (bestLane != currentLane) {
-            vhcl->setLane(bestLane);
-        }
 
+            // bias lane changing if needed and wont cause crash, might need to adjust -500 crash bias
+            if (leftIncentive > -500.0f) {
+                if (upcomingTurn == "left") leftIncentive += 100.0f;  // need to turn left
+                if (upcomingTurn == "right") leftIncentive -= 100.0f; // right turn, dont go left
+            }
+            if (leftIncentive > bestIncentive) {
+               bestLane = currentLane - 1;
+               bestIncentive = leftIncentive;
+           }
+       }
+    
+       //check right
+       if (currentLane < totalLanes - 1) {
+            float rightIncentive = MOBIL(vhcl, currentLane + 1);
+
+            // bias lane changing if needed and wont cause crash, might need to adjust -500 crash bias
+            if (rightIncentive > -500.0f) {
+                if (upcomingTurn == "left") rightIncentive -= 100.0f;  // left turn, dont go right
+                if (upcomingTurn == "right") rightIncentive += 100.0f; // need to turn right
+            }
+
+            if (rightIncentive > bestIncentive) {
+               bestLane = currentLane + 1;
+               bestIncentive = rightIncentive;
+           }
+       }
+        // take lane with best MOBIL incentive
+       if (bestLane != currentLane) {
+           vhcl->setLane(bestLane);
+       }
     }
     vehicleUpdates.clear();
     
