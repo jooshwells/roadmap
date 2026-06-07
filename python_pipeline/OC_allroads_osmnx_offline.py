@@ -27,12 +27,12 @@ from shapely.geometry import LineString, MultiLineString
 # ---------------------------------------------------
 # 1) File paths / area
 # ---------------------------------------------------
-BASE_DIR = Path(r"C:\Users\danie\OneDrive\Desktop\School\Spring 2026\SD1\OSM")
+BASE_DIR = Path(r"E:\dev\OSM")
 
 XML_PATH = BASE_DIR / "orange_drive_roads_clean-260208.osm.bz2"
 
-OUT_NODES = BASE_DIR / "out" / "nodes_orange_allroads_offline_xy.jsonl"
-OUT_EDGES = BASE_DIR / "out" / "edges_orange_allroads_offline_xy.jsonl"
+OUT_NODES = BASE_DIR / "out" / "josh_nodes_orange_allroads_offline_xy.jsonl"
+OUT_EDGES = BASE_DIR / "out" / "josh_edges_orange_allroads_offline_xy.jsonl"
 
 
 # ---------------------------------------------------
