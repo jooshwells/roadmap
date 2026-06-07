@@ -9,7 +9,10 @@ public class SD1testTarget : TargetRules
 	{
 		Type = TargetType.Game;
 		DefaultBuildSettings = BuildSettingsVersion.V6;
-		IncludeOrderVersion = EngineIncludeOrderVersion.Unreal5_7;
+		WindowsPlatform.CompilerVersion = "14.44.35207";
+        IncludeOrderVersion = EngineIncludeOrderVersion.Unreal5_7;
 		ExtraModuleNames.AddRange( new string[] { "SD1test" } );
+
+		PreBuildSteps.Add("cmd.exe /c \"cd /D $(ProjectDir)\\..\\sim && cmake -B build -S . && cmake --build build --config Release && cmake --install build --config Release\"");
 	}
 }

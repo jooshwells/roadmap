@@ -31,6 +31,8 @@ class Network {
         void calculateIntersectionPriorities();
         void resetPathfindingState();
 
+        const std::unordered_map<uint64_t, Node>& getNodes() const { return nodes; }
+
         Network();
         ~Network();
 
