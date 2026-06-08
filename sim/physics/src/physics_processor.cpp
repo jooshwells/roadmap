@@ -688,3 +688,47 @@ std::string PhysicsProcessor::getUpcomingTurnDirection(VehicleState* vhcl)
     
     return "through"; // default to go straight
 }
+
+// work on integrating spatial bucket logic next
+bool PhysicsProcessor::hasSafeGap(VehicleState* yieldingCar, Node* destNode, float criticalGapSeconds) 
+{
+    std::string myTurn = getUpcomingTurnDirection(yieldingCar);
+
+    for (VehicleState* otherCar : vehicleList) {
+        if (otherCar == yieldingCar) continue;
+        
+        Road* otherRoad = otherCar->getCurrentEdge();
+        if (otherRoad == nullptr) continue;
+
+        // check if another car is going to same intersection from a different road
+        if (otherRoad->getDest() == destNode->getId() && otherRoad->getEdgeId() != yieldingCar->getEdgeId()) 
+        {
+            float distToIntersection = otherRoad->getLength() - otherCar->getPos();
+            float speed = std::max(otherCar->getSpeed(), 0.1f); // Prevent divide by 0
+            
+            // get time to intersection
+            if (distToIntersection > 0.0f) {
+                float timeToArrival = distToIntersection / speed;
+                
+                // left turns and thru traffic conflicts with all intersecting roads
+                //  right turns only conflict if turning onto same road
+                bool pathsConflict = true; 
+                if (myTurn == "right") {
+                    uint64_t yieldingNextId = (yieldingCar->currentRouteIndex + 2 < yieldingCar->currentRoute.size()) ? yieldingCar->currentRoute[yieldingCar->currentRouteIndex + 2] : 0;
+                    uint64_t otherNextId = (otherCar->currentRouteIndex + 2 < otherCar->currentRoute.size()) ? otherCar->currentRoute[otherCar->currentRouteIndex + 2] : 0;
+                    
+                    if (yieldingNextId != otherNextId) pathsConflict = false; // dont cross
+                }
+
+                if (pathsConflict && timeToArrival < criticalGapSeconds) {
+                    return false; // unsafe gap
+                }
+            } 
+            // If cross-traffic is currently inside the intersection box
+            else if (distToIntersection < 5.0f && distToIntersection > -15.0f) {
+                return false;
+            }
+        }
+    }
+    return true; 
+}

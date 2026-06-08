@@ -10,6 +10,9 @@ Node::Node(std::uint64_t initId, double iLon, double iLat, double iX, double iY,
     else if (typeStr == "stop") {
         type = Node::FOUR_WAY_STOP;
     } 
+    else if (typeStr == "yield") {
+        type = Node::YIELD_STOP;
+    } 
     else {
         type = Node::PASS_THROUGH; // default to pass through
     }

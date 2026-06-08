@@ -25,6 +25,7 @@ class Node
 
         std::vector<Road> outgoingEdges;
         std::vector<uint64_t> incomingEdgeNodeIds; 
+        std::vector<uint64_t> minorRoadOriginIds; // classify roads as minor for right of way hierarchy
         
         bool operator==(const Node& other) const 
         {
@@ -36,7 +37,7 @@ class Node
         double rhs = std::numeric_limits<double>::infinity();
 
         // intersection stuff 
-        enum IntersectionType { PASS_THROUGH, FOUR_WAY_STOP, TRAFFIC_LIGHT };
+        enum IntersectionType { PASS_THROUGH, FOUR_WAY_STOP, TRAFFIC_LIGHT, YIELD_STOP };
         IntersectionType type = PASS_THROUGH;
 
         // updated constructor

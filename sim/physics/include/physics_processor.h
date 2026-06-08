@@ -66,6 +66,7 @@ class PhysicsProcessor
         
         bool canVehicleEnter(VehicleState* vhcl, Node* destNode);
         void updateIntersections(float dt);
+        bool hasSafeGap(VehicleState* yieldingCar, Node* destNode, float criticalGapSeconds);
 };
 
 #endif
