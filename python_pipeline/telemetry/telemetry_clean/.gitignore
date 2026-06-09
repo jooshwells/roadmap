@@ -1,0 +1,20 @@
+# Python cache
+__pycache__/
+.pytest_cache/
+
+# Generated outputs
+outputs/
+
+# Large input datasets
+data/network/
+data/fdot/
+data/simulation/
+
+# Keep sample data if added later
+!data/sample/
+
+# VS Code
+.vscode/
+
+# Windows
+Thumbs.db
