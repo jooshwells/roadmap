@@ -14,6 +14,7 @@ public:
 
     VehicleState* getLeader(VehicleState* vhcl, int targetLane, Network* network);
     VehicleState* getFollower(VehicleState* vhcl, int targetLane, Network* network);
+    std::vector<VehicleState*> getVehiclesOnRoad(Road* road);
 
 private:
     std::unordered_map<Road*, std::vector<std::vector<VehicleState*>>> edgeBuckets;

@@ -147,3 +147,25 @@ VehicleState* VehicleSpatialHash::getFollower(VehicleState* vhcl, int targetLane
 
     return nullptr; // No follower found within sensor range
 }
+
+// return list of all vehicles on roads connecting to interseection
+std::vector<VehicleState*> VehicleSpatialHash::getVehiclesOnRoad(Road* road) 
+{
+    std::vector<VehicleState*> vehiclesOnRoad;
+    
+    // Safety check
+    if (!road) return vehiclesOnRoad;
+
+    // Check if this road currently has any vehicles mapped to it
+    if (edgeBuckets.find(road) != edgeBuckets.end()) 
+    {
+        // Loop through all the lanes on this road
+        for (const auto& laneVehicles : edgeBuckets[road]) 
+        {
+            // Append all vehicles in this lane to our master list
+            vehiclesOnRoad.insert(vehiclesOnRoad.end(), laneVehicles.begin(), laneVehicles.end());
+        }
+    }
+    
+    return vehiclesOnRoad;
+}

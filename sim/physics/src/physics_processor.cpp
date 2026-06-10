@@ -640,20 +640,61 @@ bool PhysicsProcessor::canVehicleEnter(VehicleState* vhcl, Node* destNode)
     if (destNode->type == Node::TRAFFIC_LIGHT) {
         
         uint64_t myEdgeId = vhcl->getEdgeId();
-        
-        // list of edges allowed during phase
         std::vector<uint64_t>& allowedList = state.phaseAllowedEdges[state.currentPhase];
+        std::string upcomingTurn = getUpcomingTurnDirection(vhcl);
         
-        // go if edge is allowed and light is green
+        // check light green
         if (std::find(allowedList.begin(), allowedList.end(), myEdgeId) != allowedList.end()) {
+            
+            // unprotected left turn
+            if (upcomingTurn == "left") {
+                // check for safe gap
+                if (hasSafeGap(vhcl, destNode, 5.0f)) {
+                    return true;
+                } else {
+                    return false; 
+                }
+            }
+            
             return true; 
         } 
         else { 
+            // red light
+            // check for gap turning right on red
+            if (upcomingTurn == "right") {
+                // come to a stop first
+                if (vhcl->getSpeed() < 1.0f) {
+                    // find gap to turn
+                    if (hasSafeGap(vhcl, destNode, 4.5f)) {
+                        return true; 
+                    }
+                }
+            }
+            return false; 
+        }
+    }
+    // yield stops, uses major and minor road classification
+    if (destNode->type == Node::YIELD_STOP) {
+        
+        uint64_t comingFromId = vhcl->getCurrentEdge()->getOriginId(); 
+        
+        // check origin road to see if on minor road (yielding)
+        bool isOnMinorRoad = std::find(destNode->minorRoadOriginIds.begin(), destNode->minorRoadOriginIds.end(), comingFromId) != destNode->minorRoadOriginIds.end();
+        
+        // major road, continue through intersection
+        if (!isOnMinorRoad) return true;
+
+        // minor road, slow down
+        if (vhcl->getSpeed() > 1.0f) return false; 
+
+        // yield and get safe gap
+        if (hasSafeGap(vhcl, destNode, 4.5f)) {
+            state.currentOccupant = vhcl; 
+            return true;
+        } else {
             return false;
         }
     }
-
-    return true;
 }
 
 // looking into using cross product for determining when to turn
@@ -689,44 +730,49 @@ std::string PhysicsProcessor::getUpcomingTurnDirection(VehicleState* vhcl)
     return "through"; // default to go straight
 }
 
-// work on integrating spatial bucket logic next
+// updated with spatial hash
 bool PhysicsProcessor::hasSafeGap(VehicleState* yieldingCar, Node* destNode, float criticalGapSeconds) 
 {
     std::string myTurn = getUpcomingTurnDirection(yieldingCar);
 
-    for (VehicleState* otherCar : vehicleList) {
-        if (otherCar == yieldingCar) continue;
-        
-        Road* otherRoad = otherCar->getCurrentEdge();
-        if (otherRoad == nullptr) continue;
+    // Only look at roads that physically connect to this intersection
+    for (uint64_t predNodeId : destNode->incomingEdgeNodeIds) {
+        Node* predNode = network->getNode(predNodeId);
+        if (!predNode) continue;
 
-        // check if another car is going to same intersection from a different road
-        if (otherRoad->getDest() == destNode->getId() && otherRoad->getEdgeId() != yieldingCar->getEdgeId()) 
-        {
-            float distToIntersection = otherRoad->getLength() - otherCar->getPos();
-            float speed = std::max(otherCar->getSpeed(), 0.1f); // Prevent divide by 0
+        for (Road& oncomingRoad : predNode->outgoingEdges) {
             
-            // get time to intersection
-            if (distToIntersection > 0.0f) {
-                float timeToArrival = distToIntersection / speed;
-                
-                // left turns and thru traffic conflicts with all intersecting roads
-                //  right turns only conflict if turning onto same road
-                bool pathsConflict = true; 
-                if (myTurn == "right") {
-                    uint64_t yieldingNextId = (yieldingCar->currentRouteIndex + 2 < yieldingCar->currentRoute.size()) ? yieldingCar->currentRoute[yieldingCar->currentRouteIndex + 2] : 0;
-                    uint64_t otherNextId = (otherCar->currentRouteIndex + 2 < otherCar->currentRoute.size()) ? otherCar->currentRoute[otherCar->currentRouteIndex + 2] : 0;
-                    
-                    if (yieldingNextId != otherNextId) pathsConflict = false; // dont cross
-                }
+            // Skip the road the yielding car is currently on
+            if (oncomingRoad.getEdgeId() == yieldingCar->getEdgeId() || oncomingRoad.getDest() != destNode->getId()) {
+                continue;
+            }
 
-                if (pathsConflict && timeToArrival < criticalGapSeconds) {
-                    return false; // unsafe gap
+            // Retrieve only the cars on this specific oncoming road from the spatial hash
+            // (Assumes you have a getter in spatialHash or you make edgeBuckets accessible)
+            std::vector<VehicleState*> oncomingCars = spatialHash->getVehiclesOnRoad(&oncomingRoad); 
+
+            for (VehicleState* otherCar : oncomingCars) {
+                float distToIntersection = oncomingRoad.getLength() - otherCar->getPos();
+                float speed = std::max(otherCar->getSpeed(), 0.1f);
+                
+                if (distToIntersection > 0.0f) {
+                    float timeToArrival = distToIntersection / speed;
+                    
+                    bool pathsConflict = true; 
+                    if (myTurn == "right") {
+                        uint64_t yieldingNextId = (yieldingCar->currentRouteIndex + 2 < yieldingCar->currentRoute.size()) ? yieldingCar->currentRoute[yieldingCar->currentRouteIndex + 2] : 0;
+                        uint64_t otherNextId = (otherCar->currentRouteIndex + 2 < otherCar->currentRoute.size()) ? otherCar->currentRoute[otherCar->currentRouteIndex + 2] : 0;
+                        
+                        if (yieldingNextId != otherNextId) pathsConflict = false; 
+                    }
+
+                    if (pathsConflict && timeToArrival < criticalGapSeconds) {
+                        return false; 
+                    }
+                } 
+                else if (distToIntersection < 5.0f && distToIntersection > -15.0f) {
+                    return false;
                 }
-            } 
-            // If cross-traffic is currently inside the intersection box
-            else if (distToIntersection < 5.0f && distToIntersection > -15.0f) {
-                return false;
             }
         }
     }
