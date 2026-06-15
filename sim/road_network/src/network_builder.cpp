@@ -84,5 +84,7 @@ Network NetworkBuilder::buildNetworkFromJSONL(const std::string& nodePath, const
         }
     }
 
+    roadNetwork.calculateIntersectionPriorities();
+    
     return roadNetwork; // successfully loaded network
 }

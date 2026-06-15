@@ -51,7 +51,7 @@ void Network::addDirectedEdge(uint64_t fromId, uint64_t toId, double dist, doubl
 {
     if (nodes.find(fromId) != nodes.end() && nodes.find(toId) != nodes.end())
     {
-        nodes[fromId].outgoingEdges.emplace_back(nextEdgeId++, toId, dist, speedLimit, lanes);
+        nodes[fromId].outgoingEdges.emplace_back(nextEdgeId++, fromId, toId, dist, speedLimit, lanes);
         
         nodes[toId].incomingEdgeNodeIds.push_back(fromId);
     }
@@ -111,6 +111,69 @@ void Network::visualizeNetworkForPython() {
 
     outFile.close();
     std::cout << "Network successfully exported to: " << filename << "\n";
+}
+
+// look at speed limits and lane counts, helps establish minor/major roads for right of way handling
+void Network::calculateIntersectionPriorities()
+{
+    for (auto& pair : nodes) 
+    {
+        Node& node = pair.second;
+
+        if (node.type == Node::YIELD_STOP || node.type == Node::FOUR_WAY_STOP) 
+        {
+            // 2 way or T type stop, skip if 4 way
+            if (node.incomingEdgeNodeIds.size() <= 3) 
+            {
+                // change to yield stop 
+                node.type = Node::YIELD_STOP;
+
+                double maxSpeed = 0.0;
+                int maxLanes = 0;
+
+                // get speed and lane counts
+                for (uint64_t incomingId : node.incomingEdgeNodeIds) 
+                {
+                    Node* predNode = getNode(incomingId);
+                    if (!predNode) continue;
+
+                    for (Road& edge : predNode->outgoingEdges) {
+                        if (edge.getDest() == node.getId()) {
+                            if (edge.getSpeedLimit() > maxSpeed) maxSpeed = edge.getSpeedLimit();
+                            if (edge.getLanes() > maxLanes) maxLanes = edge.getLanes();
+                        }
+                    }
+                }
+
+                // make slower/smaller road MINOR
+                for (uint64_t incomingId : node.incomingEdgeNodeIds) 
+                {
+                    Node* predNode = getNode(incomingId);
+                    if (!predNode) continue;
+
+                    for (Road& edge : predNode->outgoingEdges) {
+                        if (edge.getDest() == node.getId()) {
+                            // make minor road yield
+                            if (edge.getSpeedLimit() < maxSpeed || edge.getLanes() < maxLanes) {
+                                node.minorRoadOriginIds.push_back(edge.getOriginId());
+                            }
+                        }
+                    }
+                }
+
+                // if identitical pick random
+                if (node.minorRoadOriginIds.empty() && !node.incomingEdgeNodeIds.empty()) {
+                    Node* predNode = getNode(node.incomingEdgeNodeIds[0]);
+                    for (Road& edge : predNode->outgoingEdges) {
+                        if (edge.getDest() == node.getId()) {
+                            node.minorRoadOriginIds.push_back(edge.getOriginId());
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 Network::Network(){ numNodes = 0; }

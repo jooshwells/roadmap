@@ -19,7 +19,7 @@ class Road {
         inline void setLanes(int l)          { lanes = l; }
 
         // Updated constructor signature
-        Road(uint64_t eId, uint64_t dest, double le, double sl, int l); 
+        Road(uint64_t eId, uint64_t origin, uint64_t dest, double le, double sl, int l);
         ~Road();
 
     private:
