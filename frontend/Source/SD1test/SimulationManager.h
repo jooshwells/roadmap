@@ -4,15 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
-
-THIRD_PARTY_INCLUDES_START
-#include "network.h"
-#include "network_builder.h"
-#include "RoadNetworkVisualizer.h"
-THIRD_PARTY_INCLUDES_END
-
 #include "SimulationManager.generated.h"
-
 
 UCLASS()
 class SD1TEST_API ASimulationManager : public AActor
@@ -22,17 +14,6 @@ class SD1TEST_API ASimulationManager : public AActor
 public:	
 	// Sets default values for this actor's properties
 	ASimulationManager();
-	// This allows you to select your Blueprint in the Unreal Editor
-	UPROPERTY(EditAnywhere, Category = "Simulation Setup")
-	TSubclassOf<class ARoadNetworkVisualizer> VisualizerBlueprint;
-
-	// Creates a button in the Unreal Editor to generate the map
-	UFUNCTION(CallInEditor, Category = "Simulation Setup")
-	void GenerateRoadsInEditor();
-
-	// Creates a button to clear the map
-	UFUNCTION(CallInEditor, Category = "Simulation Setup")
-	void ClearRoadsInEditor();
 
 	virtual void Tick(float DeltaTime) override; // Called every frame
 
@@ -45,9 +26,6 @@ private:
 	int StepCount = 0;
 
 	void StepSimulation(double dt);
-
-	Network* MyRoadNetwork;
-    ARoadNetworkVisualizer* NetworkVisualizer;
 
 protected:
 	// Called when the game starts or when spawned
