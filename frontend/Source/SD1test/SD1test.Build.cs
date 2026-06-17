@@ -32,15 +32,24 @@ public class SD1test : ModuleRules
 				Path.Combine(ThirdPartyPath, "common/road_state/include"),
 				Path.Combine(ThirdPartyPath, "common/vehicle_state/include"),
 				Path.Combine(ThirdPartyPath, "common/pathfinding_utils/heuristics/include"),
-				Path.Combine(ThirdPartyPath, "common/pathfinding_utils/idm_profiles/include")
+				Path.Combine(ThirdPartyPath, "common/pathfinding_utils/idm_profiles/include"),
+				Path.Combine(ThirdPartyPath, "physics/include"),
+				Path.Combine(ThirdPartyPath, "spatial_logic/include"),
+				Path.Combine(ThirdPartyPath, "diagnostics/include"),
+				Path.Combine(ThirdPartyPath, "driver_logic/pathfinding/include")
 			}
 		);
 
 		string LibDirectory = Path.Combine(ThirdPartyPath, "build", "CentralLibs", "Release");
 
-		PublicAdditionalLibraries.Add(Path.Combine(LibDirectory, "network.lib"));
+        PublicAdditionalLibraries.Add(Path.Combine(LibDirectory, "heuristics.lib"));
 		PublicAdditionalLibraries.Add(Path.Combine(LibDirectory, "road_state.lib"));
 		PublicAdditionalLibraries.Add(Path.Combine(LibDirectory, "vehicle_state.lib"));
-		PublicAdditionalLibraries.Add(Path.Combine(LibDirectory, "heuristics.lib"));
-	}
+        PublicAdditionalLibraries.Add(Path.Combine(LibDirectory, "network.lib"));
+        PublicAdditionalLibraries.Add(Path.Combine(LibDirectory, "physics.lib"));
+        PublicAdditionalLibraries.Add(Path.Combine(LibDirectory, "pathfinding.lib"));
+        PublicAdditionalLibraries.Add(Path.Combine(LibDirectory, "spatial_logic.lib"));
+
+
+    }
 }
