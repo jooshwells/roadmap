@@ -11,6 +11,8 @@ THIRD_PARTY_INCLUDES_START
 #include "RoadNetworkVisualizer.h"
 THIRD_PARTY_INCLUDES_END
 
+#include "TrafficSimulation.h"
+
 #include "SimulationManager.generated.h"
 
 
@@ -37,8 +39,7 @@ public:
 	virtual void Tick(float DeltaTime) override; // Called every frame
 
 private:
-	// Fixed time step of 60 hz (1/60 seconds)
-	const double FixedDelta = 1.0 / 60.0;
+	TrafficSimulation* TrafficSimEngine;
 	
 	double Accumulator = 0.0;
 
@@ -46,12 +47,22 @@ private:
 
 	void StepSimulation(double dt);
 
+	void UpdateVehicleVisuals(float Alpha);
+
 	Network* MyRoadNetwork;
     ARoadNetworkVisualizer* NetworkVisualizer;
 
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
+	// Single HISM for the minimal MVP
+	UPROPERTY(EditDefaultsOnly, Category = "Traffic Visuals")
+	UHierarchicalInstancedStaticMeshComponent* VehicleHISM;
+
+	// Time step configuration (e.g., 0.1f for 10 updates/second)
+	UPROPERTY(EditAnywhere, Category = "Simulation Settings")
+	float FixedDelta;
 
 };
