@@ -1,3 +1,4 @@
+#define _USE_MATH_DEFINES
 #include "physics_processor.h"
 #include "spatial_hash.h"
 #include "vehicle_state.h"
@@ -551,55 +552,89 @@ void PhysicsProcessor::updateIntersections(float dt)
             if (!state.isInitialized) {
                 state.isInitialized = true;
                 
-                //get incoming directions
-                std::vector<uint64_t> incomingEdges;
+                std::vector<std::pair<Road*, double>> edgeAngles;
+                
                 for (uint64_t predNodeId : node->incomingEdgeNodeIds) {
                     Node* predNode = network->getNode(predNodeId);
                     if (!predNode) continue;
-                    
                     for (Road& edge : predNode->outgoingEdges) {
                         if (edge.getDest() == nodeId) {
-                            incomingEdges.push_back(edge.getEdgeId());
+                            // Calculate incoming compass angle using atan2
+                            double dx = node->getX() - predNode->getX();
+                            double dy = node->getY() - predNode->getY();
+                            double angle = atan2(dy, dx) * 180.0 / M_PI; 
+                            if (angle < 0) angle += 360.0;
+                            
+                            edgeAngles.push_back({&edge, angle});
                         }
                     }
                 }
                 
-                // split roads into phases
-                for (size_t i = 0; i < incomingEdges.size(); i++) {
-                    if (i % 2 == 0) {
-                        state.phaseAllowedEdges[0].push_back(incomingEdges[i]);
-                    } else {
-                        state.phaseAllowedEdges[3].push_back(incomingEdges[i]);
+                // Group roads into Axis 0 (Main Street) and Axis 1 (Cross Streets / T-Stems)
+                if (!edgeAngles.empty()) {
+                    double baselineAngle = edgeAngles[0].second;
+                    state.axisEdges[0].push_back(edgeAngles[0].first);
+                    
+                    for (size_t i = 1; i < edgeAngles.size(); i++) {
+                        double diff = std::abs(baselineAngle - edgeAngles[i].second);
+                        if (diff > 180.0) diff = 360.0 - diff;
+                        
+                        if (diff > 135.0) {
+                            state.axisEdges[0].push_back(edgeAngles[i].first); // Opposite direction
+                        } else {
+                            state.axisEdges[1].push_back(edgeAngles[i].first); // Cross street
+                        }
                     }
                 }
             }
 
-            // 6 phases now, green, yellow, red, repeats for N/S and E/W
-            
+            // new 10 phase traffic lights
             state.lightTimer += dt;
             
-            if (state.currentPhase == 0 && state.lightTimer >= 15.0f) {
-                state.currentPhase = 1; //  Yellow N/S
-                state.lightTimer = 0.0f;
+            // Phase 0: N/S Protected Left (Green)
+            if (state.currentPhase == 0 && state.lightTimer >= 6.0f) {
+                state.currentPhase = 1; state.lightTimer = 0.0f;
             } 
-            else if (state.currentPhase == 1 && state.lightTimer >= 4.0f) {
-                state.currentPhase = 2; // all red
+            // Phase 1: N/S Protected Left (Yellow)
+            else if (state.currentPhase == 1 && state.lightTimer >= 3.0f) {
+                state.currentPhase = 2; state.lightTimer = 0.0f;
+            }
+            // Phase 2: N/S Straight/Right (Green)
+            else if (state.currentPhase == 2 && state.lightTimer >= 15.0f) {
+                state.currentPhase = 3; state.lightTimer = 0.0f;
+            }
+            // Phase 3: N/S Straight/Right (Yellow)
+            else if (state.currentPhase == 3 && state.lightTimer >= 4.0f) {
+                state.currentPhase = 4; state.lightTimer = 0.0f;
+            }
+            // Phase 4: All Red Clearance
+            else if (state.currentPhase == 4 && state.lightTimer >= 2.0f) {
+                // SENSOR CHECK: Is anyone waiting to turn left on East/West?
+                if (checkLeftTurnDemand(node)) state.currentPhase = 5; 
+                else state.currentPhase = 7; // Skip protected left!
                 state.lightTimer = 0.0f;
             }
-            else if (state.currentPhase == 2 && state.lightTimer >= 2.0f) {
-                state.currentPhase = 3; // green E/W
-                state.lightTimer = 0.0f;
+            // Phase 5: E/W Protected Left (Green)
+            else if (state.currentPhase == 5 && state.lightTimer >= 6.0f) {
+                state.currentPhase = 6; state.lightTimer = 0.0f;
             }
-            else if (state.currentPhase == 3 && state.lightTimer >= 15.0f) {
-                state.currentPhase = 4; // Yellow E/W
-                state.lightTimer = 0.0f;
+            // Phase 6: E/W Protected Left (Yellow)
+            else if (state.currentPhase == 6 && state.lightTimer >= 3.0f) {
+                state.currentPhase = 7; state.lightTimer = 0.0f;
             }
-            else if (state.currentPhase == 4 && state.lightTimer >= 4.0f) {
-                state.currentPhase = 5; // all red
-                state.lightTimer = 0.0f;
+            // Phase 7: E/W Straight/Right (Green)
+            else if (state.currentPhase == 7 && state.lightTimer >= 15.0f) {
+                state.currentPhase = 8; state.lightTimer = 0.0f;
             }
-            else if (state.currentPhase == 5 && state.lightTimer >= 2.0f) {
-                state.currentPhase = 0; // green N/S
+            // Phase 8: E/W Straight/Right (Yellow)
+            else if (state.currentPhase == 8 && state.lightTimer >= 4.0f) {
+                state.currentPhase = 9; state.lightTimer = 0.0f;
+            }
+            // Phase 9: All Red Clearance
+            else if (state.currentPhase == 9 && state.lightTimer >= 2.0f) {
+                // check left turns
+                if (checkLeftTurnDemand(node)) state.currentPhase = 0; 
+                else state.currentPhase = 2; // skip left phase
                 state.lightTimer = 0.0f;
             }
         }
@@ -636,42 +671,43 @@ bool PhysicsProcessor::canVehicleEnter(VehicleState* vhcl, Node* destNode)
         return false; // car cannot enter
     }
 
-    // testing multi phase trafic lights
     if (destNode->type == Node::TRAFFIC_LIGHT) {
         
-        uint64_t myEdgeId = vhcl->getEdgeId();
-        std::vector<uint64_t>& allowedList = state.phaseAllowedEdges[state.currentPhase];
-        std::string upcomingTurn = getUpcomingTurnDirection(vhcl);
+        Road* myRoad = vhcl->getCurrentEdge();
+        std::string turn = getUpcomingTurnDirection(vhcl);
         
-        // check light green
-        if (std::find(allowedList.begin(), allowedList.end(), myEdgeId) != allowedList.end()) {
-            
-            // unprotected left turn
-            if (upcomingTurn == "left") {
-                // check for safe gap
-                if (hasSafeGap(vhcl, destNode, 5.0f)) {
-                    return true;
-                } else {
-                    return false; 
-                }
+        // Find which geometric axis my road belongs to
+        int myAxis = -1;
+        if (std::find(state.axisEdges[0].begin(), state.axisEdges[0].end(), myRoad) != state.axisEdges[0].end()) myAxis = 0;
+        else if (std::find(state.axisEdges[1].begin(), state.axisEdges[1].end(), myRoad) != state.axisEdges[1].end()) myAxis = 1;
+
+        // Is my axis currently green?
+        bool isNSGreen = (state.currentPhase == 0 || state.currentPhase == 2);
+        bool isEWGreen = (state.currentPhase == 5 || state.currentPhase == 7);
+
+        if (myAxis == 0 && isNSGreen) {
+            if (state.currentPhase == 0) { // Protected Left Only
+                return (turn == "left"); 
+            } else if (state.currentPhase == 2) { // Straight/Right Green
+                if (turn == "left") return hasSafeGap(vhcl, destNode, 5.0f); // Yield left
+                return true;
             }
-            
-            return true; 
         } 
-        else { 
-            // red light
-            // check for gap turning right on red
-            if (upcomingTurn == "right") {
-                // come to a stop first
-                if (vhcl->getSpeed() < 1.0f) {
-                    // find gap to turn
-                    if (hasSafeGap(vhcl, destNode, 4.5f)) {
-                        return true; 
-                    }
-                }
+        else if (myAxis == 1 && isEWGreen) {
+            if (state.currentPhase == 5) { // Protected Left Only
+                return (turn == "left");
+            } else if (state.currentPhase == 7) { // Straight/Right Green
+                if (turn == "left") return hasSafeGap(vhcl, destNode, 5.0f); // Yield left
+                return true;
             }
-            return false; 
         }
+
+        // RED LIGHT FALLBACK: Check for Right-on-Red
+        if (turn == "right" && vhcl->getSpeed() < 1.0f) {
+            return hasSafeGap(vhcl, destNode, 4.5f);
+        }
+        
+        return false; // Wait for green
     }
     // yield stops, uses major and minor road classification
     if (destNode->type == Node::YIELD_STOP) {
@@ -777,4 +813,31 @@ bool PhysicsProcessor::hasSafeGap(VehicleState* yieldingCar, Node* destNode, flo
         }
     }
     return true; 
+}
+
+//sensor to activate protected left turn when needed
+bool PhysicsProcessor::checkLeftTurnDemand(Node* node) {
+    uint64_t nodeId = node->getId();
+    IntersectionState& state = intersections[nodeId];
+    
+    // phase check
+    int axisToCheck = (state.currentPhase == 9) ? 0 : 1;
+
+    for (Road* incomingRoad : state.axisEdges[axisToCheck]) {
+        std::vector<VehicleState*> cars = spatialHash->getVehiclesOnRoad(incomingRoad);
+        
+        for (VehicleState* car : cars) {
+            float distToStopLine = incomingRoad->getLength() - car->getPos();
+            
+            // check if car is close to intersection and stopped
+            if (distToStopLine > 0.0f && distToStopLine < 40.0f && car->getSpeed() < 1.0f) {
+                
+                // check if car has been waiting 5 seconds
+                if (getUpcomingTurnDirection(car) == "left" && car->getWaitTime() > 5.0f) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
 }

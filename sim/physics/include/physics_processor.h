@@ -15,11 +15,13 @@ struct IntersectionState {
     std::queue<VehicleState*> waitQueue;
     VehicleState* currentOccupant = nullptr;
     float lightTimer = 0.0f;
-    int currentPhase = 0;
+    
+    // default to phase 2 N/S straight 
+    int currentPhase = 2; 
     bool isInitialized = false; 
     
-    // group edges by direction
-    std::map<int, std::vector<uint64_t>> phaseAllowedEdges;
+    // [0] = N/S, [1] = E/W
+    std::vector<Road*> axisEdges[2]; 
 };
 
 class PhysicsProcessor 
@@ -32,6 +34,7 @@ class PhysicsProcessor
         float IDM(VehicleState* vhcl, VehicleState* leader, bool mobil); // now takes leader for MOBIL to use
         void addVehicle(VehicleState* vhcl);
         float MOBIL(VehicleState* vhcl, int targetLane);
+        bool checkLeftTurnDemand(Node* node);
 
         VehicleState* getLeader(VehicleState* vhcl, int targetLane);
         VehicleState* getFollower(VehicleState* vhcl, int targetLane);
