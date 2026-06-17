@@ -14,7 +14,6 @@ class PhysicsProcessor
         void addVehicle(VehicleState* vhcl);
         float MOBIL(VehicleState* vhcl, int targetLane);
 
-
         VehicleState* getLeader(VehicleState* vhcl, int targetLane);
         VehicleState* getFollower(VehicleState* vhcl, int targetLane);
         
