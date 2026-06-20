@@ -4,8 +4,8 @@
 #include "idm_profiles.h"
 #include "physics_processor.h"
 
-TrafficManager::TrafficManager(Network* net, PhysicsProcessor* phys) 
-    : network(net), physicsLoop(phys) 
+TrafficManager::TrafficManager(Network* net, PhysicsProcessor* phys, float sI) 
+    : network(net), physicsLoop(phys) , spawnInterval(sI)
 {
     // Initialize RNG seed
     rng.seed(std::random_device{}());

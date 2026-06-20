@@ -54,7 +54,7 @@ void TrafficSimulation::Initialize()
     
     // Pass pointers to the dependent components
     controller = new PhysicsProcessor(orlandoMap, spatialHash);
-    spawner = new TrafficManager(orlandoMap, controller);
+    spawner = new TrafficManager(orlandoMap, controller, 0.5f);
 }
 
 void TrafficSimulation::Step(float dt) 

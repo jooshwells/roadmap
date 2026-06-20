@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "Components/InstancedStaticMeshComponent.h"
 
 THIRD_PARTY_INCLUDES_START
 #include "network.h"
@@ -59,7 +60,7 @@ protected:
 
 	// Single HISM for the minimal MVP
 	UPROPERTY(EditDefaultsOnly, Category = "Traffic Visuals")
-	UHierarchicalInstancedStaticMeshComponent* VehicleHISM;
+	UInstancedStaticMeshComponent* VehicleISM;
 
 	// Time step configuration (e.g., 0.1f for 10 updates/second)
 	UPROPERTY(EditAnywhere, Category = "Simulation Settings")

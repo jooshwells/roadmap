@@ -1,55 +1,64 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
-
 using UnrealBuildTool;
 using System.IO; // REQUIRED: For Path.Combine
 
 public class SD1test : ModuleRules
 {
-	public SD1test(ReadOnlyTargetRules Target) : base(Target)
-	{
-		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
-	
-		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore" });
-		PrivateDependencyModuleNames.AddRange(new string[] {  });
+    public SD1test(ReadOnlyTargetRules Target) : base(Target)
+    {
+        PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 
-		// 1. ENABLE EXCEPTIONS AND RTTI
-		// Your network_builder uses try/catch blocks which requires exceptions to be enabled.
-		// Standard C++ maps and dynamic casts often require RTTI (Run-Time Type Information).
-		bEnableExceptions = true;
-		bUseRTTI = true;
+        PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore" });
+        PrivateDependencyModuleNames.AddRange(new string[] { });
 
-		// 2. DEFINE THE PATH TO YOUR SIMULATOR CODE
-		// Adjust this path depending on where your 'road_network' and 'common' folders are.
-		// This example assumes they are inside a "Simulator" folder at the root of your project directory.
-		string ThirdPartyPath = Path.GetFullPath(Path.Combine(ModuleDirectory, "../../../sim"));
+        // 1. ENABLE EXCEPTIONS AND RTTI
+        bEnableExceptions = true;
+        bUseRTTI = true;
 
-		// 3. ADD SYSTEM INCLUDE PATHS
-		// Using PublicSystemIncludePaths instead of PublicIncludePaths automatically flags
-		// the headers as 3rd-party, suppressing strict Unreal compiler warnings.
-		PublicSystemIncludePaths.AddRange(
-			new string[] {
-				Path.Combine(ThirdPartyPath, "road_network/include"),
-				Path.Combine(ThirdPartyPath, "common/road_state/include"),
-				Path.Combine(ThirdPartyPath, "common/vehicle_state/include"),
-				Path.Combine(ThirdPartyPath, "common/pathfinding_utils/heuristics/include"),
-				Path.Combine(ThirdPartyPath, "common/pathfinding_utils/idm_profiles/include"),
-				Path.Combine(ThirdPartyPath, "physics/include"),
-				Path.Combine(ThirdPartyPath, "spatial_logic/include"),
-				Path.Combine(ThirdPartyPath, "diagnostics/include"),
-				Path.Combine(ThirdPartyPath, "driver_logic/pathfinding/include")
-			}
-		);
+        // 2. DEFINE THE PATH TO YOUR SIMULATOR CODE
+        string ThirdPartyPath = Path.GetFullPath(Path.Combine(ModuleDirectory, "../../../sim"));
 
-		string LibDirectory = Path.Combine(ThirdPartyPath, "build", "CentralLibs", "Release");
+        // 3. ADD SYSTEM INCLUDE PATHS
+        PublicSystemIncludePaths.AddRange(
+            new string[] {
+                Path.Combine(ThirdPartyPath, "road_network/include"),
+                Path.Combine(ThirdPartyPath, "common/road_state/include"),
+                Path.Combine(ThirdPartyPath, "common/vehicle_state/include"),
+                Path.Combine(ThirdPartyPath, "common/pathfinding_utils/heuristics/include"),
+                Path.Combine(ThirdPartyPath, "common/pathfinding_utils/idm_profiles/include"),
+                Path.Combine(ThirdPartyPath, "physics/include"),
+                Path.Combine(ThirdPartyPath, "spatial_logic/include"),
+                Path.Combine(ThirdPartyPath, "diagnostics/include"),
+                Path.Combine(ThirdPartyPath, "driver_logic/pathfinding/include")
+            }
+        );
 
-        PublicAdditionalLibraries.Add(Path.Combine(LibDirectory, "heuristics.lib"));
-		PublicAdditionalLibraries.Add(Path.Combine(LibDirectory, "road_state.lib"));
-		PublicAdditionalLibraries.Add(Path.Combine(LibDirectory, "vehicle_state.lib"));
-        PublicAdditionalLibraries.Add(Path.Combine(LibDirectory, "network.lib"));
-        PublicAdditionalLibraries.Add(Path.Combine(LibDirectory, "physics.lib"));
-        PublicAdditionalLibraries.Add(Path.Combine(LibDirectory, "pathfinding.lib"));
-        PublicAdditionalLibraries.Add(Path.Combine(LibDirectory, "spatial_logic.lib"));
+        // 4. DETERMINE BUILD CONFIGURATION
+        bool bIsDebug = (Target.Configuration == UnrealTargetConfiguration.Debug || Target.Configuration == UnrealTargetConfiguration.DebugGame);
+        string ConfigFolder = bIsDebug ? "Debug" : "Release";
+        string LibDirectory = Path.Combine(ThirdPartyPath, "build", "CentralLibs", ConfigFolder);
 
+        // 5. LINK STATIC LIBRARIES AND DEBUG SYMBOLS (.PDB)
+        string[] LibraryNames = {
+            "heuristics",
+            "road_state",
+            "vehicle_state",
+            "network",
+            "physics",
+            "pathfinding",
+            "spatial_logic"
+        };
 
+        foreach (string Lib in LibraryNames)
+        {
+            // Link the static library (Always happens)
+            PublicAdditionalLibraries.Add(Path.Combine(LibDirectory, Lib + ".lib"));
+
+            // Register PDB files ONLY if we are in a debug configuration AND on Windows
+            if (bIsDebug && Target.Platform == UnrealTargetPlatform.Win64)
+            {
+                RuntimeDependencies.Add(Path.Combine(LibDirectory, Lib + ".pdb"), StagedFileType.DebugNonUFS);
+            }
+        }
     }
 }
