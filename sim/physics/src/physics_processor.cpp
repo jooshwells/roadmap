@@ -84,15 +84,20 @@ float PhysicsProcessor::calculateDistanceToDestination(VehicleState* vhcl)
 void PhysicsProcessor::update(float dt)
 {
     spatialHash->rebuild(vehicleList);
-    // check for MOBIL
+    
+    // ==========================================
+    // PASS 0: MOBIL & LANE CHANGING
+    // ==========================================
     for (VehicleState* vhcl : vehicleList)
     {
-        int currentLane = vhcl->getLane();
+        // ---> CRITICAL FIX 1: Guard against missing edges <---
+        // If a car spawned with a bad route and has no edge, trying to get lanes will segfault!
+        if (vhcl->getCurrentEdge() == nullptr) continue; 
 
+        int currentLane = vhcl->getLane();
         int totalLanes = vhcl->getCurrentEdge()->getLanes(); 
         int bestLane = currentLane;
 
-        // use to track best lane MOBIL incentive
         float threshold = 0.1f; 
         float bestIncentive = threshold;
 
@@ -126,27 +131,20 @@ void PhysicsProcessor::update(float dt)
     // ==========================================
     for (VehicleState* vhcl : vehicleList)
     {
-        // ---> THE PARKING BRAKE <---
-        // If the car has reached its destination and is barely moving, force a hard stop.
         if (vhcl->getDesiredSpeed() == 0.0f && vhcl->getSpeed() < 0.5f) {
-            vehicleUpdates.push_back(-vhcl->getSpeed()); // Bleed off the exact remaining speed
-
-            // Log 0 acceleration and track wait time while parked/stopped
+            vehicleUpdates.push_back(-vhcl->getSpeed()); 
             vhcl->setAcceleration(0.0f);
             vhcl->updateWaitTime(dt);
             continue; 
         }
 
-        // recheck leader in case of MOBIL
         vhcl->setLeader(getLeader(vhcl, vhcl->getLane()));
         float acceleration = IDM(vhcl, vhcl->getLeader(), false);
-        float dv = acceleration *dt;
+        float dv = acceleration * dt;
 
-        // ---> NEW: TELEMETRY TRACKING <---
-        vhcl->setAcceleration(acceleration); // Store exact IDM output
-        vhcl->updateWaitTime(dt);            // Accumulate delay if below threshold
+        vhcl->setAcceleration(acceleration); 
+        vhcl->updateWaitTime(dt); 
 
-        // no negative speed 
         if (vhcl->getSpeed() + dv < 0.0f) {
             dv = -vhcl->getSpeed();
         }
@@ -159,17 +157,10 @@ void PhysicsProcessor::update(float dt)
     int i = 0;
     for (VehicleState* vhcl : vehicleList)
     {
-        // ---> CONTINUOUS DESTINATION CHECK <---
-        // IDM brings the car to a halt perfectly on the line, so it never crosses it. 
-        // Check if remaining distance is within a tiny tolerance (e.g., 0.5 meters) and speed is near zero.
         if (calculateDistanceToDestination(vhcl) < 0.5f && vhcl->getSpeed() < 0.1f) 
         {
-            // std::cout << "A vehicle has reached its destination!\n";
-            
-            // Flag for removal from the active physics loop
             vehiclesToRemove.push_back(vhcl);
 
-            // Untether followers (Give trailing cars a free road!)
             for (VehicleState* otherCar : vehicleList) 
             {
                 if (otherCar->getLeader() == vhcl) {
@@ -177,14 +168,12 @@ void PhysicsProcessor::update(float dt)
                 }
             }
             i++; 
-            continue; // Skip the rest of the loop for this parked car
+            continue; 
         }
 
-        // Apply physics
         vhcl->accelerate(vehicleUpdates[i]);
         vhcl->move(vhcl->getSpeed() * dt);
 
-        // Routing Edge Transitions
         bool routeAdvanced = true;
         while (routeAdvanced && !vhcl->currentRoute.empty() && vhcl->currentRouteIndex < vhcl->currentRoute.size() - 1) 
         {
@@ -195,7 +184,9 @@ void PhysicsProcessor::update(float dt)
 
             Node* currentNode = network->getNode(currentNodeId);
             
-            // Look up the length of the road we are currently driving on
+            // ---> CRITICAL FIX 2: Null Check Node Lookups <---
+            if (!currentNode) break; 
+            
             double currentRoadLength = 0.0;
             for (Road& edge : currentNode->outgoingEdges) {
                 if (edge.getDest() == nextNodeId) {
@@ -204,37 +195,40 @@ void PhysicsProcessor::update(float dt)
                 }
             }
 
-            // Check if we reached the end of the current road
+            // ---> CRITICAL FIX 3: Prevent Infinite Loops <---
+            // If the edge was missing, currentRoadLength is 0.0.
+            // getPos() >= 0.0 is always true, causing an infinite while loop!
+            if (currentRoadLength <= 0.001f) break;
+
             if (vhcl->getPos() >= currentRoadLength) 
             {
-                // Carry over momentum to the beginning of the next road
                 vhcl->setPos(vhcl->getPos() - currentRoadLength); 
                 vhcl->currentRouteIndex++;
                 routeAdvanced = true;
 
-                // Check if we have arrived at the final destination
                 if (vhcl->currentRouteIndex >= vhcl->currentRoute.size() - 1) 
                 {
-                    vhcl->setDesiredSpeed(0.0f); // Apply brakes
-                    // std::cout << "A vehicle has reached its destination!\n";
+                    vhcl->setDesiredSpeed(0.0f);
                 } 
                 else 
                 {
-                    // We are on a new road! Update the desired speed to the new speed limit
                     int newCurrentNodeId = vhcl->currentRoute[vhcl->currentRouteIndex];
                     int newNextNodeId = vhcl->currentRoute[vhcl->currentRouteIndex + 1];
                     Node* newCurrentNode = network->getNode(newCurrentNodeId);
                     
-                    for (Road& edge : newCurrentNode->outgoingEdges) {
-                        if (edge.getDest() == newNextNodeId) {
-                            vhcl->setDesiredSpeed(edge.getSpeedLimit());
-                            vhcl->setCurrentEdge(&edge);
+                    // ---> CRITICAL FIX 4: Null check the next node <---
+                    if (newCurrentNode) 
+                    {
+                        for (Road& edge : newCurrentNode->outgoingEdges) {
+                            if (edge.getDest() == newNextNodeId) {
+                                vhcl->setDesiredSpeed(edge.getSpeedLimit());
+                                vhcl->setCurrentEdge(&edge);
 
-                            if (vhcl->getLane() >= edge.getLanes()) {
-                                vhcl->setLane(edge.getLanes() - 1); 
+                                if (vhcl->getLane() >= edge.getLanes()) {
+                                    vhcl->setLane(edge.getLanes() - 1); 
+                                }
+                                break;
                             }
-
-                            break;
                         }
                     }
                 }
@@ -258,20 +252,14 @@ void PhysicsProcessor::update(float dt)
     // ==========================================
     for (VehicleState* parkedVehicle : vehiclesToRemove) 
     {
-        // Safely remove the specific pointer from the main vector
         vehicleList.erase(
             std::remove(vehicleList.begin(), vehicleList.end(), parkedVehicle), 
             vehicleList.end()
         );
 
-        vehiclesToDestroy.push_back(parkedVehicle); // Destroy it next frame
-        
-        // Notice we do NOT call 'delete deadVhcl;' here.
-        // This ensures the main.cpp loop can safely read and print 
-        // the final parked coordinates without a segmentation fault.
+        vehiclesToDestroy.push_back(parkedVehicle); 
     }
     
-    // Clear the queue for the next frame
     vehiclesToRemove.clear();
 }
 

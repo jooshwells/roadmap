@@ -8,14 +8,23 @@
 ASimulationManager::ASimulationManager()
 {
 	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bStartWithTickEnabled = true;
 
 	Accumulator = 0.0f;
 	FixedDelta = 0.1f;
 	TrafficSimEngine = nullptr;
 
-	// 1. Initialize the single HISM component and make it the root
-	VehicleHISM = CreateDefaultSubobject<UHierarchicalInstancedStaticMeshComponent>(TEXT("VehicleHISM"));
-	RootComponent = VehicleHISM;
+	// Use standard ISM for moving objects!
+	VehicleISM = CreateDefaultSubobject<UInstancedStaticMeshComponent>(TEXT("VehicleISM"));
+	RootComponent = VehicleISM;
+
+	// CRITICAL FOR PERFORMANCE: Disable collision on the moving vehicles
+	VehicleISM->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	VehicleISM->SetCollisionProfileName(TEXT("NoCollision"));
+	VehicleISM->SetGenerateOverlapEvents(false);
+
+	// Disable shadows for the MVP to guarantee maximum GPU performance
+	VehicleISM->SetCastShadow(false);
 }
 
 void ASimulationManager::BeginPlay()
@@ -149,51 +158,46 @@ void ASimulationManager::UpdateVehicleVisuals(float Alpha)
 		return;
 	}
 
-	if (!TrafficSimEngine || !VehicleHISM) return;
+	if (!TrafficSimEngine || !VehicleISM) return;
 
-	// 1. Fetch the lightweight render structs from the backend
 	auto RenderStates = TrafficSimEngine->GetVehicleRenderStates();
 	if (GEngine)
 	{
 		GEngine->AddOnScreenDebugMessage(2, 0.1f, FColor::Green, FString::Printf(TEXT("Backend Active Cars: %d"), (int32)RenderStates.size()));
 	}
-	// 2. Convert backend positions to Unreal Transforms
 	TArray<FTransform> Transforms;
+	Transforms.Reserve(RenderStates.size()); // Pre-allocate memory for speed!
+
 	for (const auto& State : RenderStates)
 	{
-		// SCALE FIX: Multiply meters by 100 to get Unreal Centimeters
 		FVector UnrealPosition(State.x * 100.0f, State.y * 100.0f, State.z * 100.0f);
-
-		// Convert radians back to degrees for Unreal's rotation system
 		FRotator UnrealRotation(0.0f, FMath::RadiansToDegrees(State.yaw), 0.0f);
-
 		Transforms.Add(FTransform(UnrealRotation, UnrealPosition));
 	}
 
-	// 3. Safely manage instance counts
-	int32 CurrentCount = VehicleHISM->GetInstanceCount();
+	int32 CurrentCount = VehicleISM->GetInstanceCount();
 	int32 TargetCount = Transforms.Num();
 
 	if (CurrentCount < TargetCount)
 	{
 		for (int32 i = CurrentCount; i < TargetCount; ++i)
 		{
-			VehicleHISM->AddInstance(FTransform::Identity);
+			VehicleISM->AddInstance(FTransform::Identity);
 		}
 	}
 
-	// 4. Batch Update all active instances simultaneously on the GPU
 	if (Transforms.Num() > 0)
 	{
-		VehicleHISM->BatchUpdateInstancesTransforms(0, Transforms, false, true, true);
+		VehicleISM->BatchUpdateInstancesTransforms(0, Transforms, false, true, true);
 	}
 
-	// 5. Hide excess instances (if cars left the sim) by scaling to 0
 	if (CurrentCount > TargetCount)
 	{
 		for (int32 i = TargetCount; i < CurrentCount; ++i)
 		{
-			VehicleHISM->UpdateInstanceTransform(i, FTransform(FRotator::ZeroRotator, FVector::ZeroVector, FVector::ZeroVector), false, false, false);
+			// CRITICAL FIX: The 4th argument (bMarkRenderStateDirty) MUST BE TRUE
+			// Otherwise the deleted cars stay permanently frozen on your screen!
+			VehicleISM->UpdateInstanceTransform(i, FTransform(FRotator::ZeroRotator, FVector::ZeroVector, FVector::ZeroVector), false, true, true);
 		}
 	}
 }

@@ -13,13 +13,13 @@ class TrafficManager
         PhysicsProcessor* physicsLoop;
         
         float timeSinceLastSpawn = 0.0f;
-        float spawnInterval = 1.0f; // Spawn a new car every 2.0 seconds
+        float spawnInterval; // Spawn a new car every 2.0 seconds
         
         // RNG setup for random origins/destinations
         std::mt19937 rng;
 
     public:
-        TrafficManager(Network* net, PhysicsProcessor* phys);
+        TrafficManager(Network* net, PhysicsProcessor* phys, float sI);
         void update(float dt);
         void spawnRandomVehicle();
 };
