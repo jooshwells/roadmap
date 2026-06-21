@@ -54,7 +54,7 @@ void TrafficSimulation::Initialize()
     
     // Pass pointers to the dependent components
     controller = new PhysicsProcessor(orlandoMap, spatialHash);
-    spawner = new TrafficManager(orlandoMap, controller, 0.5f);
+    spawner = new TrafficManager(orlandoMap, controller, 0.3f);
 }
 
 void TrafficSimulation::Step(float dt) 
@@ -117,26 +117,19 @@ std::vector<VehicleRenderState> TrafficSimulation::GetVehicleRenderStates()
         float dy = nB->getY() - nA->getY();
         state.yaw = std::atan2(dy, dx); 
 
-        // ---------------------------------------------------------
-        // THE NEW LANE OFFSET LOGIC GOES HERE
-        // ---------------------------------------------------------
-        float len = std::sqrt(dx*dx + dy*dy);
-        if (len > 0.0001f) 
+        float len = std::sqrt(dx * dx + dy * dy);
+        if (len > 0.0001f)
         {
-            // 1. Correct Right Vector for Unreal Engine (X-Forward, Y-Right)
-            float rightVecX = -dy / len; 
+            // Correct Right Vector for Unreal Engine
+            float rightVecX = -dy / len;
             float rightVecY = dx / len;
 
-            // 2. Centered Lane Offset Logic
             int totalLanes = v->getCurrentEdge()->getLanes();
             const float LANE_WIDTH = 3.5f;
 
-            // Calculate the mathematical edges of the visual road box
-            float roadRightEdge = (totalLanes * LANE_WIDTH) / 2.0f;
-
-            // Option A: Lane 0 is the RIGHT-MOST lane 
-            // Start at the right edge, move left (negative) for each lane index, minus half a lane to hit the center.
-            float laneOffsetMeters = roadRightEdge - (v->getLane() * LANE_WIDTH) - (LANE_WIDTH / 2.0f);
+            // Shift all lanes to the RIGHT half of the road. 
+            // Lane 0 is furthest right, Lane (totalLanes-1) hugs the centerline.
+            float laneOffsetMeters = (LANE_WIDTH / 2.0f) + ((totalLanes - 1 - v->getLane()) * LANE_WIDTH);
 
             // Apply the offset
             state.x += rightVecX * laneOffsetMeters;

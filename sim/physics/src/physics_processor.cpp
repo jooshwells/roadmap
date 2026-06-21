@@ -33,36 +33,45 @@ float PhysicsProcessor::getRouteSegmentLength(VehicleState* vhcl, int routeIndex
 }
 
 float PhysicsProcessor::calculateTrueGap(VehicleState* follower, VehicleState* leader) {
-    if (follower->currentRouteIndex > leader->currentRouteIndex || 
-       (follower->currentRouteIndex == leader->currentRouteIndex && follower->getPos() >= leader->getPos())) {
-        return 0.0f; // No gap to calculate, the follower is in front!
-    }
-    
-    // If they are on the exact same road segment, it's just standard 1D math
-    if (follower->currentRouteIndex == leader->currentRouteIndex) {
-        float simpleGap = leader->getPos() - follower->getPos() - leader->getLength();
-        return std::max(0.0f, simpleGap);
+    // 1. If they are on the exact same physical road edge
+    if (follower->getCurrentEdge() == leader->getCurrentEdge()) {
+        if (follower->getPos() >= leader->getPos()) return 0.0f; // Follower is in front
+        return std::max(0.0f, leader->getPos() - follower->getPos() - leader->getLength());
     }
 
-    // Otherwise, we calculate the multi-segment gap
+    // 2. Otherwise, calculate the multi-segment gap
     float totalGap = 0.0f;
-
-    // 1. The Tail: Distance from the follower to the end of its current road
     float followerRoadLen = getRouteSegmentLength(follower, follower->currentRouteIndex);
     totalGap += (followerRoadLen - follower->getPos());
 
-    // 2. The Middle: Sum of all intermediate roads
-    for (int i = follower->currentRouteIndex + 1; i < leader->currentRouteIndex; i++) {
+    bool leaderFound = false;
+
+    // Trace forward strictly along the follower's route
+    for (size_t i = follower->currentRouteIndex + 1; i < follower->currentRoute.size() - 1; i++) {
+        int stepStartNode = follower->currentRoute[i];
+        int stepEndNode = follower->currentRoute[i+1];
+        
+        // Check if this route step matches the leader's current physical edge
+        int leaderStartNode = leader->currentRoute[leader->currentRouteIndex];
+        int leaderEndNode = leader->currentRoute[leader->currentRouteIndex + 1];
+
+        if (stepStartNode == leaderStartNode && stepEndNode == leaderEndNode) {
+            leaderFound = true;
+            break;
+        }
         totalGap += getRouteSegmentLength(follower, i);
     }
 
-    // 3. The Head: Distance the leader has traveled on its road
-    totalGap += leader->getPos();
+    if (!leaderFound) {
+        // Leader is not physically on the follower's remaining route 
+        // (Could happen if leader is turning off the route or spatial hash is 1 frame stale)
+        return 9999.0f; 
+    }
 
-    // Subtract the physical length of the leader car (bumper-to-bumper gap)
+    totalGap += leader->getPos();
     totalGap -= leader->getLength();
 
-    return std::max(0.0f, totalGap); // Ensure gap never goes negative due to floating point drift
+    return std::max(0.0f, totalGap);
 }
 
 float PhysicsProcessor::calculateDistanceToDestination(VehicleState* vhcl) 

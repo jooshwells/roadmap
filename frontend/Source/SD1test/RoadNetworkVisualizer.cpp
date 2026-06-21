@@ -82,22 +82,27 @@ void ARoadNetworkVisualizer::BuildVisualNetwork(Network* RoadNetwork)
             FVector Direction = EndLoc - StartLoc;
             float DistanceCM = Direction.Size();
             FRotator Rotation = Direction.Rotation();
-
+            // Ensure we always have at least 1 lane to prevent divide-by-zero in the shader
+            int32 SafeLanes = FMath::Max(1, Edge.getLanes());
             FVector InstanceLocation = StartLoc;
             if (bPivotAtCenter)
             {
                 InstanceLocation = StartLoc + (Direction * 0.5f);
             }
+            FVector RightVec(-Direction.Y, Direction.X, 0.0);
+            RightVec.Normalize();
+            float TargetWidthCm = SafeLanes * 350.0f;
+
+            // Move the road mesh so it perfectly aligns with the right-side traffic
+            InstanceLocation += RightVec * (TargetWidthCm * 0.5f);
 
             float ScaleX = DistanceCM / FMath::Max(1.0f, MeshBaseLengthCm);
 
-            // Ensure we always have at least 1 lane to prevent divide-by-zero in the shader
-            int32 SafeLanes = FMath::Max(1, Edge.getLanes());
+            
 
             float ScaleY = 1.0f;
             if (bScaleWidthByLanes)
             {
-                float TargetWidthCm = SafeLanes * 350.0f; // Assuming 3.5m per lane
                 ScaleY = TargetWidthCm / FMath::Max(1.0f, MeshBaseWidthCm);
             }
 
