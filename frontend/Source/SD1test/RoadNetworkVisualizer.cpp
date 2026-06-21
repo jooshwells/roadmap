@@ -20,6 +20,11 @@ ARoadNetworkVisualizer::ARoadNetworkVisualizer()
 
     // Disable shadows. 115k meshes casting shadows across a massive map will kill any GPU.
     RoadHISM->SetCastShadow(false);
+
+    NodeHISM = CreateDefaultSubobject<UHierarchicalInstancedStaticMeshComponent>(TEXT("NodeHISM"));
+    NodeHISM->SetupAttachment(RootComponent);
+    NodeHISM->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    NodeHISM->SetCastShadow(false);
 }
 
 void ARoadNetworkVisualizer::BuildVisualNetwork(Network* RoadNetwork)
@@ -51,6 +56,9 @@ void ARoadNetworkVisualizer::BuildVisualNetwork(Network* RoadNetwork)
     OriginOffsetX = (MinX + MaxX) / 2.0;
     OriginOffsetY = (MinY + MaxY) / 2.0;
 
+    TArray<FTransform> NodeTransforms;
+    NodeTransforms.Reserve(AllNodes.size());
+
     TArray<FTransform> Transforms;
     TArray<uint64_t> TempEdgeIds;
     TArray<float> TempScaleX;
@@ -64,6 +72,12 @@ void ARoadNetworkVisualizer::BuildVisualNetwork(Network* RoadNetwork)
     for (const auto& NodePair : AllNodes)
     {
         const Node& OriginNode = NodePair.second;
+
+        FVector NodeLoc((OriginNode.getX() - OriginOffsetX) * 100.0,
+            (OriginNode.getY() - OriginOffsetY) * 100.0,
+            -2.0f);
+        FVector NodeScale3D(NodeScale, NodeScale, 0.05f);
+        NodeTransforms.Add(FTransform(FRotator::ZeroRotator, NodeLoc, NodeScale3D));
 
         for (const Road& Edge : OriginNode.outgoingEdges)
         {
@@ -89,12 +103,14 @@ void ARoadNetworkVisualizer::BuildVisualNetwork(Network* RoadNetwork)
             {
                 InstanceLocation = StartLoc + (Direction * 0.5f);
             }
+
+            // ---> FIX: Correct Unreal Engine Right Vector <---
             FVector RightVec(-Direction.Y, Direction.X, 0.0);
             RightVec.Normalize();
             float TargetWidthCm = SafeLanes * 350.0f;
 
             // Move the road mesh so it perfectly aligns with the right-side traffic
-            InstanceLocation += RightVec * (TargetWidthCm * 0.5f);
+            InstanceLocation += RightVec * ((TargetWidthCm * 0.5f) + MedianGapCm);
 
             float ScaleX = DistanceCM / FMath::Max(1.0f, MeshBaseLengthCm);
 
@@ -113,6 +129,12 @@ void ARoadNetworkVisualizer::BuildVisualNetwork(Network* RoadNetwork)
             TempScaleX.Add(ScaleX);
             TempLanes.Add(static_cast<float>(SafeLanes)); // Save lane count to push to GPU
         }
+    }
+
+    NodeHISM->ClearInstances();
+    if (NodeTransforms.Num() > 0)
+    {
+        NodeHISM->AddInstances(NodeTransforms, false);
     }
 
     TArray<int32> AddedIndices = RoadHISM->AddInstances(Transforms, true);

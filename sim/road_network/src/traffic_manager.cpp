@@ -4,51 +4,96 @@
 #include "idm_profiles.h"
 #include "physics_processor.h"
 
-TrafficManager::TrafficManager(Network* net, PhysicsProcessor* phys, float sI) 
-    : network(net), physicsLoop(phys) , spawnInterval(sI)
+// Update constructor to take targetCount
+TrafficManager::TrafficManager(Network* net, PhysicsProcessor* phys, int targetCount) 
+    : network(net), physicsLoop(phys) , targetVehicleCount(targetCount)
 {
-    // Initialize RNG seed
     rng.seed(std::random_device{}());
+}
+
+void TrafficManager::setThroughTrafficNodes(const std::vector<uint64_t>& sources, const std::vector<uint64_t>& sinks)
+{
+    sourceNodes = sources;
+    sinkNodes = sinks;
 }
 
 void TrafficManager::update(float dt) 
 {
-    timeSinceLastSpawn += dt;
+    // Check how many cars are currently alive
+    int currentCars = physicsLoop->getActiveVehicles().size();
     
-    if (timeSinceLastSpawn >= spawnInterval) 
+    // We cap the attempts per frame to prevent freezing Unreal 
+    // if it struggles to find an empty node on a highly congested map.
+    int maxAttemptsThisFrame = 15; 
+    int attempts = 0;
+
+    // Loop until we reach 1000 cars OR we run out of safe attempts for this frame
+    while (currentCars < targetVehicleCount && attempts < maxAttemptsThisFrame)
     {
-        spawnRandomVehicle();
-        timeSinceLastSpawn = 0.0f; // Reset timer
+        if (spawnRandomVehicle()) 
+        {
+            currentCars++; // Spawn successful, increment the count
+        }
+        attempts++; // Always increment attempts whether it succeeded or failed
     }
 }
 
-void TrafficManager::spawnRandomVehicle() 
+// Update to return bool instead of void
+bool TrafficManager::spawnRandomVehicle() 
 {
-    // Pick a random origin and destination from your network
-    Node* origin = network->getRandomNode(rng);
-    Node* destination = network->getRandomNode(rng);
+    Node* origin = nullptr;
+    Node* destination = nullptr;
 
-    if (origin == destination) return; // Prevent 0-length routes
+    // Roll the dice: 70% chance for through-traffic (if source/sink lists are populated)
+    if (routingProbability(rng) <= 0.70f && !sourceNodes.empty() && !sinkNodes.empty()) 
+    {
+        std::uniform_int_distribution<std::size_t> sourceDist(0, sourceNodes.size() - 1);
+        std::uniform_int_distribution<std::size_t> sinkDist(0, sinkNodes.size() - 1);
+        
+        uint64_t originId = sourceNodes[sourceDist(rng)];
+        uint64_t destId = sinkNodes[sinkDist(rng)];
 
-    // Compute the route
+        origin = network->getNode(originId);
+        destination = network->getNode(destId);
+    }
+    else 
+    {
+        // 30% chance (or fallback) for purely random residential/local traffic
+        origin = network->getRandomNode(rng);
+        destination = network->getRandomNode(rng);
+    }
+
+    // Safety checks: ensure pointers are valid and we aren't routing a node to itself
+    if (!origin || !destination || origin == destination) return false; 
+
+    uint64_t originId = origin->getId();
+    uint64_t destId = destination->getId();
+
+    // -- The rest of your existing logic remains exactly the same --
+    
+    int carsHeadingToDest = 0;
+    for (VehicleState* v : physicsLoop->getActiveVehicles()) 
+    {
+        if (!v->currentRoute.empty() && v->currentRoute.back() == destId) 
+        {
+            carsHeadingToDest++;
+        }
+    }
+
+    if (carsHeadingToDest >= 3) return false; // cap max vehicles going to one dest at 3
+
     DStarLite router(network, origin, destination, Heuristics3D::Euclidean);
     router.ComputeShortestPath();
     std::vector<uint64_t> route = DStarLite::ExtractRoute(*network, origin, destination);
 
-    if (route.empty()) return; // Map is disconnected, no route found
+    if (route.empty()) return false; 
 
-    // Extract the IDs for telemetry and routing checks
-    uint64_t originId = origin->getId();
-    uint64_t destId = destination->getId();
-
-    // spawn safety check
     bool isSpawnClear = true;
     for (VehicleState* vhcl : physicsLoop->getActiveVehicles())
     {
-        // Check if an existing vehicle is currently on our starting node
         if (!vhcl->currentRoute.empty() && vhcl->currentRoute[vhcl->currentRouteIndex] == originId)
         {
-            // Check if they are physically too close to the spawn line (0.0m)
+            // Using IDM length check
             if (vhcl->getPos() < (vhcl->getLength() + 5.0f)) 
             {
                 isSpawnClear = false;
@@ -57,16 +102,14 @@ void TrafficManager::spawnRandomVehicle()
         }
     }
 
-    // Abort spawn if the intersection is blocked
-    if (!isSpawnClear) return; 
+    if (!isSpawnClear) return false; 
 
-    // 3. Create the vehicle
     VehicleState* newCar = new VehicleState(
         originId, 
         destId, 
-        30.0f, // Initial Speed
-        0.0f,  // Initial Pos
-        0,     // Starting Lane
+        30.0f, 
+        0.0f,  
+        0,     
         IDM_Profiles::getBasicDriverProfile()
     );
     
@@ -74,4 +117,6 @@ void TrafficManager::spawnRandomVehicle()
     newCar->currentRouteIndex = 0;
 
     physicsLoop->addVehicle(newCar);
+    
+    return true; 
 }

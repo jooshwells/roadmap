@@ -17,15 +17,17 @@ TrafficSimulation::~TrafficSimulation()
     delete orlandoMap;
 }
 
-void TrafficSimulation::Initialize() 
-{
+void TrafficSimulation::Initialize() {
     currentTime = 0.0f;
-    
+
     // 1. Instantiate the network map on the heap
     orlandoMap = new Network(NetworkBuilder::buildNetworkFromJSONL(
         "E:/dev/roadmap/python_pipeline/sample_out/waterford_nodes_orange_allroads_offline_xy.jsonl",
-		"E:/dev/roadmap/python_pipeline/sample_out/waterford_edges_orange_allroads_offline_xy.jsonl"
+        "E:/dev/roadmap/python_pipeline/sample_out/waterford_edges_orange_allroads_offline_xy.jsonl"
     ));
+
+    std::vector<uint64_t> westEdgeNodes;
+    std::vector<uint64_t> eastEdgeNodes;
 
     if (orlandoMap)
     {
@@ -34,7 +36,7 @@ void TrafficSimulation::Initialize()
         double MaxX = std::numeric_limits<double>::lowest();
         double MaxY = std::numeric_limits<double>::lowest();
 
-        // Assuming orlandoMap->getNodes() returns a map/unordered_map of ID to Node
+        // --- PASS 1: Find the global bounds ---
         for (const auto& NodePair : orlandoMap->getNodes())
         {
             const Node& N = NodePair.second;
@@ -46,15 +48,39 @@ void TrafficSimulation::Initialize()
 
         originOffsetX = (MinX + MaxX) / 2.0;
         originOffsetY = (MinY + MaxY) / 2.0;
+
+        // --- PASS 2: Categorize source/sink nodes for through-traffic ---
+        // Define what constitutes an "edge" node. Here, we use the outer 15% of the X-axis.
+        double mapWidth = MaxX - MinX;
+        double edgeMargin = mapWidth * 0.15;
+
+        for (const auto& NodePair : orlandoMap->getNodes())
+        {
+            const Node& N = NodePair.second;
+            uint64_t nodeId = NodePair.first; // Grab the ID directly from the map key
+
+            if (N.getX() <= (MinX + edgeMargin))
+            {
+                westEdgeNodes.push_back(nodeId);
+            }
+            else if (N.getX() >= (MaxX - edgeMargin))
+            {
+                eastEdgeNodes.push_back(nodeId);
+            }
+        }
     }
 
     // 2. Instantiate the rest of the simulation components
     logger = new TelemetryLogger("simulation_output.csv");
     spatialHash = new VehicleSpatialHash();
-    
+
     // Pass pointers to the dependent components
     controller = new PhysicsProcessor(orlandoMap, spatialHash);
-    spawner = new TrafficManager(orlandoMap, controller, 0.3f);
+    spawner = new TrafficManager(orlandoMap, controller, 1500);
+
+    // 3. Apply the through-traffic bounds
+    // This routes traffic from West to East. 
+    spawner->setThroughTrafficNodes(westEdgeNodes, eastEdgeNodes);
 }
 
 void TrafficSimulation::Step(float dt) 
@@ -120,16 +146,16 @@ std::vector<VehicleRenderState> TrafficSimulation::GetVehicleRenderStates()
         float len = std::sqrt(dx * dx + dy * dy);
         if (len > 0.0001f)
         {
-            // Correct Right Vector for Unreal Engine
+            // ---> FIX: Correct Unreal Engine Right Vector <---
             float rightVecX = -dy / len;
             float rightVecY = dx / len;
 
             int totalLanes = v->getCurrentEdge()->getLanes();
             const float LANE_WIDTH = 3.5f;
+            const float MEDIAN_GAP_METERS = 1.0f;
 
-            // Shift all lanes to the RIGHT half of the road. 
-            // Lane 0 is furthest right, Lane (totalLanes-1) hugs the centerline.
-            float laneOffsetMeters = (LANE_WIDTH / 2.0f) + ((totalLanes - 1 - v->getLane()) * LANE_WIDTH);
+            // Lane 0 is the fast lane, so it gets the smallest offset (closest to median)
+            float laneOffsetMeters = MEDIAN_GAP_METERS + (LANE_WIDTH / 2.0f) + (v->getLane() * LANE_WIDTH);
 
             // Apply the offset
             state.x += rightVecX * laneOffsetMeters;

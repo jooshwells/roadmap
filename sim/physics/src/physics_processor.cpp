@@ -166,7 +166,7 @@ void PhysicsProcessor::update(float dt)
     int i = 0;
     for (VehicleState* vhcl : vehicleList)
     {
-        if (calculateDistanceToDestination(vhcl) < 0.5f && vhcl->getSpeed() < 0.1f) 
+        if (calculateDistanceToDestination(vhcl) < 12.0f) 
         {
             vehiclesToRemove.push_back(vhcl);
 
