@@ -231,6 +231,12 @@ void PhysicsProcessor::update(float dt)
                         for (Road& edge : newCurrentNode->outgoingEdges) {
                             if (edge.getDest() == newNextNodeId) {
                                 vhcl->setDesiredSpeed(edge.getSpeedLimit());
+                                
+                                // NEW: Volume swapping
+                                Road* oldEdge = vhcl->getCurrentEdge();
+                                if (oldEdge) oldEdge->removeVehicle();
+                                edge.addVehicle(); 
+                                
                                 vhcl->setCurrentEdge(&edge);
 
                                 if (vhcl->getLane() >= edge.getLanes()) {
@@ -261,6 +267,10 @@ void PhysicsProcessor::update(float dt)
     // ==========================================
     for (VehicleState* parkedVehicle : vehiclesToRemove) 
     {
+        if (parkedVehicle->getCurrentEdge()) {
+            parkedVehicle->getCurrentEdge()->removeVehicle();
+        }
+
         vehicleList.erase(
             std::remove(vehicleList.begin(), vehicleList.end(), parkedVehicle), 
             vehicleList.end()
@@ -345,6 +355,7 @@ void PhysicsProcessor::addVehicle(VehicleState* vhcl)
             for (Road& edge : currentNode->outgoingEdges) {
                 if (edge.getDest() == nextNodeId) {
                     vhcl->setCurrentEdge(&edge); // Set the initial edge
+                    edge.addVehicle();
                     break;
                 }
             }

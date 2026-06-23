@@ -84,8 +84,8 @@ bool TrafficManager::spawnRandomVehicle()
 
     DStarLite router(network, origin, destination, Heuristics3D::Euclidean);
     router.ComputeShortestPath();
-    std::vector<uint64_t> route = DStarLite::ExtractRoute(*network, origin, destination);
-
+    std::vector<uint64_t> route = router.ExtractRoute(*network, origin, destination);
+    
     if (route.empty()) return false; 
 
     bool isSpawnClear = true;

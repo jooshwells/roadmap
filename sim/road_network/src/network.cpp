@@ -77,7 +77,7 @@ void Network::visualizeNetwork()
 }
 
 void Network::visualizeNetworkForPython() {
-    std::string filename = "network_graph.csv";
+    std::string filename = "wf_network_graph.csv";
     std::ofstream outFile(filename);
     
     if (!outFile.is_open()) {

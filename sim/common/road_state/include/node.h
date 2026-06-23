@@ -31,8 +31,8 @@ class Node
             return id == other.id;
         }
 
-        double g = std::numeric_limits<double>::infinity();
-        double rhs = std::numeric_limits<double>::infinity();
+        // double g = std::numeric_limits<double>::infinity();
+        // double rhs = std::numeric_limits<double>::infinity();
 
         Node(std::uint64_t initId, double iLon, double iLat, double x, double y);
         Node();
