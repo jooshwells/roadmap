@@ -135,28 +135,33 @@ def add_target_coordinates(network_df: pd.DataFrame):
 
 def choose_color_settings(metric: str):
     """
-    Choose a color scale based on the metric I am visualizing.
+    Use colors that are easy to interpret:
 
-    For delay, flow, and bottleneck score:
-        Higher values should stand out more.
+    Green = good
+    Yellow = moderate
+    Red = needs attention
 
-    For speed:
-        Lower speeds are usually the concern, so red/orange means slower and
-        green means faster.
+    For flow, I use a neutral scale because higher traffic volume is
+    not automatically a problem.
     """
+
     if metric == "avg_speed_mph":
+        # Fast roads = green, slow roads = red
         return "RdYlGn", "Average speed (mph)", False
 
     if metric == "total_wait_added_s":
-        return "turbo", "Total wait added (seconds)", True
+        # More delay = worse
+        return "RdYlGn_r", "Total wait added (seconds)", True
 
     if metric == "estimated_flow_veh_per_hr":
+        # Traffic volume is not inherently good or bad
         return "viridis", "Estimated flow (vehicles/hour)", True
 
     if metric == "bottleneck_score":
-        return "turbo", "Bottleneck score", True
+        # Higher bottleneck score = worse congestion
+        return "RdYlGn_r", "Bottleneck score", True
 
-    return "turbo", metric, True
+    return "RdYlGn_r", metric, True
 
 
 def build_line_segments(network_df: pd.DataFrame, metrics_df: pd.DataFrame, metric: str):
@@ -233,16 +238,16 @@ def plot_heatmap(network_df: pd.DataFrame, metrics_df: pd.DataFrame, metric: str
         metric,
     )
 
-    fig, ax = plt.subplots(figsize=(18, 11), facecolor="black")
-    ax.set_facecolor("black")
+    fig, ax = plt.subplots(figsize=(18, 11), facecolor="#171717")
+    ax.set_facecolor("#171717")
 
     # First I draw the full network lightly so I can see the map outline.
     if background_segments:
         background = LineCollection(
             background_segments,
-            colors="dimgray",
-            linewidths=0.25,
-            alpha=0.25,
+            colors="#A0A0A0",
+            linewidths=0.40,
+            alpha=0.60,
         )
         ax.add_collection(background)
 

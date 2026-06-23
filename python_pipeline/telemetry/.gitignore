@@ -1,17 +1,16 @@
 # Python cache
 __pycache__/
+*.py[cod]
 .pytest_cache/
 
 # Generated outputs
 outputs/
 
-# Large input datasets
-data/network/
-data/fdot/
+# Simulation input (changes every run)
 data/simulation/
 
-# Keep sample data if added later
-!data/sample/
+# FDOT source data (large reference files)
+data/fdot/
 
 # VS Code
 .vscode/
