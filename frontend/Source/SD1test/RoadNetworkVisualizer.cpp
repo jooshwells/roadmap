@@ -26,30 +26,21 @@ void ARoadNetworkVisualizer::BuildVisualNetwork(Network* RoadNetwork)
 {
     if (!RoadNetwork) return;
 
-    RoadHISM->ClearInstances();
-    InstanceIndexToEdgeId.Empty();
+    // Only wipe out instances if we are doing a fresh file import sequence.
+    // When editing interactively, we bypass this to let new clicks append safely.
+    if (bIsLoadingFromFile)
+    {
+        RoadHISM->ClearInstances();
+        InstanceIndexToEdgeId.Empty();
+    }
 
     const auto& AllNodes = RoadNetwork->getNodes();
     if (AllNodes.empty()) return;
 
-    // Calculate the center of the road network
-    double MinX = std::numeric_limits<double>::max();
-    double MinY = std::numeric_limits<double>::max();
-    double MaxX = std::numeric_limits<double>::lowest();
-    double MaxY = std::numeric_limits<double>::lowest();
-
-    for (const auto& NodePair : AllNodes)
-    {
-        const Node& N = NodePair.second;
-        if (N.getX() < MinX) MinX = N.getX();
-        if (N.getX() > MaxX) MaxX = N.getX();
-        if (N.getY() < MinY) MinY = N.getY();
-        if (N.getY() > MaxY) MaxY = N.getY();
-    }
-
-    // Set the offset to the exact center of the bounding box
-    OriginOffsetX = (MinX + MaxX) / 2.0;
-    OriginOffsetY = (MinY + MaxY) / 2.0;
+    // === FIXED STATIC CENTRAL FLORIDA ZONE OFFSETS ===
+    // Forces a unified, static reference frame matching your editor placement inputs.
+    OriginOffsetX = 4003563.0;
+    OriginOffsetY = 2556901.0;
 
     TArray<FTransform> Transforms;
     TArray<uint64_t> TempEdgeIds;
@@ -70,7 +61,7 @@ void ARoadNetworkVisualizer::BuildVisualNetwork(Network* RoadNetwork)
             Node* DestNode = RoadNetwork->getNode(Edge.getDest());
             if (!DestNode) continue;
 
-            // Force Z to 0.0. Subtracting Origin forces the geographic center to 0,0.
+            // Force Z to 0.0. Subtracting the static Origin ensures coordinates match 1:1.
             FVector StartLoc((OriginNode.getX() - OriginOffsetX) * 100.0,
                 (OriginNode.getY() - OriginOffsetY) * 100.0,
                 0.0);
@@ -117,14 +108,12 @@ void ARoadNetworkVisualizer::BuildVisualNetwork(Network* RoadNetwork)
         InstanceIndexToEdgeId.Add(AddedIndices[i], TempEdgeIds[i]);
 
         // Push the custom data to the GPU
-        // Index 0: The number of lanes (used to draw the Y-axis dividers)
         RoadHISM->SetCustomDataValue(AddedIndices[i], 0, TempLanes[i], false);
-
-        // Index 1: The X-scale (used to keep dashed lines a standard length)
         RoadHISM->SetCustomDataValue(AddedIndices[i], 1, TempScaleX[i], false);
     }
 
-    RoadHISM->MarkRenderStateDirty();
+    RoadHISM->UpdateBounds();
+	RoadHISM->MarkRenderStateDirty(); // Force the HISM to refresh its render state after all custom data updates
 }
 
 int64 ARoadNetworkVisualizer::GetEdgeIdFromHitItem(int32 HitItemIndex)

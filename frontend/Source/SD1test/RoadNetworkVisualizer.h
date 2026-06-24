@@ -51,6 +51,10 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Road Network")
     int64 GetEdgeIdFromHitItem(int32 HitItemIndex);
 
+	// True when parcing massive static files, False when interactively editing the road network to avoid unnecessary rebuilds
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Editor Settings")
+    bool bIsLoadingFromFile = true;
+
 private:
     // Maps HISM Instance ID (int32) to the simulator's Edge ID (uint64_t)
     TMap<int32, uint64_t> InstanceIndexToEdgeId;
