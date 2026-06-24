@@ -156,6 +156,12 @@ void ASimulationManager::StartSimulation()
 	if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Green, TEXT("Simulation Started!"));
 }
 
+void ASimulationManager::StopSimulation()
+{
+	bSimulationRunning = false;
+	if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Green, TEXT("Simulation Stoped!"));
+}
+
 void ASimulationManager::UpdateVehicleVisuals(float Alpha)
 {
 	if (!TrafficSimEngine)

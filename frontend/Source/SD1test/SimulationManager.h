@@ -32,9 +32,12 @@ public:
 	//for the start sim button
 	UPROPERTY(BlueprintReadWrite, Category = "Simulation")
 	bool bSimulationRunning = false;
+	//for the stop sim button
 	
 	UFUNCTION(BlueprintCallable, Category = "Simulation")
-	void StartSimulation();
+		void StartSimulation();
+	UFUNCTION(BlueprintCallable, Category = "Simulation")
+		void StopSimulation();
 
 	// Creates a button in the Unreal Editor to generate the map
 	UFUNCTION(CallInEditor, Category = "Simulation Setup")
