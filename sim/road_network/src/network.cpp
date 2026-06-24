@@ -176,6 +176,13 @@ void Network::calculateIntersectionPriorities()
     }
 }
 
+void Network::resetPathfindingState() {
+    for (auto& pair : nodes) {
+        pair.second.g = std::numeric_limits<double>::infinity();
+        pair.second.rhs = std::numeric_limits<double>::infinity();
+    }
+}
+
 Network::Network(){ numNodes = 0; }
 
 Network::~Network() {}

@@ -13,8 +13,8 @@
 PhysicsProcessor::PhysicsProcessor(Network* mapNetwork, VehicleSpatialHash* spatialObj) : network(mapNetwork), spatialHash(spatialObj), vehicleList(), vehicleUpdates() {}
 
 float PhysicsProcessor::getRouteSegmentLength(VehicleState* vhcl, int routeIndex) {
-    // Safety bounds check
-    if (routeIndex < 0 || routeIndex >= vhcl->currentRoute.size() - 1) {
+    // Safety bounds check (Fixed to prevent unsigned underflow)
+    if (routeIndex < 0 || routeIndex + 1 >= vhcl->currentRoute.size()) {
         return 0.0f; 
     }
 
@@ -83,17 +83,33 @@ float PhysicsProcessor::calculateDistanceToDestination(VehicleState* vhcl)
 }
 
 void PhysicsProcessor::update(float dt)
-{
-    spatialHash->rebuild(vehicleList);
+{   
+    // hide cars marked for deletion
+    std::vector<VehicleState*> livingVehicles;
+    for(VehicleState* v : vehicleList) {
+        if(!v->isMarkedForDeletion) {
+            livingVehicles.push_back(v);
+        }
+    }
+
+    
+    // Rebuild hash ONLY with living vehicles to prevent dead-pointer reads
+    spatialHash->rebuild(livingVehicles);
+    
     updateIntersections(dt);
     // check for MOBIL
     for (VehicleState* vhcl : vehicleList)
     {
+        Road* currentEdge = vhcl->getCurrentEdge();
+        
+        // if the car spawned without an edge or fell off the map, skip lane change
+        if (currentEdge == nullptr) continue; 
+
         int currentLane = vhcl->getLane();
-        int totalLanes = vhcl->getCurrentEdge()->getLanes(); 
+        int totalLanes = currentEdge->getLanes(); 
 
         // if within 150 meters of intersection, check if car needs to turn/move lanes
-        float distanceToIntersection = vhcl->getCurrentEdge()->getLength() - vhcl->getPos();
+        float distanceToIntersection = currentEdge->getLength() - vhcl->getPos();
         std::string upcomingTurn = "through";
         if (distanceToIntersection < 150.0f) {
             upcomingTurn = getUpcomingTurnDirection(vhcl);
@@ -144,6 +160,7 @@ void PhysicsProcessor::update(float dt)
     // ==========================================
     for (VehicleState* vhcl : vehicleList)
     {
+        if (vhcl == nullptr) continue;
         // ---> THE PARKING BRAKE <---
         // If the car has reached its destination and is barely moving, force a hard stop.
         if (vhcl->getDesiredSpeed() == 0.0f && vhcl->getSpeed() < 0.5f) {
@@ -177,14 +194,17 @@ void PhysicsProcessor::update(float dt)
     int i = 0;
     for (VehicleState* vhcl : vehicleList)
     {
+        if (vhcl == nullptr) {
+            i++; 
+            continue;
+        }
         // ---> CONTINUOUS DESTINATION CHECK <---
         // IDM brings the car to a halt perfectly on the line, so it never crosses it. 
         // Check if remaining distance is within a tiny tolerance (e.g., 0.5 meters) and speed is near zero.
         if (calculateDistanceToDestination(vhcl) < 0.5f && vhcl->getSpeed() < 0.1f) 
         {
-            // std::cout << "A vehicle has reached its destination!\n";
-            
             // Flag for removal from the active physics loop
+            vhcl->isMarkedForDeletion = true;
             vehiclesToRemove.push_back(vhcl);
 
             // Untether followers (Give trailing cars a free road!)
@@ -199,8 +219,10 @@ void PhysicsProcessor::update(float dt)
         }
 
         // Apply physics
-        vhcl->accelerate(vehicleUpdates[i]);
-        vhcl->move(vhcl->getSpeed() * dt);
+        if (!vhcl->isMarkedForDeletion) {
+            vhcl->accelerate(vehicleUpdates[i]);
+            vhcl->move(vhcl->getSpeed() * dt);
+        }
 
         // Routing Edge Transitions
         bool routeAdvanced = true;
@@ -212,6 +234,9 @@ void PhysicsProcessor::update(float dt)
             int nextNodeId = vhcl->currentRoute[vhcl->currentRouteIndex + 1];
 
             Node* currentNode = network->getNode(currentNodeId);
+            
+            // Safety Check: Break to prevent segfaults on disconnected map edges
+            if (currentNode == nullptr) break;
             
             // Look up the length of the road we are currently driving on
             double currentRoadLength = 0.0;
@@ -225,16 +250,20 @@ void PhysicsProcessor::update(float dt)
             // Check if we reached the end of the current road
             if (vhcl->getPos() >= currentRoadLength) 
             {
-                // Carry over momentum to the beginning of the next road
-                vhcl->setPos(vhcl->getPos() - currentRoadLength); 
+                // Prevent Zero-Length Infinite Loop
+                if (currentRoadLength <= 0.01f) {
+                    vhcl->setPos(0.0f);
+                } else {
+                    vhcl->setPos(vhcl->getPos() - currentRoadLength); 
+                }
+
                 vhcl->currentRouteIndex++;
                 routeAdvanced = true;
 
-                // Check if we have arrived at the final destination
                 if (vhcl->currentRouteIndex >= vhcl->currentRoute.size() - 1) 
                 {
                     vhcl->setDesiredSpeed(0.0f); // Apply brakes
-                    // std::cout << "A vehicle has reached its destination!\n";
+                    break; // EXIT THE WHILE LOOP IMMEDIATELY!
                 } 
                 else 
                 {
@@ -243,16 +272,19 @@ void PhysicsProcessor::update(float dt)
                     int newNextNodeId = vhcl->currentRoute[vhcl->currentRouteIndex + 1];
                     Node* newCurrentNode = network->getNode(newCurrentNodeId);
                     
-                    for (Road& edge : newCurrentNode->outgoingEdges) {
-                        if (edge.getDest() == newNextNodeId) {
-                            vhcl->setDesiredSpeed(edge.getSpeedLimit());
-                            vhcl->setCurrentEdge(&edge);
+                    if (newCurrentNode != nullptr) 
+                    {
+                        for (Road& edge : newCurrentNode->outgoingEdges) {
+                            if (edge.getDest() == newNextNodeId) {
+                                vhcl->setDesiredSpeed(edge.getSpeedLimit());
+                                vhcl->setCurrentEdge(&edge);
 
-                            if (vhcl->getLane() >= edge.getLanes()) {
-                                vhcl->setLane(edge.getLanes() - 1); 
+                                if (vhcl->getLane() >= edge.getLanes()) {
+                                    vhcl->setLane(edge.getLanes() - 1); 
+                                }
+
+                                break;
                             }
-
-                            break;
                         }
                     }
                 }
@@ -267,16 +299,27 @@ void PhysicsProcessor::update(float dt)
     // ==========================================
     for (VehicleState* deadVhcl : vehiclesToDestroy)
     {
-        // If the dying vehicle is currently occupying an intersection, clear it
         if (network != nullptr) {
             for (auto& pair : intersections) {
                 if (pair.second.currentOccupant == deadVhcl) {
                     pair.second.currentOccupant = nullptr;
                 }
+                
+                // clear dead car from wait queues
+                std::queue<VehicleState*> safeQueue;
+                while (!pair.second.waitQueue.empty()) {
+                    VehicleState* waitingCar = pair.second.waitQueue.front();
+                    pair.second.waitQueue.pop();
+                    
+                    // Only keep cars that aren't about to be deleted
+                    if (waitingCar != deadVhcl) {
+                        safeQueue.push(waitingCar);
+                    }
+                }
+                pair.second.waitQueue = safeQueue;
             }
         }
         delete deadVhcl;
-        
     }
     vehiclesToDestroy.clear();
 
@@ -292,10 +335,6 @@ void PhysicsProcessor::update(float dt)
         );
 
         vehiclesToDestroy.push_back(parkedVehicle); // Destroy it next frame
-        
-        // Notice we do NOT call 'delete deadVhcl;' here.
-        // This ensures the main.cpp loop can safely read and print 
-        // the final parked coordinates without a segmentation fault.
     }
     
     // Clear the queue for the next frame
@@ -304,6 +343,15 @@ void PhysicsProcessor::update(float dt)
 
 float PhysicsProcessor::IDM(VehicleState* vhcl, VehicleState* leader, bool mobil )
 {
+    if (vhcl == nullptr || vhcl->isMarkedForDeletion) return 0.0f;
+
+    if (vhcl->getCurrentEdge() == nullptr) {
+        return 0.0f; 
+    }
+    if (leader != nullptr && leader->isMarkedForDeletion) {
+        leader = nullptr; // Pretend the road is clear
+    }
+    
     float safeDesiredSpeed = std::max(vhcl->getDesiredSpeed(), 0.001f);
     float freeRoadRatio = pow((vhcl->getSpeed() / safeDesiredSpeed), vhcl->getAccelExp());
 
@@ -379,6 +427,16 @@ void PhysicsProcessor::addVehicle(VehicleState* vhcl)
                 }
             }
         }
+        // debugging
+        if (vhcl->getCurrentEdge() == nullptr) {
+            std::cerr << "[WARNING] Vehicle " << vhcl->getId() 
+                      << " failed to bind to Edge! Route: " 
+                      << currentNodeId << " -> " << nextNodeId << ". Aborting spawn." << std::endl;
+            
+            // Delete the car and remove it from the list immediately
+            vehicleList.pop_back(); 
+            delete vhcl;
+        }
     }
 }
 
@@ -433,6 +491,15 @@ VehicleState* PhysicsProcessor::getLeader(VehicleState* vhcl, int targetLane)
     // 1. Get the physical car ahead using the optimized spatial hash (from your teammate)
     VehicleState* physicalLeader = spatialHash->getLeader(vhcl, targetLane, network);
     
+    // another safety check 
+    if (!VehicleState::isSafe(physicalLeader)) {
+        physicalLeader = nullptr;
+    }
+    if (physicalLeader != nullptr) {
+        if(physicalLeader->isMarkedForDeletion) {
+            return  nullptr;
+        }
+    }
     // Calculate distance to the physical leader
     float physicalDistance = std::numeric_limits<float>::max();
     if (physicalLeader != nullptr) {
@@ -455,18 +522,17 @@ VehicleState* PhysicsProcessor::getLeader(VehicleState* vhcl, int targetLane)
                 // If the stop line is closer than the physical leader, yield to the stop line
                 if (distanceToStopLine > 0.0f && distanceToStopLine < physicalDistance) {
                     
-                    // unique key for specific lane and road
                     std::pair<Road*, int> laneKey = std::make_pair(currentRoad, vhcl->getLane());
                     
-                    // spawn ghost vehicle if one doesnt exist
                     if (ghostVehicles.find(laneKey) == ghostVehicles.end()) {
                         IDMParameters dummyParams = {1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 0.0f};
-                        
-                        // spawn ghost at end of road
                         ghostVehicles[laneKey] = new VehicleState(0, 0, 0.0f, (float)currentRoad->getLength(), vhcl->getLane(), dummyParams);
                     }
+                
+                    VehicleState* ghost = ghostVehicles[laneKey];
+                    ghost->currentRouteIndex = vhcl->currentRouteIndex;
                     
-                    return ghostVehicles[laneKey];
+                    return ghost;
                 }
             }
         }
@@ -515,36 +581,43 @@ void PhysicsProcessor::updateIntersections(float dt)
 
         if (node == nullptr) continue;
 
-        // 4 way stop logic
-        if (node->type == Node::FOUR_WAY_STOP) {
+    // 4 way stop logic
+    if (node->type == Node::FOUR_WAY_STOP) {
+
+        // safety check
+        if (state.currentOccupant != nullptr && !state.currentOccupant->isAlive()) {
+            state.currentOccupant = nullptr; 
+        }
+        // check if there is a car already in the intersection
+        if (state.currentOccupant != nullptr) {
             
-            // check if there is car already in intersection
-            if (state.currentOccupant != nullptr) {
+            // deletion check
+            if (state.currentOccupant->isMarkedForDeletion) {
+                state.currentOccupant = nullptr; 
+            } 
+            // check if car cleared intersection
+            else {
                 Road* currentEdge = state.currentOccupant->getCurrentEdge();
-                
                 if (currentEdge) {
-                    // Check if the car has transitioned to the next road segment
-                    // (Its destination is no longer this intersection)
-                    if (currentEdge->getDest() != nodeId) {
-                        
-                        // Wait for the car to drive 5 meters into the new road to clear the box
+                    if (currentEdge->getDest() != nodeId || state.currentOccupant->getPos() > currentEdge->getLength() + 5.0f) {
                         if (state.currentOccupant->getPos() > 5.0f) {
-                            state.currentOccupant = nullptr; // free intersection
+                            state.currentOccupant = nullptr; 
                         }
-                    } 
-                    // Fallback for dead ends (where the car never changes roads)
-                    else if (state.currentOccupant->getPos() > currentEdge->getLength() + 5.0f) {
-                        state.currentOccupant = nullptr; 
                     }
                 }
             }
-
-            // pop queue
-            if (state.currentOccupant == nullptr && !state.waitQueue.empty()) {
-                state.currentOccupant = state.waitQueue.front();
-                state.waitQueue.pop();
-            }
         }
+
+        // check queue for deleted cars
+        while (!state.waitQueue.empty() && state.waitQueue.front()->isMarkedForDeletion) {
+            state.waitQueue.pop(); 
+        }
+        // pop queue
+        if (state.currentOccupant == nullptr && !state.waitQueue.empty()) {
+            state.currentOccupant = state.waitQueue.front();
+            state.waitQueue.pop();
+        }
+    }
         
         // traffic light logic, working on multi directional phases
         else if (node->type == Node::TRAFFIC_LIGHT) {
@@ -645,7 +718,6 @@ bool PhysicsProcessor::canVehicleEnter(VehicleState* vhcl, Node* destNode)
     // destNode represents intersection at end of a road
     if (destNode == nullptr || destNode->type == Node::PASS_THROUGH) return true;
     
-    // Upgraded to uint64_t to safely match the Node ID size
     uint64_t nodeId = destNode->getId(); 
     IntersectionState& state = intersections[nodeId];
 
@@ -731,13 +803,14 @@ bool PhysicsProcessor::canVehicleEnter(VehicleState* vhcl, Node* destNode)
             return false;
         }
     }
+    return true;
 }
 
 // looking into using cross product for determining when to turn
 std::string PhysicsProcessor::getUpcomingTurnDirection(VehicleState* vhcl) 
 {
-    // end of route, no turns
-    if (vhcl->currentRouteIndex >= vhcl->currentRoute.size() - 2) return "through";
+    // end of route, no turns (Safely preventing unsigned underflow)
+    if (vhcl->currentRouteIndex + 2 >= vhcl->currentRoute.size()) return "through";
 
     uint64_t prevNodeId = vhcl->currentRoute[vhcl->currentRouteIndex];
     uint64_t currNodeId = vhcl->currentRoute[vhcl->currentRouteIndex + 1];
@@ -788,6 +861,7 @@ bool PhysicsProcessor::hasSafeGap(VehicleState* yieldingCar, Node* destNode, flo
             std::vector<VehicleState*> oncomingCars = spatialHash->getVehiclesOnRoad(&oncomingRoad); 
 
             for (VehicleState* otherCar : oncomingCars) {
+                if (otherCar == nullptr || otherCar->isMarkedForDeletion) continue; // check for deleted cars
                 float distToIntersection = oncomingRoad.getLength() - otherCar->getPos();
                 float speed = std::max(otherCar->getSpeed(), 0.1f);
                 

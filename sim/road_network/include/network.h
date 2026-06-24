@@ -29,6 +29,7 @@ class Network {
         void addDirectedEdge(uint64_t fromId, uint64_t toId, double dist, double speedLimit, int lanes);
         void visualizeNetwork();
         void calculateIntersectionPriorities();
+        void resetPathfindingState();
 
         Network();
         ~Network();

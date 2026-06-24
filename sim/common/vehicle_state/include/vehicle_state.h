@@ -62,6 +62,11 @@ class VehicleState {
 
         std::vector<uint64_t> currentRoute;
         uint64_t currentRouteIndex;
+        bool isMarkedForDeletion = false;
+        bool isAlive() const { return !isMarkedForDeletion; }
+        static bool isSafe(VehicleState* v) {
+            return (v != nullptr && !v->isMarkedForDeletion);
+        }
 
     private:
         float m_speed;

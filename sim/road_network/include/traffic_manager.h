@@ -21,7 +21,7 @@ class TrafficManager
     public:
         TrafficManager(Network* net, PhysicsProcessor* phys);
         void update(float dt);
-        void spawnRandomVehicle();
+        bool spawnRandomVehicle();
 };
 
 #endif

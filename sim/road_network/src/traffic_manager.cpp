@@ -15,26 +15,32 @@ void TrafficManager::update(float dt)
     timeSinceLastSpawn += dt;
     
     if (timeSinceLastSpawn >= spawnInterval) 
-    {
-        spawnRandomVehicle();
-        timeSinceLastSpawn = 0.0f; // Reset timer
+    {   
+        // reset only on success, fix dead end node spawning
+        bool success = spawnRandomVehicle();
+        if (success) {
+            timeSinceLastSpawn = 0.0f; 
+        }
     }
 }
 
-void TrafficManager::spawnRandomVehicle() 
+bool TrafficManager::spawnRandomVehicle() 
 {
     // Pick a random origin and destination from your network
     Node* origin = network->getRandomNode(rng);
     Node* destination = network->getRandomNode(rng);
 
-    if (origin == destination) return; // Prevent 0-length routes
+    if (origin == destination) return false; // Prevent 0-length routes
+
+    network->resetPathfindingState();
 
     // Compute the route
     DStarLite router(network, origin, destination, Heuristics3D::Euclidean);
     router.ComputeShortestPath();
     std::vector<uint64_t> route = DStarLite::ExtractRoute(*network, origin, destination);
 
-    if (route.empty()) return; // Map is disconnected, no route found
+    // change to 2 to fix dead end node bug, if D* spawns car on dead end, there is no outgoing edges
+    if (route.size() < 2) return false; 
 
     // Extract the IDs for telemetry and routing checks
     uint64_t originId = origin->getId();
@@ -57,7 +63,7 @@ void TrafficManager::spawnRandomVehicle()
     }
 
     // Abort spawn if the intersection is blocked
-    if (!isSpawnClear) return; 
+    if (!isSpawnClear) return false; 
 
     // 3. Create the vehicle
     VehicleState* newCar = new VehicleState(
@@ -73,4 +79,6 @@ void TrafficManager::spawnRandomVehicle()
     newCar->currentRouteIndex = 0;
 
     physicsLoop->addVehicle(newCar);
+
+    return true;
 }

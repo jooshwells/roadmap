@@ -283,6 +283,8 @@ for node_id, data in G.nodes(data=True):
         traffic_control = "signal"
     elif highway_tag == "stop":
         traffic_control = "stop"
+    elif highway_tag == "give_way":
+        traffic_control = "yield"
 
     traffic_control_map[node_id] = traffic_control
 
@@ -347,6 +349,8 @@ for node_id, data in H_geo.nodes(data=True):
         signal_count_after += 1
     elif data.get("traffic_control") == "stop":
         stop_count_after += 1
+    elif data.get("traffic_control") == "yield": # <-- NEW
+        yield_count_after += 1
 
 print("Tag check after simplification:")
 print("  turn:lanes:", turn_count_after)
@@ -355,6 +359,7 @@ print("  turn:lanes:backward:", turn_backward_count_after)
 print("  lit:", lit_count_after)
 print("  traffic signals:", signal_count_after)
 print("  stop signs:", stop_count_after)
+print("  yield signs:", yield_count_after)
 
 
 # ---------------------------------------------------
