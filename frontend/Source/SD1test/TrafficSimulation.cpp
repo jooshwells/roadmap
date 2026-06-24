@@ -23,8 +23,8 @@ void TrafficSimulation::Initialize()
     
     // 1. Instantiate the network map on the heap
     orlandoMap = new Network(NetworkBuilder::buildNetworkFromJSONL(
-        "E:/dev/roadmap/python_pipeline/sample_out/waterford_nodes_orange_allroads_offline_xy.jsonl",
-		"E:/dev/roadmap/python_pipeline/sample_out/waterford_edges_orange_allroads_offline_xy.jsonl"
+        "C:\\Users\\Reece Wilson\\Desktop\\school\\Spring 2026\\SD1\\python_pipeline\\sample_out\\waterford_nodes_orange_allroads_offline_xy.jsonl",
+        "C:\\Users\\Reece Wilson\\Desktop\\school\\Spring 2026\\SD1\\python_pipeline\\sample_out\\waterford_edges_orange_allroads_offline_xy.jsonl"
     ));
 
     if (orlandoMap)
