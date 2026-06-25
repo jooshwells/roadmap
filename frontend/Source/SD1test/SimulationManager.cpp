@@ -159,7 +159,26 @@ void ASimulationManager::StartSimulation()
 void ASimulationManager::StopSimulation()
 {
 	bSimulationRunning = false;
-	if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Green, TEXT("Simulation Stoped!"));
+	// Clear all vehicle visuals
+	if (VehicleISM)
+	{
+		VehicleISM->ClearInstances();
+	}
+
+	// Reset the accumulator
+	Accumulator = 0.0f;
+
+	// Destroy and recreate the simulation engine to reset state
+	if (TrafficSimEngine)
+	{
+		delete TrafficSimEngine;
+		TrafficSimEngine = nullptr;
+	}
+
+	TrafficSimEngine = new TrafficSimulation();
+	TrafficSimEngine->Initialize();
+
+	if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Red, TEXT("Simulation Stopped & Reset!"));
 }
 
 void ASimulationManager::UpdateVehicleVisuals(float Alpha)
