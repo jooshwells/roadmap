@@ -21,14 +21,14 @@ UCLASS()
 class SD1TEST_API ASimulationManager : public AActor
 {
 	GENERATED_BODY()
-
-public:
+	
+public:	
 	// Sets default values for this actor's properties
 	ASimulationManager();
 	// This allows you to select your Blueprint in the Unreal Editor
 	UPROPERTY(EditAnywhere, Category = "Simulation Setup")
 	TSubclassOf<class ARoadNetworkVisualizer> VisualizerBlueprint;
-
+	
 	//for the start sim button
 	UPROPERTY(BlueprintReadWrite, Category = "Simulation")
 	bool bSimulationRunning = false;
@@ -52,7 +52,7 @@ public:
 
 private:
 	TrafficSimulation* TrafficSimEngine;
-
+	
 	double Accumulator = 0.0;
 
 	int StepCount = 0;
@@ -62,7 +62,7 @@ private:
 	void UpdateVehicleVisuals(float Alpha);
 
 	Network* MyRoadNetwork;
-	ARoadNetworkVisualizer* NetworkVisualizer;
+    ARoadNetworkVisualizer* NetworkVisualizer;
 
 protected:
 	// Called when the game starts or when spawned

@@ -8,12 +8,12 @@ DStarLite::DStarLite(Network* net, Node* s, Node* g, std::function<double(Node*,
     : network(net), start(s), goal(g), last_start(s), km(0.0), heuristicFunc(hFunc) {
     
     // The cost to reach the goal from the goal is 0
-    goal->rhs = 0.0; 
+    getState(goal).rhs = 0.0; 
     U.insert({CalculateKey(goal), goal});
 }
 
 Key DStarLite::CalculateKey(Node* s) {
-    double min_val = std::min(s->g, s->rhs);
+    double min_val = std::min(getState(s).g, getState(s).rhs);
     return {min_val + heuristicFunc(start, s) + km, min_val};
 }
 
@@ -37,18 +37,18 @@ void DStarLite::UpdateVertex(Node* u) {
             
             // Using length as the cost. 
             // (You could also use edge.getLength() / edge.getSpeedLimit() for time)
-            double cost = edge.getLength() + succ->g; 
+            double cost = edge.getDynamicCost() + getState(succ).g; 
             if (cost < min_rhs) {
                 min_rhs = cost;
             }
         }
-        u->rhs = min_rhs;
+        getState(u).rhs = min_rhs;;
     }
 
     RemoveFromQueue(u);
 
     // If the node is inconsistent, it needs to be evaluated in the queue
-    if (u->g != u->rhs) {
+    if (getState(u).g != getState(u).rhs) {
         U.insert({CalculateKey(u), u});
     }
 }
@@ -61,7 +61,7 @@ void DStarLite::ComputeShortestPath() {
         Key k_new = CalculateKey(u);
 
         // Break if the start is fully consistent and optimal
-        if (CalculateKey(start) < k_old && start->rhs == start->g) {
+        if (CalculateKey(start) < k_old && getState(start).rhs == getState(start).g) {
             break; 
         }
 
@@ -71,9 +71,9 @@ void DStarLite::ComputeShortestPath() {
             // Node needs to be re-evaluated with its new higher cost
             U.insert({k_new, u});
         } 
-        else if (u->g > u->rhs) {
+        else if (getState(u).g > getState(u).rhs) {
             // Overconsistent: We found a better path
-            u->g = u->rhs;
+            getState(u).g = getState(u).rhs;
             
             // Alert all nodes pointing INTO this node that a better path exists
             for (int predId : u->incomingEdgeNodeIds) {
@@ -83,7 +83,7 @@ void DStarLite::ComputeShortestPath() {
         } 
         else {
             // Underconsistent: A path got blocked or worsened
-            u->g = INF;
+            getState(u).g = INF;
             UpdateVertex(u);
             
             // Alert all nodes pointing INTO this node that the path is broken
@@ -118,7 +118,7 @@ std::vector<uint64_t> DStarLite::ExtractRoute(Network& map, Node* start, Node* g
     Node* current = start;
     
     // Safety check in case no path exists
-    if (start->g == std::numeric_limits<double>::infinity()) {
+    if (getState(start).g == std::numeric_limits<double>::infinity()) {
         return path; 
     }
 
@@ -143,7 +143,7 @@ std::vector<uint64_t> DStarLite::ExtractRoute(Network& map, Node* start, Node* g
             }
 
             // Note: Ensure this cost matches the exact heuristic/weight used in ComputeShortestPath
-            double cost = edge.getLength() + succ->g; 
+            double cost = edge.getDynamicCost() + getState(succ).g;
             
             if (cost < min_cost) {
                 min_cost = cost;

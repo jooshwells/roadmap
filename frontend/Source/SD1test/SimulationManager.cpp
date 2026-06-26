@@ -3,7 +3,6 @@
 #include "Engine/World.h"
 #include "Engine/Engine.h"
 #include "network_builder.h"
-#include <filesystem>	
 #include "Misc/Paths.h"
 #include "HAL/FileManager.h"
 
@@ -11,6 +10,7 @@
 ASimulationManager::ASimulationManager()
 {
 	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bStartWithTickEnabled = true;
 
 	Accumulator = 0.0f;
 	FixedDelta = 0.1f;
@@ -136,7 +136,6 @@ void ASimulationManager::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	//added !bSimulationRunning
 	if (!TrafficSimEngine || !bSimulationRunning) return;
 
 	DeltaTime = FMath::Min(DeltaTime, 0.25f); // Avoid spiral of death
@@ -203,24 +202,18 @@ void ASimulationManager::UpdateVehicleVisuals(float Alpha)
 
 	if (!TrafficSimEngine || !VehicleISM) return;
 
-	// 1. Fetch the lightweight render structs from the backend
 	auto RenderStates = TrafficSimEngine->GetVehicleRenderStates();
 	if (GEngine)
 	{
 		GEngine->AddOnScreenDebugMessage(2, 0.1f, FColor::Green, FString::Printf(TEXT("Backend Active Cars: %d"), (int32)RenderStates.size()));
 	}
-	// 2. Convert backend positions to Unreal Transforms
 	TArray<FTransform> Transforms;
 	Transforms.Reserve(RenderStates.size()); // Pre-allocate memory for speed!
 
 	for (const auto& State : RenderStates)
 	{
-		// SCALE FIX: Multiply meters by 100 to get Unreal Centimeters
 		FVector UnrealPosition(State.x * 100.0f, State.y * 100.0f, State.z * 100.0f);
-
-		// Convert radians back to degrees for Unreal's rotation system
 		FRotator UnrealRotation(0.0f, FMath::RadiansToDegrees(State.yaw), 0.0f);
-
 		Transforms.Add(FTransform(UnrealRotation, UnrealPosition));
 	}
 
@@ -235,13 +228,11 @@ void ASimulationManager::UpdateVehicleVisuals(float Alpha)
 		}
 	}
 
-	// 4. Batch Update all active instances simultaneously on the GPU
 	if (Transforms.Num() > 0)
 	{
 		VehicleISM->BatchUpdateInstancesTransforms(0, Transforms, false, true, true);
 	}
 
-	// 5. Hide excess instances (if cars left the sim) by scaling to 0
 	if (CurrentCount > TargetCount)
 	{
 		for (int32 i = TargetCount; i < CurrentCount; ++i)
