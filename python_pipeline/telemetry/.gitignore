@@ -1,0 +1,19 @@
+# Python cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Generated outputs
+outputs/
+
+# Simulation input (changes every run)
+data/simulation/
+
+# FDOT source data (large reference files)
+data/fdot/
+
+# VS Code
+.vscode/
+
+# Windows
+Thumbs.db
