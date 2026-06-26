@@ -12,9 +12,15 @@ import csv
 import networkx as nx
 
 def visualize_graph_from_csv(csv_file):
-    G = nx.DiGraph()
+    # --- BULLETPROOF PRESENTATION STYLING GLOBALS ---
+    bg_color = '#1A1C23'  # Deep slate/dark gray background
     
-    # Dictionary to store exact (X, Y) coordinates for every node
+    # Force Matplotlib to use this background everywhere by default
+    plt.rcParams['figure.facecolor'] = bg_color
+    plt.rcParams['axes.facecolor'] = bg_color
+    plt.rcParams['savefig.facecolor'] = bg_color
+
+    G = nx.DiGraph()
     pos_dict = {} 
 
     try:
@@ -40,12 +46,16 @@ def visualize_graph_from_csv(csv_file):
                 if len(row) > 1 and row[1].strip() != '':
                     target = row[1]
                     
-                    try:
-                        length = float(row[2])
-                    except (IndexError, ValueError):
-                        length = 1.0
-                        
-                    G.add_edge(source, target, weight=length)
+                    # Prevent self-cycles by checking if source and target are different
+                    if source != target:
+                        try:
+                            length = float(row[2])
+                        except (IndexError, ValueError):
+                            length = 1.0
+                            
+                        G.add_edge(source, target, weight=length)
+                    else:
+                        G.add_node(source)
                 else:
                     G.add_node(source)
                     
@@ -58,26 +68,42 @@ def visualize_graph_from_csv(csv_file):
         if node not in pos_dict:
             pos_dict[node] = (0.0, 0.0) 
 
-    # Increase figure size for a higher resolution canvas
-    plt.figure(figsize=(24, 18), facecolor='white')
+    # Create figure and get axis
+    fig = plt.figure(figsize=(24, 18))
+    ax = plt.gca()
 
-    # Optimized drawing parameters for massive networks
+    # Optimized drawing parameters for presentations
     nx.draw(G, pos_dict,
-            with_labels=False,        # Turned off to prevent overlapping text blackouts
-            node_color='red',         # Changed for contrast, though nodes will be tiny
-            node_size=0.1,            # Drastically shrunk nodes
-            edge_color='#333333',     # Dark gray for roads
-            width=0.2,                # Very thin lines for edges
-            alpha=0.5,                # Transparency so dense areas don't clump into a solid block
-            arrows=False)             # Turned off arrows; they add too much visual noise
+            with_labels=False,        
+            node_color='#00FF9D',     
+            node_size=0.15,           
+            edge_color='#8A91A6',     
+            width=0.25,               
+            alpha=0.6,                
+            arrows=False,
+            ax=ax)                    
 
-    plt.title("Geospatially Accurate Road Network", fontsize=24)
-    plt.gca().set_aspect('equal', adjustable='box')
+    # --- CRITICAL FIX ---
+    # nx.draw() completely hides the axis and its background color. 
+    # We must turn it back on, set the color, and hide the borders/ticks manually.
+    ax.set_axis_on()
+    ax.set_facecolor(bg_color)
     
-    # Use a higher DPI for crisp lines on zooming
+    # Hide ticks and tick labels
+    ax.tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
+    
+    # Hide the square border (spines) around the plot
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+
+    # Change title color to white to contrast with the dark background
+    plt.title("Geospatially Accurate Road Network", fontsize=28, color='white', pad=20)
+    ax.set_aspect('equal', adjustable='box')
+    
+    # Save image (rcparams handles the facecolor automatically now)
     plt.savefig("network_visualization.png", bbox_inches="tight", dpi=600)
     plt.close()
     
-    print("Graph generated instantly and saved to network_visualization.png")
+    print("Presentation-ready graph generated and saved to network_visualization.png")
 
 visualize_graph_from_csv("network_graph.csv")

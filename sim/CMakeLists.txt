@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 4.2)
 
 project(RoadMapSim)
 
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/CentralLibs")
+
 message("-------------------------------------------")
 message("-------------  Road Map Sim  --------------")
 message("------------ UCF Senior Design ------------")

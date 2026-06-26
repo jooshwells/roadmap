@@ -2,6 +2,7 @@
 #include "dstarlite.h"
 #include "heuristics3d.h"
 #include "idm_profiles.h"
+#include "physics_processor.h"
 
 TrafficManager::TrafficManager(Network* net, PhysicsProcessor* phys) 
     : network(net), physicsLoop(phys) 

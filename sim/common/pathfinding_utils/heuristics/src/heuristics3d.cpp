@@ -24,9 +24,8 @@ namespace Heuristics3D {
         double dx = std::abs(a->getX() - b->getX());
         double dy = std::abs(a->getY() - b->getY());
         double dz = std::abs(a->getZ() - b->getZ());
-        
-        // Returns the longest distance along any single axis
-        return std::max({dx, dy, dz});
+
+        return std::max(dx, std::max(dy, dz));
     }
 
     double PenalizedZ(const Node* a, const Node* b) {
