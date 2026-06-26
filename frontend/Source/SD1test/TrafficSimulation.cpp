@@ -1,7 +1,11 @@
 #include "TrafficSimulation.h"
 #include <cmath>
 #include "physics_processor.h"
+#include "traffic_manager.h"
 #include "dstarlite.h"
+#include <filesystem>
+#include "Misc/Paths.h"
+#include "HAL/FileManager.h"
 
 TrafficSimulation::TrafficSimulation() : currentTime(0.0f), orlandoMap(nullptr), logger(nullptr), spatialHash(nullptr), controller(nullptr), spawner(nullptr)
 {
@@ -20,11 +24,21 @@ TrafficSimulation::~TrafficSimulation()
 void TrafficSimulation::Initialize() 
 {
     currentTime = 0.0f;
-    
+
+    FString ProjectDir = FPaths::ProjectDir();
+
+    // 2. Build the path to the python_pipeline folder
+    // Since python_pipeline is next to frontend, we go up one level from the project root
+    FString NodesPath = FPaths::Combine(ProjectDir, TEXT("../python_pipeline/sample_out/waterford_nodes_orange_allroads_offline_xy.jsonl"));
+    FString EdgesPath = FPaths::Combine(ProjectDir, TEXT("../python_pipeline/sample_out/waterford_edges_orange_allroads_offline_xy.jsonl"));
+
+    // 3. (Optional but recommended) Convert it to a clean, absolute path
+    FPaths::CollapseRelativeDirectories(NodesPath);
+    FPaths::CollapseRelativeDirectories(EdgesPath);
     // 1. Instantiate the network map on the heap
     orlandoMap = new Network(NetworkBuilder::buildNetworkFromJSONL(
-        "C:\\Users\\Reece Wilson\\Desktop\\school\\Spring 2026\\SD1\\python_pipeline\\sample_out\\waterford_nodes_orange_allroads_offline_xy.jsonl",
-        "C:\\Users\\Reece Wilson\\Desktop\\school\\Spring 2026\\SD1\\python_pipeline\\sample_out\\waterford_edges_orange_allroads_offline_xy.jsonl"
+        TCHAR_TO_UTF8(*NodesPath),
+        TCHAR_TO_UTF8(*EdgesPath)
     ));
 
     if (orlandoMap)

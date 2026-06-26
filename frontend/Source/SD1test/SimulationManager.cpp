@@ -3,6 +3,9 @@
 #include "Engine/World.h"
 #include "Engine/Engine.h"
 #include "network_builder.h"
+#include <filesystem>	
+#include "Misc/Paths.h"
+#include "HAL/FileManager.h"
 
 // Sets default values
 ASimulationManager::ASimulationManager()
@@ -64,12 +67,21 @@ void ASimulationManager::GenerateRoadsInEditor()
 	UE_LOG(LogTemp, Log, TEXT("Generate button clicked!"));
 	// 1. Clean up old data if you click the button multiple times
 	ClearRoadsInEditor();
+	FString ProjectDir = FPaths::ProjectDir();
 
+	// 2. Build the path to the python_pipeline folder
+	// Since python_pipeline is next to frontend, we go up one level from the project root
+	FString NodesPath = FPaths::Combine(ProjectDir, TEXT("../python_pipeline/sample_out/waterford_nodes_orange_allroads_offline_xy.jsonl"));
+	FString EdgesPath = FPaths::Combine(ProjectDir, TEXT("../python_pipeline/sample_out/waterford_edges_orange_allroads_offline_xy.jsonl"));
+
+	// 3. (Optional but recommended) Convert it to a clean, absolute path
+	FPaths::CollapseRelativeDirectories(NodesPath);
+	FPaths::CollapseRelativeDirectories(EdgesPath);
 	// 2. Build your simulator network. 
 	// (If this crashes or fails to load the JSONs in the editor, change these to absolute paths like "C:/dev/roadmap/...")
 	MyRoadNetwork = new Network(NetworkBuilder::buildNetworkFromJSONL(
-		"C:\\Users\\Reece Wilson\\Desktop\\school\\Spring 2026\\SD1\\python_pipeline\\sample_out\\waterford_nodes_orange_allroads_offline_xy.jsonl",
-		"C:\\Users\\Reece Wilson\\Desktop\\school\\Spring 2026\\SD1\\python_pipeline\\sample_out\\waterford_edges_orange_allroads_offline_xy.jsonl"
+		TCHAR_TO_UTF8(*NodesPath),
+		TCHAR_TO_UTF8(*EdgesPath)
 	));
 
 	if (MyRoadNetwork)
