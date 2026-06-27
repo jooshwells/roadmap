@@ -2,8 +2,8 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
+#include "SimulationManager.h"
 #include "MapPlayerController.generated.h"
-
 UCLASS()
 class SD1TEST_API AMapPlayerController : public APlayerController
 {
@@ -18,4 +18,7 @@ protected:
 
 	// The function that fires when we click
 	void OnLeftMouseClick();
+public:
+	UFUNCTION(BlueprintImplementableEvent, Category = "UI")
+	void OnVehicleClickedUI(FVehicleIDMStats VehicleStats);
 };

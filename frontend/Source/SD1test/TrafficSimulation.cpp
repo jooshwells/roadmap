@@ -177,6 +177,8 @@ std::vector<VehicleRenderState> TrafficSimulation::GetVehicleRenderStates()
             // Apply the offset
             state.x += rightVecX * laneOffsetMeters;
             state.y += rightVecY * laneOffsetMeters;
+
+            state.id = v->getId();
         }
         // ---------------------------------------------------------
 

@@ -22,6 +22,7 @@ struct VehicleRenderState
 {
     float x, y, z;
     float yaw; // Heading direction in radians
+    int id; // vhcl id in sim backend
 };
 
 class TrafficSimulation 

@@ -7,6 +7,8 @@ void AMapPlayerController::BeginPlay()
 	
 	// Ensure the mouse cursor is visible over the map
 	bShowMouseCursor = true; 
+	bEnableClickEvents = true; 
+	bEnableMouseOverEvents = true;
 }
 
 void AMapPlayerController::SetupInputComponent()
@@ -22,9 +24,7 @@ void AMapPlayerController::SetupInputComponent()
 
 void AMapPlayerController::OnLeftMouseClick()
 {
-	// 1. Check if the input action is firing at all
 	UE_LOG(LogTemp, Warning, TEXT("=== CLICK REGISTERED ==="));
-
 	FHitResult HitResult;
 	bool bHit = GetHitResultUnderCursor(ECC_Visibility, false, HitResult);
 
@@ -32,10 +32,26 @@ void AMapPlayerController::OnLeftMouseClick()
 	{
 		AActor* HitActor = HitResult.GetActor();
 
-		// 2. Check WHAT the raycast actually hit
-		FString HitName = HitActor ? HitActor->GetName() : TEXT("Unknown Actor");
-		UE_LOG(LogTemp, Warning, TEXT("Raycast Hit: %s"), *HitName);
+		// 1. Check if we clicked the Simulation Manager (Vehicles)
+		ASimulationManager* SimManager = Cast<ASimulationManager>(HitActor);
+		if (SimManager)
+		{
+			// Verify we actually clicked the vehicle instances, not just the actor root
+			if (HitResult.Item != INDEX_NONE)
+			{
+				FVehicleIDMStats Stats;
+				if (SimManager->GetVehicleStatsFromInstance(HitResult.Item, Stats))
+				{
+					UE_LOG(LogTemp, Warning, TEXT("Clicked Vehicle ID: %d"), Stats.VehicleID);
 
+					// Fire the event to open the Widget in Blueprints!
+					OnVehicleClickedUI(Stats);
+				}
+			}
+			return; // End execution since we found a vehicle
+		}
+
+		// 2. Check if we clicked the Road Network Visualizer (Your existing code)
 		ARoadNetworkVisualizer* ClickedVisualizer = Cast<ARoadNetworkVisualizer>(HitActor);
 		if (ClickedVisualizer)
 		{

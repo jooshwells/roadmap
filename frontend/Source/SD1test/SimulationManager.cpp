@@ -14,7 +14,7 @@ ASimulationManager::ASimulationManager()
 	PrimaryActorTick.bStartWithTickEnabled = true;
 
 	Accumulator = 0.0f;
-	FixedDelta = 0.1f;
+	FixedDelta = 0.016f;
 	TrafficSimEngine = nullptr;
 
 	// Use standard ISM for moving objects!
@@ -22,8 +22,9 @@ ASimulationManager::ASimulationManager()
 	RootComponent = VehicleISM;
 
 	// CRITICAL FOR PERFORMANCE: Disable collision on the moving vehicles
-	VehicleISM->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	VehicleISM->SetCollisionProfileName(TEXT("NoCollision"));
+	VehicleISM->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	VehicleISM->SetCollisionResponseToAllChannels(ECR_Block); // Block raycasts
+	VehicleISM->SetCollisionProfileName(TEXT("QueriesOnly"));
 	VehicleISM->SetGenerateOverlapEvents(false);
 
 	// Disable shadows for the MVP to guarantee maximum GPU performance
@@ -302,7 +303,20 @@ void ASimulationManager::UpdateVehicleVisuals(float Alpha)
 		GEngine->AddOnScreenDebugMessage(2, 0.1f, FColor::Green, FString::Printf(TEXT("Backend Active Cars: %d"), (int32)RenderStates.size()));
 	}
 	TArray<FTransform> Transforms;
-	Transforms.Reserve(RenderStates.size()); // Pre-allocate memory for speed!
+	Transforms.Reserve(RenderStates.size()); // Pre-allocate memory for speed
+
+	InstanceIndexToVehicleId.Empty(); // Clear the old map
+
+	for (int32 i = 0; i < RenderStates.size(); ++i)
+	{
+		const auto& State = RenderStates[i];
+		FVector UnrealPosition(State.x * 100.0f, State.y * 100.0f, State.z * 100.0f);
+		FRotator UnrealRotation(0.0f, FMath::RadiansToDegrees(State.yaw), 0.0f);
+		Transforms.Add(FTransform(UnrealRotation, UnrealPosition));
+
+		// Map the HISM instance index (i) to the backend Vehicle ID
+		InstanceIndexToVehicleId.Add(i, State.id);
+	}
 
 	for (const auto& State : RenderStates)
 	{
@@ -352,4 +366,29 @@ void ASimulationManager::ShowHeatmapOverlay()
 	{
 		HeatmapWidget->AddToViewport(100);
 	}
+}
+
+bool ASimulationManager::GetVehicleStatsFromInstance(int32 InstanceIndex, FVehicleIDMStats& OutStats)
+{
+	if (!TrafficSimEngine || !InstanceIndexToVehicleId.Contains(InstanceIndex)) return false;
+
+	int32 TargetVehId = InstanceIndexToVehicleId[InstanceIndex];
+
+	// Find the vehicle in the backend
+	for (VehicleState* v : TrafficSimEngine->GetActiveVehicles())
+	{
+		if (v->getId() == TargetVehId)
+		{
+			OutStats.VehicleID = TargetVehId;
+			OutStats.CurrentSpeed = v->getSpeed();
+			OutStats.DesiredSpeed = v->getDesiredSpeed();
+			OutStats.MaxAcceleration = v->getMaxAccel();
+			OutStats.AccelerationExponent = v->getAccelExp();
+			OutStats.MinGap = v->getMinGap();
+			OutStats.SafeBrakePower = v->getSafeBrakePower();
+			OutStats.SafeTimeHeadway = v->getSafeTimeHeadway();
+			return true;
+		}
+	}
+	return false;
 }
