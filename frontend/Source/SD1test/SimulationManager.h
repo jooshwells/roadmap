@@ -17,6 +17,12 @@ THIRD_PARTY_INCLUDES_END
 
 #include "SimulationManager.generated.h"
 
+struct FVehicleTransformState
+{
+	FTransform Previous;
+	FTransform Target;
+};
+
 USTRUCT(BlueprintType)
 struct FVehicleIDMStats
 {
@@ -47,6 +53,9 @@ public:
 	
 	UFUNCTION(BlueprintCallable, Category = "Simulation")
 	bool GetVehicleStatsFromInstance(int32 InstanceIndex, FVehicleIDMStats& OutStats);
+
+	UFUNCTION(BlueprintCallable, Category = "Simulation")
+	int32 GetInstanceIndexFromVehicleID(int32 VehicleID);
 
 	//for the start sim button
 	UPROPERTY(BlueprintReadWrite, Category = "Simulation")
@@ -81,11 +90,10 @@ private:
 
 	void StepSimulation(double dt);
 
-	void UpdateVehicleVisuals(float Alpha);
-
+	void UpdateVehicleVisuals(float Alpha, bool bDidPhysicsStep);
 	Network* MyRoadNetwork;
     ARoadNetworkVisualizer* NetworkVisualizer;
-
+	TMap<int32, FVehicleTransformState> InterpolationData;
 	TMap<int32, int32> InstanceIndexToVehicleId;
 
 protected:
