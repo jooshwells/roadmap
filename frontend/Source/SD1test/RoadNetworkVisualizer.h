@@ -16,6 +16,14 @@ public:
 
     ARoadNetworkVisualizer();
 
+    // HISM for rendering Intersections/Nodes
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Road Network")
+    UHierarchicalInstancedStaticMeshComponent* NodeHISM;
+
+    // How big the intersection caps should be
+    UPROPERTY(EditAnywhere, Category = "Road Visuals")
+    float NodeScale = 15.0f;
+
     // The HISM component that renders all road segments efficiently
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Road Network")
     UHierarchicalInstancedStaticMeshComponent* RoadHISM;
@@ -42,6 +50,10 @@ public:
     // The raw Y coordinate from your data that should become 0 in Unreal
     UPROPERTY(EditAnywhere, Category = "Road Visuals")
     double OriginOffsetY = 2556901.0;
+
+    // The empty space in centimeters between opposing lanes of traffic
+    UPROPERTY(EditAnywhere, Category = "Road Visuals")
+    float MedianGapCm = 100.0f; // 1 meter gap
 
     // Builds the visual instances from your simulator's network
     void BuildVisualNetwork(Network* RoadNetwork);

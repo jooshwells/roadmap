@@ -10,6 +10,7 @@
 #include <utility>
 #include <vector>
 #include <cstdint>
+#include <unordered_map>
 
 // Define the Key type for our Priority Queue
 typedef std::pair<double, double> Key;
@@ -28,6 +29,11 @@ struct QueueElement {
     }
 };
 
+struct NodeState {
+    double g = std::numeric_limits<double>::infinity();
+    double rhs = std::numeric_limits<double>::infinity();
+};
+
 class DStarLite {
 private:
     Network* network;
@@ -35,6 +41,9 @@ private:
     Node* goal;
     Node* last_start;
     double km; // Key modifier for when the start node moves
+
+    std::unordered_map<uint64_t, NodeState> stateMap;
+    NodeState& getState(Node* n) { return stateMap[n->getId()]; }
     
     std::set<QueueElement> U; // The Priority Queue
     
@@ -53,7 +62,7 @@ public:
     // Core pathfinding solver
     void ComputeShortestPath();
 
-    static std::vector<uint64_t> ExtractRoute(Network& map, Node* start, Node* goal);
+    std::vector<uint64_t> ExtractRoute(Network& map, Node* start, Node* goal);
 
     // Call this if a road's cost changes (e.g., traffic jam or road closure)
     // You pass the ID of the node that the changed road originates from.

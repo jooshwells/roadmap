@@ -33,7 +33,7 @@ int main()
     TelemetryLogger logger("simulation_output.csv");
     VehicleSpatialHash* spatialHash = new VehicleSpatialHash();
     PhysicsProcessor controller(&orlandoMap, spatialHash);
-    TrafficManager spawner(&orlandoMap, &controller);
+    TrafficManager spawner(&orlandoMap, &controller, 1500);
 
     while (currentTime < maxT)
     {        
