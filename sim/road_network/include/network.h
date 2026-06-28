@@ -33,8 +33,6 @@ class Network {
 
         const std::unordered_map<uint64_t, Node>& getNodes() const { return nodes; }
 
-        const std::unordered_map<uint64_t, Node>& getNodes() const { return nodes; }
-
         Network();
         ~Network();
 

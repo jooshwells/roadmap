@@ -52,9 +52,13 @@ float PhysicsProcessor::calculateTrueGap(VehicleState* follower, VehicleState* l
         int stepStartNode = follower->currentRoute[i];
         int stepEndNode = follower->currentRoute[i+1];
         
-        // Check if this route step matches the leader's current physical edge
-        int leaderStartNode = leader->currentRoute[leader->currentRouteIndex];
-        int leaderEndNode = leader->currentRoute[leader->currentRouteIndex + 1];
+        // ---> FIX: Safely ask the physical road for its nodes instead of checking the route array <---
+        int leaderStartNode = -1;
+        int leaderEndNode = -1;
+        if (leader->getCurrentEdge()) {
+            leaderStartNode = leader->getCurrentEdge()->getOriginId();
+            leaderEndNode = leader->getCurrentEdge()->getDest();
+        }
 
         if (stepStartNode == leaderStartNode && stepEndNode == leaderEndNode) {
             leaderFound = true;
