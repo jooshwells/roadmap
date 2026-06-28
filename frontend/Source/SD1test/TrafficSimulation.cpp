@@ -23,8 +23,8 @@ void TrafficSimulation::Initialize()
     
     // 1. Instantiate the network map on the heap
     orlandoMap = new Network(NetworkBuilder::buildNetworkFromJSONL(
-        "E:/dev/roadmap/python_pipeline/sample_out/waterford_nodes_orange_allroads_offline_xy.jsonl",
-		"E:/dev/roadmap/python_pipeline/sample_out/waterford_edges_orange_allroads_offline_xy.jsonl"
+        "C:/roadmap/python_pipeline/sample_out/waterford_nodes_orange_allroads_offline_xy.jsonl",
+        "C:/roadmap/python_pipeline/sample_out/waterford_edges_orange_allroads_offline_xy.jsonl"
     ));
 
     if (orlandoMap)
@@ -148,4 +148,14 @@ std::vector<VehicleRenderState> TrafficSimulation::GetVehicleRenderStates()
     }
 
     return renderStates;
+}
+
+std::vector<TrafficLightRenderState> TrafficSimulation::GetTrafficLightStates() {
+    std::vector<TrafficLightRenderState> states;
+    if (!controller) return states;
+
+    for (const auto& pair : controller->getIntersections()) {
+        states.push_back({pair.first, pair.second.currentPhase});
+    }
+    return states;
 }

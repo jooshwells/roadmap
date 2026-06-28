@@ -69,8 +69,8 @@ void ASimulationManager::GenerateRoadsInEditor()
 	// 2. Build your simulator network. 
 	// (If this crashes or fails to load the JSONs in the editor, change these to absolute paths like "C:/dev/roadmap/...")
 	MyRoadNetwork = new Network(NetworkBuilder::buildNetworkFromJSONL(
-		"E:/dev/roadmap/python_pipeline/sample_out/waterford_nodes_orange_allroads_offline_xy.jsonl",
-		"E:/dev/roadmap/python_pipeline/sample_out/waterford_edges_orange_allroads_offline_xy.jsonl"
+		"C:/roadmap/python_pipeline/sample_out/waterford_nodes_orange_allroads_offline_xy.jsonl",
+		"C:/roadmap/python_pipeline/sample_out/waterford_edges_orange_allroads_offline_xy.jsonl"
 	));
 
 	if (MyRoadNetwork)

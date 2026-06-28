@@ -38,6 +38,11 @@ class PhysicsProcessor
 
         VehicleState* getLeader(VehicleState* vhcl, int targetLane);
         VehicleState* getFollower(VehicleState* vhcl, int targetLane);
+
+        // getter for frontend lights
+        const std::unordered_map<uint64_t, IntersectionState>& getIntersections() const { 
+            return intersections; 
+        }
         
         // Helper to get the length of a specific segment in a vehicle's route
         float getRouteSegmentLength(VehicleState* vhcl, int routeIndex);
@@ -49,7 +54,7 @@ class PhysicsProcessor
         const std::vector<VehicleState*>& getActiveVehicles() const { 
             return vehicleList; 
         }
-
+        
         PhysicsProcessor(Network* mapNetwork, VehicleSpatialHash* spatialObj);
         ~PhysicsProcessor();
 

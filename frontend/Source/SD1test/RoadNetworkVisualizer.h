@@ -51,6 +51,13 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Road Network")
     int64 GetEdgeIdFromHitItem(int32 HitItemIndex);
 
+    //traffic light and stop sign stuff
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Road Network")
+    UHierarchicalInstancedStaticMeshComponent* StopSignHISM;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Road Network")
+    UHierarchicalInstancedStaticMeshComponent* TrafficLightHISM;
+    TMap<uint64_t, TArray<int32>> IntersectionLightInstances;
+
 private:
     // Maps HISM Instance ID (int32) to the simulator's Edge ID (uint64_t)
     TMap<int32, uint64_t> InstanceIndexToEdgeId;
