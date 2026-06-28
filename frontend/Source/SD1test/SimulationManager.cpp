@@ -3,6 +3,8 @@
 #include "Engine/World.h"
 #include "Engine/Engine.h"
 #include "network_builder.h"
+#include "Misc/Paths.h"
+#include "HAL/FileManager.h"
 
 // Sets default values
 ASimulationManager::ASimulationManager()
@@ -65,12 +67,21 @@ void ASimulationManager::GenerateRoadsInEditor()
 	UE_LOG(LogTemp, Log, TEXT("Generate button clicked!"));
 	// 1. Clean up old data if you click the button multiple times
 	ClearRoadsInEditor();
+	FString ProjectDir = FPaths::ProjectDir();
 
+	// 2. Build the path to the python_pipeline folder
+	// Since python_pipeline is next to frontend, we go up one level from the project root
+	FString NodesPath = FPaths::Combine(ProjectDir, TEXT("../python_pipeline/sample_out/waterford_nodes_orange_allroads_offline_xy.jsonl"));
+	FString EdgesPath = FPaths::Combine(ProjectDir, TEXT("../python_pipeline/sample_out/waterford_edges_orange_allroads_offline_xy.jsonl"));
+
+	// 3. (Optional but recommended) Convert it to a clean, absolute path
+	FPaths::CollapseRelativeDirectories(NodesPath);
+	FPaths::CollapseRelativeDirectories(EdgesPath);
 	// 2. Build your simulator network. 
 	// (If this crashes or fails to load the JSONs in the editor, change these to absolute paths like "C:/dev/roadmap/...")
 	MyRoadNetwork = new Network(NetworkBuilder::buildNetworkFromJSONL(
-		"C:/roadmap/python_pipeline/sample_out/waterford_nodes_orange_allroads_offline_xy.jsonl",
-		"C:/roadmap/python_pipeline/sample_out/waterford_edges_orange_allroads_offline_xy.jsonl"
+		TCHAR_TO_UTF8(*NodesPath),
+		TCHAR_TO_UTF8(*EdgesPath)
 	));
 
 	if (MyRoadNetwork)
@@ -125,7 +136,7 @@ void ASimulationManager::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	if (!TrafficSimEngine) return;
+	if (!TrafficSimEngine || !bSimulationRunning) return;
 
 	DeltaTime = FMath::Min(DeltaTime, 0.25f); // Avoid spiral of death
 
@@ -148,6 +159,37 @@ void ASimulationManager::Tick(float DeltaTime)
 	{
 		GEngine->AddOnScreenDebugMessage(-1, 0.0f, FColor::Green, FString::Printf(TEXT("Steps this frame: %d"), StepsThisFrame));
 	}
+}
+
+void ASimulationManager::StartSimulation()
+{
+	bSimulationRunning = true;
+	if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Green, TEXT("Simulation Started!"));
+}
+
+void ASimulationManager::StopSimulation()
+{
+	bSimulationRunning = false;
+	// Clear all vehicle visuals
+	if (VehicleISM)
+	{
+		VehicleISM->ClearInstances();
+	}
+
+	// Reset the accumulator
+	Accumulator = 0.0f;
+
+	// Destroy and recreate the simulation engine to reset state
+	if (TrafficSimEngine)
+	{
+		delete TrafficSimEngine;
+		TrafficSimEngine = nullptr;
+	}
+
+	TrafficSimEngine = new TrafficSimulation();
+	TrafficSimEngine->Initialize();
+
+	if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Red, TEXT("Simulation Stopped & Reset!"));
 }
 
 void ASimulationManager::UpdateVehicleVisuals(float Alpha)

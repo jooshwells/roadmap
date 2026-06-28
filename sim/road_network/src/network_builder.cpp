@@ -40,7 +40,7 @@ Network NetworkBuilder::buildNetworkFromJSONL(const std::string& nodePath, const
                     j["lat"],
                     j["lon"],
                     j["x"],
-                    j["y"],
+                    -j["y"].get<double>(),
                     controlType
                 );
             }

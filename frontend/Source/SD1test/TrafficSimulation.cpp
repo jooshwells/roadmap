@@ -1,7 +1,10 @@
 #include "TrafficSimulation.h"
 #include <cmath>
 #include "physics_processor.h"
+#include "traffic_manager.h"
 #include "dstarlite.h"
+#include "Misc/Paths.h"
+#include "HAL/FileManager.h"
 
 TrafficSimulation::TrafficSimulation() : currentTime(0.0f), orlandoMap(nullptr), logger(nullptr), spatialHash(nullptr), controller(nullptr), spawner(nullptr)
 {
@@ -17,15 +20,27 @@ TrafficSimulation::~TrafficSimulation()
     delete orlandoMap;
 }
 
-void TrafficSimulation::Initialize() 
-{
+void TrafficSimulation::Initialize() {
     currentTime = 0.0f;
     
+    FString ProjectDir = FPaths::ProjectDir();
+
+    // 2. Build the path to the python_pipeline folder
+    // Since python_pipeline is next to frontend, we go up one level from the project root
+    FString NodesPath = FPaths::Combine(ProjectDir, TEXT("../python_pipeline/sample_out/waterford_nodes_orange_allroads_offline_xy.jsonl"));
+    FString EdgesPath = FPaths::Combine(ProjectDir, TEXT("../python_pipeline/sample_out/waterford_edges_orange_allroads_offline_xy.jsonl"));
+
+    // 3. (Optional but recommended) Convert it to a clean, absolute path
+    FPaths::CollapseRelativeDirectories(NodesPath);
+    FPaths::CollapseRelativeDirectories(EdgesPath);
     // 1. Instantiate the network map on the heap
     orlandoMap = new Network(NetworkBuilder::buildNetworkFromJSONL(
-        "C:/roadmap/python_pipeline/sample_out/waterford_nodes_orange_allroads_offline_xy.jsonl",
-        "C:/roadmap/python_pipeline/sample_out/waterford_edges_orange_allroads_offline_xy.jsonl"
+        TCHAR_TO_UTF8(*NodesPath),
+        TCHAR_TO_UTF8(*EdgesPath)
     ));
+
+    std::vector<uint64_t> westEdgeNodes;
+    std::vector<uint64_t> eastEdgeNodes;
 
     if (orlandoMap)
     {
@@ -34,7 +49,7 @@ void TrafficSimulation::Initialize()
         double MaxX = std::numeric_limits<double>::lowest();
         double MaxY = std::numeric_limits<double>::lowest();
 
-        // Assuming orlandoMap->getNodes() returns a map/unordered_map of ID to Node
+        // --- PASS 1: Find the global bounds ---
         for (const auto& NodePair : orlandoMap->getNodes())
         {
             const Node& N = NodePair.second;
@@ -46,15 +61,39 @@ void TrafficSimulation::Initialize()
 
         originOffsetX = (MinX + MaxX) / 2.0;
         originOffsetY = (MinY + MaxY) / 2.0;
+
+        // --- PASS 2: Categorize source/sink nodes for through-traffic ---
+        // Define what constitutes an "edge" node. Here, we use the outer 15% of the X-axis.
+        double mapWidth = MaxX - MinX;
+        double edgeMargin = mapWidth * 0.15;
+
+        for (const auto& NodePair : orlandoMap->getNodes())
+        {
+            const Node& N = NodePair.second;
+            uint64_t nodeId = NodePair.first; // Grab the ID directly from the map key
+
+            if (N.getX() <= (MinX + edgeMargin))
+            {
+                westEdgeNodes.push_back(nodeId);
+            }
+            else if (N.getX() >= (MaxX - edgeMargin))
+            {
+                eastEdgeNodes.push_back(nodeId);
+            }
+        }
     }
 
     // 2. Instantiate the rest of the simulation components
     logger = new TelemetryLogger("simulation_output.csv");
     spatialHash = new VehicleSpatialHash();
-    
+
     // Pass pointers to the dependent components
     controller = new PhysicsProcessor(orlandoMap, spatialHash);
-    spawner = new TrafficManager(orlandoMap, controller, 0.5f);
+    spawner = new TrafficManager(orlandoMap, controller, 1500);
+
+    // 3. Apply the through-traffic bounds
+    // This routes traffic from West to East. 
+    spawner->setThroughTrafficNodes(westEdgeNodes, eastEdgeNodes);
 }
 
 void TrafficSimulation::Step(float dt) 
@@ -117,26 +156,19 @@ std::vector<VehicleRenderState> TrafficSimulation::GetVehicleRenderStates()
         float dy = nB->getY() - nA->getY();
         state.yaw = std::atan2(dy, dx); 
 
-        // ---------------------------------------------------------
-        // THE NEW LANE OFFSET LOGIC GOES HERE
-        // ---------------------------------------------------------
-        float len = std::sqrt(dx*dx + dy*dy);
-        if (len > 0.0001f) 
+        float len = std::sqrt(dx * dx + dy * dy);
+        if (len > 0.0001f)
         {
-            // 1. Correct Right Vector for Unreal Engine (X-Forward, Y-Right)
-            float rightVecX = -dy / len; 
+            // ---> FIX: Correct Unreal Engine Right Vector <---
+            float rightVecX = -dy / len;
             float rightVecY = dx / len;
 
-            // 2. Centered Lane Offset Logic
             int totalLanes = v->getCurrentEdge()->getLanes();
             const float LANE_WIDTH = 3.5f;
+            const float MEDIAN_GAP_METERS = 1.0f;
 
-            // Calculate the mathematical edges of the visual road box
-            float roadRightEdge = (totalLanes * LANE_WIDTH) / 2.0f;
-
-            // Option A: Lane 0 is the RIGHT-MOST lane 
-            // Start at the right edge, move left (negative) for each lane index, minus half a lane to hit the center.
-            float laneOffsetMeters = roadRightEdge - (v->getLane() * LANE_WIDTH) - (LANE_WIDTH / 2.0f);
+            // Lane 0 is the fast lane, so it gets the smallest offset (closest to median)
+            float laneOffsetMeters = MEDIAN_GAP_METERS + (LANE_WIDTH / 2.0f) + (v->getLane() * LANE_WIDTH);
 
             // Apply the offset
             state.x += rightVecX * laneOffsetMeters;
@@ -148,14 +180,4 @@ std::vector<VehicleRenderState> TrafficSimulation::GetVehicleRenderStates()
     }
 
     return renderStates;
-}
-
-std::vector<TrafficLightRenderState> TrafficSimulation::GetTrafficLightStates() {
-    std::vector<TrafficLightRenderState> states;
-    if (!controller) return states;
-
-    for (const auto& pair : controller->getIntersections()) {
-        states.push_back({pair.first, pair.second.currentPhase});
-    }
-    return states;
 }

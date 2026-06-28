@@ -67,8 +67,7 @@ int main()
     TelemetryLogger logger("simulation_output.csv");
     VehicleSpatialHash* spatialHash = new VehicleSpatialHash();
     PhysicsProcessor controller(&orlandoMap, spatialHash);
-    TrafficManager spawner(&orlandoMap, &controller, 2.0f);
-
+    TrafficManager spawner(&orlandoMap, &controller, 1500);
     std::cout << "Starting Pulse Debugger Loop...\n";
     int lastPrintedTime = -1;
 

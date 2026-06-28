@@ -16,6 +16,14 @@ public:
 
     ARoadNetworkVisualizer();
 
+    // HISM for rendering Intersections/Nodes
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Road Network")
+    UHierarchicalInstancedStaticMeshComponent* NodeHISM;
+
+    // How big the intersection caps should be
+    UPROPERTY(EditAnywhere, Category = "Road Visuals")
+    float NodeScale = 15.0f;
+
     // The HISM component that renders all road segments efficiently
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Road Network")
     UHierarchicalInstancedStaticMeshComponent* RoadHISM;
@@ -43,6 +51,10 @@ public:
     UPROPERTY(EditAnywhere, Category = "Road Visuals")
     double OriginOffsetY = 2556901.0;
 
+    // The empty space in centimeters between opposing lanes of traffic
+    UPROPERTY(EditAnywhere, Category = "Road Visuals")
+    float MedianGapCm = 100.0f; // 1 meter gap
+
     // Builds the visual instances from your simulator's network
     void BuildVisualNetwork(Network* RoadNetwork);
 
@@ -50,13 +62,6 @@ public:
     // Returns int64 because Blueprints do not support uint64
     UFUNCTION(BlueprintCallable, Category = "Road Network")
     int64 GetEdgeIdFromHitItem(int32 HitItemIndex);
-
-    //traffic light and stop sign stuff
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Road Network")
-    UHierarchicalInstancedStaticMeshComponent* StopSignHISM;
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Road Network")
-    UHierarchicalInstancedStaticMeshComponent* TrafficLightHISM;
-    TMap<uint64_t, TArray<int32>> IntersectionLightInstances;
 
 private:
     // Maps HISM Instance ID (int32) to the simulator's Edge ID (uint64_t)

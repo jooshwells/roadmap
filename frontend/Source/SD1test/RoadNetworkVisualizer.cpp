@@ -21,16 +21,10 @@ ARoadNetworkVisualizer::ARoadNetworkVisualizer()
     // Disable shadows. 115k meshes casting shadows across a massive map will kill any GPU.
     RoadHISM->SetCastShadow(false);
 
-    // traffic light and stop sign stuff
-    StopSignHISM = CreateDefaultSubobject<UHierarchicalInstancedStaticMeshComponent>(TEXT("StopSignHISM"));
-    StopSignHISM->SetupAttachment(RootComponent);
-    StopSignHISM->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-    StopSignHISM->SetCastShadow(false);
-    TrafficLightHISM = CreateDefaultSubobject<UHierarchicalInstancedStaticMeshComponent>(TEXT("TrafficLightHISM"));
-    TrafficLightHISM->SetupAttachment(RootComponent);
-    TrafficLightHISM->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-    TrafficLightHISM->SetCastShadow(false);
-    TrafficLightHISM->NumCustomDataFloats = 1; // Index 0 will hold the color phase (Red/Yellow/Green)
+    NodeHISM = CreateDefaultSubobject<UHierarchicalInstancedStaticMeshComponent>(TEXT("NodeHISM"));
+    NodeHISM->SetupAttachment(RootComponent);
+    NodeHISM->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    NodeHISM->SetCastShadow(false);
 }
 
 void ARoadNetworkVisualizer::BuildVisualNetwork(Network* RoadNetwork)
@@ -62,6 +56,9 @@ void ARoadNetworkVisualizer::BuildVisualNetwork(Network* RoadNetwork)
     OriginOffsetX = (MinX + MaxX) / 2.0;
     OriginOffsetY = (MinY + MaxY) / 2.0;
 
+    TArray<FTransform> NodeTransforms;
+    NodeTransforms.Reserve(AllNodes.size());
+
     TArray<FTransform> Transforms;
     TArray<uint64_t> TempEdgeIds;
     TArray<float> TempScaleX;
@@ -75,6 +72,12 @@ void ARoadNetworkVisualizer::BuildVisualNetwork(Network* RoadNetwork)
     for (const auto& NodePair : AllNodes)
     {
         const Node& OriginNode = NodePair.second;
+
+        FVector NodeLoc((OriginNode.getX() - OriginOffsetX) * 100.0,
+            (OriginNode.getY() - OriginOffsetY) * 100.0,
+            -2.0f);
+        FVector NodeScale3D(NodeScale, NodeScale, 0.05f);
+        NodeTransforms.Add(FTransform(FRotator::ZeroRotator, NodeLoc, NodeScale3D));
 
         for (const Road& Edge : OriginNode.outgoingEdges)
         {
@@ -93,22 +96,29 @@ void ARoadNetworkVisualizer::BuildVisualNetwork(Network* RoadNetwork)
             FVector Direction = EndLoc - StartLoc;
             float DistanceCM = Direction.Size();
             FRotator Rotation = Direction.Rotation();
-
+            // Ensure we always have at least 1 lane to prevent divide-by-zero in the shader
+            int32 SafeLanes = FMath::Max(1, Edge.getLanes());
             FVector InstanceLocation = StartLoc;
             if (bPivotAtCenter)
             {
                 InstanceLocation = StartLoc + (Direction * 0.5f);
             }
 
+            // ---> FIX: Correct Unreal Engine Right Vector <---
+            FVector RightVec(-Direction.Y, Direction.X, 0.0);
+            RightVec.Normalize();
+            float TargetWidthCm = SafeLanes * 350.0f;
+
+            // Move the road mesh so it perfectly aligns with the right-side traffic
+            InstanceLocation += RightVec * ((TargetWidthCm * 0.5f) + MedianGapCm);
+
             float ScaleX = DistanceCM / FMath::Max(1.0f, MeshBaseLengthCm);
 
-            // Ensure we always have at least 1 lane to prevent divide-by-zero in the shader
-            int32 SafeLanes = FMath::Max(1, Edge.getLanes());
+            
 
             float ScaleY = 1.0f;
             if (bScaleWidthByLanes)
             {
-                float TargetWidthCm = SafeLanes * 350.0f; // Assuming 3.5m per lane
                 ScaleY = TargetWidthCm / FMath::Max(1.0f, MeshBaseWidthCm);
             }
 
@@ -119,6 +129,12 @@ void ARoadNetworkVisualizer::BuildVisualNetwork(Network* RoadNetwork)
             TempScaleX.Add(ScaleX);
             TempLanes.Add(static_cast<float>(SafeLanes)); // Save lane count to push to GPU
         }
+    }
+
+    NodeHISM->ClearInstances();
+    if (NodeTransforms.Num() > 0)
+    {
+        NodeHISM->AddInstances(NodeTransforms, false);
     }
 
     TArray<int32> AddedIndices = RoadHISM->AddInstances(Transforms, true);
@@ -136,67 +152,6 @@ void ARoadNetworkVisualizer::BuildVisualNetwork(Network* RoadNetwork)
     }
 
     RoadHISM->MarkRenderStateDirty();
-    IntersectionLightInstances.Empty();
-StopSignHISM->ClearInstances();
-TrafficLightHISM->ClearInstances();
-
-for (const auto& NodePair : AllNodes)
-{
-    const Node& N = NodePair.second;
-    
-    // Only process nodes that are marked as stops or lights
-    if (N.type == Node::FOUR_WAY_STOP || N.type == Node::TRAFFIC_LIGHT)
-    {
-        // Get the absolute position of the intersection center
-        FVector IntersectionCenter((N.getX() - OriginOffsetX) * 100.0, (N.getY() - OriginOffsetY) * 100.0, 0.0);
-        TArray<int32> LightIndicesForThisNode;
-
-        for (uint64_t incomingId : N.incomingEdgeNodeIds)
-        {
-            Node* predNode = RoadNetwork->getNode(incomingId);
-            if (!predNode) continue;
-
-            // Find the physical road connecting the previous node to this intersection
-            for (const Road& edge : predNode->outgoingEdges)
-            {
-                if (edge.getDest() == N.getId())
-                {
-                    FVector IncomingStart((predNode->getX() - OriginOffsetX) * 100.0, (predNode->getY() - OriginOffsetY) * 100.0, 0.0);
-                    FVector Direction = IntersectionCenter - IncomingStart;
-                    Direction.Normalize();
-
-                    // Calculate the Right vector (Unreal uses X-Forward, Y-Right)
-                    FVector RightVector = FVector(Direction.Y, -Direction.X, 0.0f);
-
-                    // Pull back slightly from the center, and move to the right shoulder of the road
-                    float PullbackDistance = 600.0f; // 6 meters back
-                    float RightOffset = (edge.getLanes() * 350.0f / 2.0f) + 150.0f; // Edge of the road + 1.5m
-                    
-                    FVector PropLocation = IntersectionCenter - (Direction * PullbackDistance) + (RightVector * RightOffset);
-                    FRotator PropRotation = Direction.Rotation(); // Face down the road
-
-                    FTransform PropTransform(PropRotation, PropLocation);
-
-                    if (N.type == Node::FOUR_WAY_STOP)
-                    {
-                        StopSignHISM->AddInstance(PropTransform);
-                    }
-                    else if (N.type == Node::TRAFFIC_LIGHT)
-                    {
-                        int32 newIndex = TrafficLightHISM->AddInstance(PropTransform);
-                        LightIndicesForThisNode.Add(newIndex);
-                    }
-                    break; 
-                }
-            }
-        }
-        
-        if (LightIndicesForThisNode.Num() > 0)
-        {
-            IntersectionLightInstances.Add(N.getId(), LightIndicesForThisNode);
-        }
-    }
-}
 }
 
 int64 ARoadNetworkVisualizer::GetEdgeIdFromHitItem(int32 HitItemIndex)

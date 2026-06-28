@@ -24,11 +24,6 @@ struct VehicleRenderState
     float yaw; // Heading direction in radians
 };
 
-struct TrafficLightRenderState {
-    uint64_t nodeId;
-    int phase;
-};
-
 class TrafficSimulation 
 {
 public:
@@ -47,7 +42,6 @@ public:
     // Replace 'auto' or 'VehicleData' with your actual vehicle data struct
     const std::vector<VehicleState*>& GetActiveVehicles() const;
 
-    std::vector<TrafficLightRenderState> GetTrafficLightStates();
 private:
     double originOffsetX;
     double originOffsetY;

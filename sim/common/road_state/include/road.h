@@ -17,6 +17,12 @@ class Road {
         // Setters
         inline void setSpeedLimit(double sL) { speedLimit = sL; }
         inline void setLanes(int l)          { lanes = l; }
+        
+        // volume tracking and dynamic cost for pathfinding
+        void addVehicle() { currentVolume++; }
+        void removeVehicle() { if (currentVolume > 0) currentVolume--; }
+        int getCurrentVolume() const { return currentVolume; }
+        double getDynamicCost() const;
 
         // Updated constructor signature
         Road(uint64_t eId, uint64_t origin, uint64_t dest, double le, double sl, int l);
@@ -29,6 +35,7 @@ class Road {
         double length;
         double speedLimit;
         int lanes;
+        int currentVolume = 0;
 };
 
 #endif

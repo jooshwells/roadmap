@@ -28,9 +28,20 @@ public:
 	// This allows you to select your Blueprint in the Unreal Editor
 	UPROPERTY(EditAnywhere, Category = "Simulation Setup")
 	TSubclassOf<class ARoadNetworkVisualizer> VisualizerBlueprint;
+	
+	//for the start sim button
+	UPROPERTY(BlueprintReadWrite, Category = "Simulation")
+	bool bSimulationRunning = false;
+	//for the stop sim button
+	
+	UFUNCTION(BlueprintCallable, Category = "Simulation")
+		void StartSimulation();
+	UFUNCTION(BlueprintCallable, Category = "Simulation")
+		void StopSimulation();
 
 	// Creates a button in the Unreal Editor to generate the map
 	UFUNCTION(CallInEditor, Category = "Simulation Setup")
+
 	void GenerateRoadsInEditor();
 
 	// Creates a button to clear the map
