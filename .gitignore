@@ -152,3 +152,4 @@ DerivedDataCache/*
 
 .vscode
 
+sim/simulation_output.csv
