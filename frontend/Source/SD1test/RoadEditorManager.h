@@ -17,6 +17,8 @@ enum class ERoadToolType : uint8
 	BezierCurve
 };
 
+class USplineComponent;
+
 UCLASS()
 class SD1TEST_API ARoadEditorManager : public AActor
 {
@@ -57,8 +59,14 @@ private:
 	Network* SimulationNetwork;
 
 public:
+
+	// Configurable lane width in Unreal units
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Road Editor")
+	float LaneWidth = 300.0f;
+
+	// Call this to update the ghost material color based on the current tool
 	UFUNCTION(BlueprintCallable, Category = "Road Editor")
-	void EndCurrentRoadSegment();
+	void EndCurrentRoadSegment(int32 LaneCount, FVector StartPoint, FVector EndPoint, UInstancedStaticMeshComponent* TargetISMComponent);
 
 	UFUNCTION(BlueprintCallable, Category = "Road Editor")
 	void ClearAllRoads();
@@ -84,4 +92,5 @@ private:
 	// Holds the dynamic material so we can tweak color parameters at runtime
 	UPROPERTY()
 	UMaterialInstanceDynamic* GhostDynamicMaterial;
+
 };

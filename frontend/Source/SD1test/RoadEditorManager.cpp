@@ -1,7 +1,9 @@
-#include "RoadEditorManager.h"
+﻿#include "RoadEditorManager.h"
 #include "RoadNetworkVisualizer.h"
 #include "GameFramework/PlayerController.h"
 #include "Engine/World.h"
+#include "Components/SplineComponent.h"
+#include "DrawDebugHelpers.h"
 
 ARoadEditorManager::ARoadEditorManager()
 {
@@ -17,9 +19,15 @@ ARoadEditorManager::ARoadEditorManager()
 	LastPlacedNodeID = 0;
 	LastPlacedPhysicalLocation = FVector::ZeroVector;
 
-	// Build the procedural tracking component
+	// 1. Create a completely blank, stationary scene root component
+	USceneComponent* NeutralRoot = CreateDefaultSubobject<USceneComponent>(TEXT("NeutralRoot"));
+	RootComponent = NeutralRoot;
+
+	// 2. Build the procedural tracking component
 	GhostMeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("GhostMeshComponent"));
-	RootComponent = GhostMeshComponent;
+
+	// 3. Attach your Ghost Mesh to this neutral root so it can move independently
+	GhostMeshComponent->SetupAttachment(NeutralRoot);
 
 	GhostMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	GhostMeshComponent->SetCastShadow(false);
@@ -38,6 +46,8 @@ void ARoadEditorManager::BeginPlay()
 			GhostDynamicMaterial = GhostMeshComponent->CreateDynamicMaterialInstance(0, BaseMaterial);
 		}
 	}
+
+
 }
 
 void ARoadEditorManager::UpdateGhostVisuals()
@@ -167,62 +177,81 @@ void ARoadEditorManager::HandleMouseClick()
 	}
 }
 
-void ARoadEditorManager::EndCurrentRoadSegment()
+void ARoadEditorManager::EndCurrentRoadSegment(int32 LaneCount, FVector StartPoint, FVector EndPoint, UInstancedStaticMeshComponent* TargetISMComponent)
 {
-	// Ensure we have at least 2 points to form an actual street segment
-	if (StagedClickLocations.Num() >= 2 && VisualizerTarget && SimulationNetwork)
+	if (LaneCount <= 0) return;
+
+	// Calculate base vector directions
+	FVector ForwardDir = (EndPoint - StartPoint).GetSafeNormal();
+	// Cross product with Up Vector gets the local Right Direction
+	FVector RightDir = FVector::CrossProduct(ForwardDir, FVector::UpVector).GetSafeNormal();
+
+	// Set up clean tangents for smooth curves/lines
+	FVector SegmentTangent = ForwardDir * FVector::Distance(StartPoint, EndPoint);
+
+	// Loop and spawn parallel lane splines
+	for (int32 i = 0; i < LaneCount; ++i)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("Committing batch network injection sequence..."));
+		// Calculate the centering offset
+		float LaneOffsetMultiplier = (float)i - ((float)LaneCount - 1.0f) / 2.0f;
+		FVector LateralOffset = RightDir * (LaneOffsetMultiplier * LaneWidth);
 
-		uint64 PreviousNodeID = 0;
+		// Shift both start and end locations laterally
+		FVector LaneStart = StartPoint + LateralOffset;
+		FVector LaneEnd = EndPoint + LateralOffset;
 
-		for (int32 i = 0; i < StagedClickLocations.Num(); i++)
+		// 1. [Spline Component Logic]
+		FString SplineName = FString::Printf(TEXT("LaneSpline_Component_%d"), i);
+		USplineComponent* NewLaneSpline = NewObject<USplineComponent>(this, FName(*SplineName));
+
+		if (NewLaneSpline)
 		{
-			FVector CurrentPoint = StagedClickLocations[i];
+			NewLaneSpline->RegisterComponent();
+			NewLaneSpline->AttachToComponent(GetRootComponent(), FAttachmentTransformRules::KeepWorldTransform);
+			NewLaneSpline->ClearSplinePoints(true);
 
-			// Translate absolute engine world units directly into matching simulation coordinates
-			double SimX = (CurrentPoint.X / 100.0) + VisualizerTarget->OriginOffsetX;
-			double SimY = (CurrentPoint.Y / 100.0) + VisualizerTarget->OriginOffsetY;
+			NewLaneSpline->AddSplinePoint(LaneStart, ESplineCoordinateSpace::World, false);
+			NewLaneSpline->SetTangentAtSplinePoint(0, SegmentTangent, ESplineCoordinateSpace::World, false);
+			NewLaneSpline->AddSplinePoint(LaneEnd, ESplineCoordinateSpace::World, false);
+			NewLaneSpline->SetTangentAtSplinePoint(1, SegmentTangent, ESplineCoordinateSpace::World, false);
+			NewLaneSpline->UpdateSpline();
 
-			// Generate a permanent distinct node entry
-			uint64 CurrentNodeID = FPlatformTime::Cycles() + i;
-			SimulationNetwork->addNode(CurrentNodeID, 0.0, 0.0, SimX, SimY);
-
-			// Link back to the preceding point if we are past index 0
-			if (i > 0 && PreviousNodeID != 0)
-			{
-				float DistanceMeters = FVector::Dist(StagedClickLocations[i - 1], CurrentPoint) / 100.0f;
-
-				// FORCE BIDIRECTIONAL LOGIC: Cover both directed or undirected edge variations
-				SimulationNetwork->addDirectedEdge(PreviousNodeID, CurrentNodeID, DistanceMeters, 0.0, 1);
-				SimulationNetwork->addDirectedEdge(CurrentNodeID, PreviousNodeID, DistanceMeters, 0.0, 1);
-			}
-
-			PreviousNodeID = CurrentNodeID;
+			// Persistent debug visuals
+			DrawDebugLine(GetWorld(), LaneStart, LaneEnd, FColor::Green, true, -1.0f, 0, 12.0f);
+			DrawDebugSphere(GetWorld(), LaneStart, 35.0f, 8, FColor::Red, true);
 		}
 
-		// Fire a single render refresh pass now that the matrix data modifications are complete
-		VisualizerTarget->bIsLoadingFromFile = false;
-		VisualizerTarget->BuildVisualNetwork(SimulationNetwork);
-	}
-	else {
-		// === NEW DEBUG WARNINGS ===
-		if (StagedClickLocations.Num() < 2)
-			UE_LOG(LogTemp, Error, TEXT("Commit Failed: Need at least 2 clicks to make a road!"));
-		if (!VisualizerTarget)
-			UE_LOG(LogTemp, Error, TEXT("Commit Failed: VisualizerTarget is NULL! Assign it in the editor."));
-		if (!SimulationNetwork)
-			UE_LOG(LogTemp, Error, TEXT("Commit Failed: SimulationNetwork is NULL! Map wasn't loaded properly."));
-	}
+		// Every iteration loops here and stamps the same seamless center asset side-by-side
+		// 2. [Mesh Instance Stamping]
+		// 
+		// Tell the component to allocate 1 float per instance for the shader to read
+		TargetISMComponent->NumCustomDataFloats = 1;
 
-	// Wipe our temporary local caches clear for your next road editing chain
-	StagedClickLocations.Empty();
-	LastPlacedNodeID = 0;
-	LastPlacedPhysicalLocation = FVector::ZeroVector;
+		// 2. [Mesh Instance Stamping] 
+		if (TargetISMComponent)
+		{
+			FVector LaneDirection = LaneEnd - LaneStart;
+			float DistanceCM = LaneDirection.Size();
+			FRotator PlacementRotation = LaneDirection.Rotation();
 
-	if (GhostMeshComponent)
-	{
-		GhostMeshComponent->SetVisibility(false);
+			FVector MeshLocation = LaneStart + (LaneDirection * 0.5f);
+			float BaseLen = VisualizerTarget ? VisualizerTarget->MeshBaseLengthCm : 100.0f;
+			float NewScaleX = DistanceCM / FMath::Max(1.0f, BaseLen);
+
+			float BaseWidth = (VisualizerTarget && VisualizerTarget->MeshBaseLengthCm > 1.0f) ? VisualizerTarget->MeshBaseLengthCm : 100.0f;
+			float NewScaleY = LaneWidth / FMath::Max(1.0f, BaseWidth);
+
+			FTransform InstanceTransform;
+			InstanceTransform.SetLocation(MeshLocation);
+			InstanceTransform.SetRotation(PlacementRotation.Quaternion());
+			InstanceTransform.SetScale3D(FVector(NewScaleX, NewScaleY, 1.0f));
+
+			// 👇 1. Capture the index of the newly added instance
+			int32 InstanceIndex = TargetISMComponent->AddInstance(InstanceTransform, true);
+
+			// 👇 2. Send NewScaleX to Custom Data Index 0 so the shader can fix the tiling and draw the lines!
+			TargetISMComponent->SetCustomDataValue(InstanceIndex, 0, NewScaleX, true);
+		}
 	}
 }
 
