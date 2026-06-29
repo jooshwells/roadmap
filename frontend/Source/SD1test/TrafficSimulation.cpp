@@ -84,7 +84,11 @@ void TrafficSimulation::Initialize() {
     }
 
     // 2. Instantiate the rest of the simulation components
-    logger = new TelemetryLogger("simulation_output.csv");
+    FString CsvPath = FPaths::Combine(FPaths::ProjectDir(), TEXT("simulation_output.csv"));
+    FPaths::NormalizeFilename(CsvPath);
+    // Create the telemetry logger that records simulation data to a CSV.
+    logger = new TelemetryLogger(TCHAR_TO_UTF8(*CsvPath));
+
     spatialHash = new VehicleSpatialHash();
 
     // Pass pointers to the dependent components
@@ -105,7 +109,7 @@ void TrafficSimulation::Step(float dt)
     // Notice we use the arrow operator (->) because they are now pointers.
     spawner->update(dt);
     controller->update(dt);
-    
+    // Record the current state of all active vehicles for this frame.
     logger->logFrame(currentTime, controller->getActiveVehicles());
 
     currentTime += dt;

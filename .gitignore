@@ -152,3 +152,19 @@ DerivedDataCache/*
 
 .vscode
 
+# Python virtual environments
+.venv/
+**/.venv/
+
+# Python cache
+__pycache__/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+
+# Telemetry generated outputs
+roadmap/python_pipeline/telemetry/outputs/
+roadmap/python_pipeline/telemetry/telemetry_done.txt
+
+# Optional generated simulation CSV
+roadmap/frontend/simulation_output.csv
