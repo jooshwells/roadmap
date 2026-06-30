@@ -8,8 +8,8 @@ public class SD1test : ModuleRules
     {
         PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 
-        PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "UMG", "Slate", "SlateCore" });
-        PrivateDependencyModuleNames.AddRange(new string[] { });
+        PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "Json", "JsonUtilities", "UMG" });
+        PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });
 
         // 1. ENABLE EXCEPTIONS AND RTTI
         bEnableExceptions = true;

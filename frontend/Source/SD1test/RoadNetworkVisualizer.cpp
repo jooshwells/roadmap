@@ -27,9 +27,17 @@ ARoadNetworkVisualizer::ARoadNetworkVisualizer()
     NodeHISM->SetCastShadow(false);
 }
 
-void ARoadNetworkVisualizer::BuildVisualNetwork(Network* RoadNetwork)
+void ARoadNetworkVisualizer::BuildVisualNetwork(Network* RoadNetwork, FString InNodesPath, FString InEdgesPath)
 {
     if (!RoadNetwork) return;
+
+    // 1. Store the paths for later exporting
+    NodesFilePath = InNodesPath;
+    EdgesFilePath = InEdgesPath;
+
+    // Reset max IDs
+    CurrentMaxNodeId = 0;
+    CurrentMaxEdgeId = 0;
 
     RoadHISM->ClearInstances();
     InstanceIndexToEdgeId.Empty();
@@ -78,9 +86,14 @@ void ARoadNetworkVisualizer::BuildVisualNetwork(Network* RoadNetwork)
             -2.0f);
         FVector NodeScale3D(NodeScale, NodeScale, 0.05f);
         NodeTransforms.Add(FTransform(FRotator::ZeroRotator, NodeLoc, NodeScale3D));
+        CachedNodeLocations.Add(OriginNode.getId(), NodeLoc);
+
+        if (OriginNode.getId() > CurrentMaxNodeId) CurrentMaxNodeId = OriginNode.getId();
 
         for (const Road& Edge : OriginNode.outgoingEdges)
         {
+            if (Edge.getEdgeId() > CurrentMaxEdgeId) CurrentMaxEdgeId = Edge.getEdgeId();
+
             Node* DestNode = RoadNetwork->getNode(Edge.getDest());
             if (!DestNode) continue;
 
@@ -161,4 +174,163 @@ int64 ARoadNetworkVisualizer::GetEdgeIdFromHitItem(int32 HitItemIndex)
         return (int64)InstanceIndexToEdgeId[HitItemIndex];
     }
     return -1; // Edge not found
+}
+
+void ARoadNetworkVisualizer::AddSingleRoadVisually(FVector StartUnrealLoc, FVector EndUnrealLoc, int32 Lanes)
+{
+    FVector Direction = EndUnrealLoc - StartUnrealLoc;
+    float DistanceCM = Direction.Size();
+    FRotator Rotation = Direction.Rotation();
+
+    int32 SafeLanes = FMath::Max(1, Lanes);
+    FVector InstanceLocation = StartUnrealLoc;
+
+    if (bPivotAtCenter)
+    {
+        InstanceLocation = StartUnrealLoc + (Direction * 0.5f);
+    }
+
+    // Reuse your exact Right Vector math for right-side traffic alignment
+    FVector RightVec(-Direction.Y, Direction.X, 0.0);
+    RightVec.Normalize();
+    float TargetWidthCm = SafeLanes * 350.0f;
+    InstanceLocation += RightVec * ((TargetWidthCm * 0.5f) + MedianGapCm);
+
+    float ScaleX = DistanceCM / FMath::Max(1.0f, MeshBaseLengthCm);
+    float ScaleY = bScaleWidthByLanes ? (TargetWidthCm / FMath::Max(1.0f, MeshBaseWidthCm)) : 1.0f;
+
+    FTransform NewTransform(Rotation, InstanceLocation, FVector(ScaleX, ScaleY, 1.0f));
+
+    // Add the instance dynamically
+    int32 NewIndex = RoadHISM->AddInstance(NewTransform, true);
+
+    // Push Custom Data to GPU (Index 0: Lanes, Index 1: ScaleX)
+    RoadHISM->SetCustomDataValue(NewIndex, 0, static_cast<float>(SafeLanes), false);
+    RoadHISM->SetCustomDataValue(NewIndex, 1, ScaleX, false);
+
+    // Add Node visual at the end point
+    FTransform NodeTransform(FRotator::ZeroRotator, EndUnrealLoc, FVector(NodeScale, NodeScale, 0.05f));
+    NodeHISM->AddInstance(NodeTransform, true);
+
+    RoadHISM->MarkRenderStateDirty();
+}
+
+FVector2D ARoadNetworkVisualizer::ConvertUnrealToJSONCoords(FVector UnrealLocation)
+{
+    // 1. Convert Unreal units (cm) back to Map units (meters) and add the origin offset back.
+    // This puts the coordinates back into your backend's memory space.
+    double BackendX = (UnrealLocation.X / 100.0) + OriginOffsetX;
+    double BackendY = (UnrealLocation.Y / 100.0) + OriginOffsetY;
+
+    // 2. Undo the sign swap (-j["y"]) to match the raw JSON schema
+    double JsonX = BackendX;
+    double JsonY = -BackendY;
+
+    return FVector2D(JsonX, JsonY);
+}
+
+bool ARoadNetworkVisualizer::FindClosestNode(FVector SearchLocation, float SnapRadiusCM, FVector& OutNodeLocation, int64& OutNodeId)
+{
+    float ClosestDistSq = SnapRadiusCM * SnapRadiusCM;
+    bool bFound = false;
+
+    // Iterate through cached nodes to find the closest one within the radius
+    for (const auto& Pair : CachedNodeLocations)
+    {
+        // Calculate squared distance (much faster than true distance because it avoids square roots)
+        float DistSq = FVector::DistSquaredXY(SearchLocation, Pair.Value);
+
+        if (DistSq < ClosestDistSq)
+        {
+            ClosestDistSq = DistSq;
+            OutNodeLocation = Pair.Value; // Snap perfectly to the center of the node
+            OutNodeLocation.Z = 0.0f;          // Keep everything perfectly flat on the Z plane
+            OutNodeId = Pair.Key;
+            bFound = true;
+        }
+    }
+
+    return bFound;
+}
+
+int64 ARoadNetworkVisualizer::ExportNewRoadSegment(int64 StartNodeId, int64 EndNodeId, FVector EndNodeUnrealLoc, int32 Lanes)
+{
+    // 1. Handle Node Generation (If the user clicked in empty space)
+    int64 FinalEndNodeId = EndNodeId;
+    FVector2D EndJsonCoords = ConvertUnrealToJSONCoords(EndNodeUnrealLoc);
+
+    if (FinalEndNodeId == -1)
+    {
+        CurrentMaxNodeId++;
+        FinalEndNodeId = CurrentMaxNodeId;
+
+        // Build Node JSON Object
+        TSharedPtr<FJsonObject> NodeObj = MakeShareable(new FJsonObject);
+        NodeObj->SetNumberField(TEXT("id"), FinalEndNodeId);
+        NodeObj->SetNumberField(TEXT("lon"), 0.0); // Or reverse Mercator projection if needed
+        NodeObj->SetNumberField(TEXT("lat"), 0.0);
+        NodeObj->SetNumberField(TEXT("x"), EndJsonCoords.X);
+        NodeObj->SetNumberField(TEXT("y"), EndJsonCoords.Y);
+        // traffic_control is null
+
+        FString NodeString;
+        TSharedRef<TJsonWriter<>> NodeWriter = TJsonWriterFactory<>::Create(&NodeString, 0);
+        FJsonSerializer::Serialize(NodeObj.ToSharedRef(), NodeWriter);
+
+        NodeString.ReplaceInline(TEXT("\n"), TEXT(""));
+        NodeString.ReplaceInline(TEXT("\r"), TEXT(""));
+        NodeString += TEXT("\n"); // Make it JSONL compliant
+
+        // Append to Nodes file
+        FFileHelper::SaveStringToFile(NodeString, *NodesFilePath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM, &IFileManager::Get(), EFileWrite::FILEWRITE_Append);
+
+        // Cache it so the user can immediately snap to this newly created node!
+        CachedNodeLocations.Add(FinalEndNodeId, EndNodeUnrealLoc);
+    }
+
+    // 2. Handle Edge Generation
+    CurrentMaxEdgeId++;
+    FVector StartNodeUnrealLoc = CachedNodeLocations[StartNodeId]; // Retrieve from cache
+    FVector2D StartJsonCoords = ConvertUnrealToJSONCoords(StartNodeUnrealLoc);
+
+    // Calculate length in meters
+    double LengthMeters = FVector::Distance(StartNodeUnrealLoc, EndNodeUnrealLoc) / 100.0;
+
+    TSharedPtr<FJsonObject> EdgeObj = MakeShareable(new FJsonObject);
+    // You might want to assign an ID to the edge JSON if your schema requires it, but based on your example, u and v are the primary keys
+    EdgeObj->SetNumberField(TEXT("u"), StartNodeId);
+    EdgeObj->SetNumberField(TEXT("v"), FinalEndNodeId);
+    EdgeObj->SetNumberField(TEXT("length_m"), LengthMeters);
+    EdgeObj->SetNumberField(TEXT("speed_mps"), 15.646); // Default or passed from UI
+    EdgeObj->SetNumberField(TEXT("lanes"), Lanes);
+    EdgeObj->SetBoolField(TEXT("oneway"), true);
+    EdgeObj->SetStringField(TEXT("highway"), TEXT("residential")); // Default type
+
+    // Create geometry_xy array representing the straight line
+    TArray<TSharedPtr<FJsonValue>> GeometryArray;
+
+    TSharedPtr<FJsonObject> GeomStart = MakeShareable(new FJsonObject);
+    GeomStart->SetNumberField(TEXT("x"), StartJsonCoords.X);
+    GeomStart->SetNumberField(TEXT("y"), StartJsonCoords.Y);
+    GeometryArray.Add(MakeShareable(new FJsonValueObject(GeomStart)));
+
+    TSharedPtr<FJsonObject> GeomEnd = MakeShareable(new FJsonObject);
+    GeomEnd->SetNumberField(TEXT("x"), EndJsonCoords.X);
+    GeomEnd->SetNumberField(TEXT("y"), EndJsonCoords.Y);
+    GeometryArray.Add(MakeShareable(new FJsonValueObject(GeomEnd)));
+
+    EdgeObj->SetArrayField(TEXT("geometry_xy"), GeometryArray);
+
+    FString EdgeString;
+    TSharedRef<TJsonWriter<>> EdgeWriter = TJsonWriterFactory<>::Create(&EdgeString, 0);
+    FJsonSerializer::Serialize(EdgeObj.ToSharedRef(), EdgeWriter);
+
+    EdgeString.ReplaceInline(TEXT("\n"), TEXT(""));
+    EdgeString.ReplaceInline(TEXT("\r"), TEXT(""));
+    EdgeString += TEXT("\n");
+
+    // Append to Edges file
+    FFileHelper::SaveStringToFile(EdgeString, *EdgesFilePath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM, &IFileManager::Get(), EFileWrite::FILEWRITE_Append);
+
+    return FinalEndNodeId;
 }

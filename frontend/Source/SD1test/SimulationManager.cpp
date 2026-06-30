@@ -107,7 +107,7 @@ void ASimulationManager::GenerateRoadsInEditor()
 		// 4. Command the visualizer to render the instances
 		if (NetworkVisualizer)
 		{
-			NetworkVisualizer->BuildVisualNetwork(MyRoadNetwork);
+			NetworkVisualizer->BuildVisualNetwork(MyRoadNetwork, NodesPath, EdgesPath);
 			if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Green, TEXT("Roads Generated Successfully!"));
 		}
 	}
