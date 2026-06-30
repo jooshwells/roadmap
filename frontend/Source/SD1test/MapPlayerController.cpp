@@ -2,6 +2,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "RoadNetworkVisualizer.h" 
 #include "Blueprint/UserWidget.h" 
+#include "SimulationManager.h"
 
 
 void AMapPlayerController::BeginPlay()
@@ -173,6 +174,14 @@ void AMapPlayerController::OnLeftMouseClick()
 				CachedVisualizer->AddSingleRoadVisually(StartNodeLocation, EndNodeLoc, CurrentDrawLanes);
 				int64 FinalEndNodeId = CachedVisualizer->ExportNewRoadSegment(StartNodeId, EndNodeId, EndNodeLoc, CurrentDrawLanes);
 
+				// Find the Simulation Manager to update the live backend graph
+				AActor* SimManagerActor = UGameplayStatics::GetActorOfClass(GetWorld(), ASimulationManager::StaticClass());
+				ASimulationManager* SimManager = Cast<ASimulationManager>(SimManagerActor);
+
+				if (SimManager) {
+					float LengthMeters = FVector::Distance(StartNodeLocation, EndNodeLoc) / 100.0f;
+					SimManager->NotifyBackendOfNewRoad(StartNodeId, FinalEndNodeId, EndNodeLoc, LengthMeters, CurrentDrawLanes);
+				}
 				// 2. Draw and Export the Reverse Direction (B -> A) if Two-Way is checked
 				if (bIsTwoWayStreet)
 				{
@@ -183,8 +192,13 @@ void AMapPlayerController::OnLeftMouseClick()
 					// We pass '-1' for the end node ID here only if we somehow didn't have a start node, 
 					// but since we enforce starting on an intersection, StartNodeId is always valid.
 					CachedVisualizer->ExportNewRoadSegment(FinalEndNodeId, StartNodeId, StartNodeLocation, CurrentDrawLanes);
-				}
 
+					if (SimManager) {
+						float LengthMeters = FVector::Distance(EndNodeLoc, StartNodeLocation) / 100.0f;
+						SimManager->NotifyBackendOfNewRoad(FinalEndNodeId, StartNodeId, StartNodeLocation, LengthMeters, CurrentDrawLanes);
+					}
+				}
+				
 				if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Green, TEXT("Road Created & Saved!"));
 
 				// Reset for the next road segment

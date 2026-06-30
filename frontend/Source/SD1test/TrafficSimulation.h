@@ -43,6 +43,9 @@ public:
     // Replace 'auto' or 'VehicleData' with your actual vehicle data struct
     const std::vector<VehicleState*>& GetActiveVehicles() const;
 
+    // add new road when road editing
+    void AddRuntimeRoad(uint64_t startNodeId, uint64_t endNodeId, double destX, double destY, double lengthMeters, int lanes);
+
 private:
     double originOffsetX;
     double originOffsetY;
