@@ -81,6 +81,8 @@ void TrafficSimulation::Initialize() {
                 eastEdgeNodes.push_back(nodeId);
             }
         }
+
+        UE_LOG(LogTemp, Warning, TEXT("Total Nodes Loaded: %d"), orlandoMap->getNodes().size());
     }
 
     // 2. Instantiate the rest of the simulation components
