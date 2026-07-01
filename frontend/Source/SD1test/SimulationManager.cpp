@@ -5,6 +5,7 @@
 #include "network_builder.h"
 #include "Misc/Paths.h"
 #include "HAL/FileManager.h"
+#include "PythonBridge.h"
 
 // Sets default values
 ASimulationManager::ASimulationManager()
@@ -57,6 +58,7 @@ void ASimulationManager::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 	if (TrafficSimEngine)
 	{
+		// Destroy the simulation first so the telemetry logger finishes writing the CSV.
 		delete TrafficSimEngine;
 		TrafficSimEngine = nullptr;
 	}
@@ -136,6 +138,19 @@ void ASimulationManager::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
+	if (bWaitingForTelemetry && FPaths::FileExists(TelemetryDoneFilePath))
+	{
+		bWaitingForTelemetry = false;
+
+		if (TelemetryStatusWidget)
+		{
+			TelemetryStatusWidget->RemoveFromParent();
+			TelemetryStatusWidget = nullptr;
+		}
+
+		ShowHeatmapOverlay();
+	}
+
 	if (!TrafficSimEngine || !bSimulationRunning) return;
 
 	DeltaTime = FMath::Min(DeltaTime, 0.25f); // Avoid spiral of death
@@ -163,10 +178,15 @@ void ASimulationManager::Tick(float DeltaTime)
 
 void ASimulationManager::StartSimulation()
 {
-	bSimulationRunning = true;
-	if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Green, TEXT("Simulation Started!"));
-}
+    if (!TrafficSimEngine)
+    {
+        TrafficSimEngine = new TrafficSimulation();
+        TrafficSimEngine->Initialize();
+    }
 
+    bSimulationRunning = true;
+    if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Green, TEXT("Simulation Started!"));
+}
 void ASimulationManager::StopSimulation()
 {
 	bSimulationRunning = false;
@@ -186,8 +206,82 @@ void ASimulationManager::StopSimulation()
 		TrafficSimEngine = nullptr;
 	}
 
-	TrafficSimEngine = new TrafficSimulation();
-	TrafficSimEngine->Initialize();
+	FString ProjectDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
+
+	// Prefer the project's virtual environment if it exists.
+	// Otherwise fall back to the system Python installation.
+	FString VenvPython = FPaths::ConvertRelativePathToFull(
+		FPaths::Combine(ProjectDir, TEXT("../python_pipeline/telemetry/.venv/Scripts/python.exe"))
+	);
+
+	FString PythonExePath;
+
+	if (FPaths::FileExists(VenvPython))
+	{
+		PythonExePath = VenvPython;
+	}
+	else
+	{
+		PythonExePath = TEXT("python");
+	}
+
+	if (FPaths::FileExists(VenvPython))
+	{
+		PythonExePath = VenvPython;
+		UE_LOG(LogTemp, Warning, TEXT("Using project virtual environment."));
+	}
+	else
+	{
+		PythonExePath = TEXT("python");
+		UE_LOG(LogTemp, Warning, TEXT("Using system Python from PATH."));
+	}
+
+	FString ScriptPath = FPaths::ConvertRelativePathToFull(
+		FPaths::Combine(ProjectDir, TEXT("../python_pipeline/telemetry/run_pipeline.py"))
+	);
+
+	FString SimulationCsvPath = FPaths::ConvertRelativePathToFull(
+		FPaths::Combine(ProjectDir, TEXT("simulation_output.csv"))
+	);
+
+	FString TelemetryDonePath = FPaths::ConvertRelativePathToFull(
+		FPaths::Combine(ProjectDir, TEXT("../python_pipeline/telemetry/telemetry_done.txt"))
+	);
+	TelemetryDoneFilePath = TelemetryDonePath;
+	bWaitingForTelemetry = true;
+
+	// Remove the old done file so this run has to create a fresh one.
+	if (FPaths::FileExists(TelemetryDonePath))
+	{
+		IFileManager::Get().Delete(*TelemetryDonePath);
+	}
+
+	// Show a small status widget while Python generates the telemetry outputs.
+	if (TelemetryStatusClass)
+	{
+		TelemetryStatusWidget = CreateWidget<UUserWidget>(GetWorld(), TelemetryStatusClass);
+
+		if (TelemetryStatusWidget)
+		{
+			TelemetryStatusWidget->AddToViewport(100);
+		}
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("TelemetryStatusClass is not assigned."));
+	}
+
+	// Run the Python telemetry pipeline after the simulation has finished.
+	PythonBridge::RunTelemetryAnalysis(
+		PythonExePath,
+		ScriptPath,
+		SimulationCsvPath
+	);
+
+	//ShowHeatmapOverlay();
+	
+	//TrafficSimEngine = new TrafficSimulation();
+	//TrafficSimEngine->Initialize();
 
 	if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Red, TEXT("Simulation Stopped & Reset!"));
 }
@@ -241,5 +335,21 @@ void ASimulationManager::UpdateVehicleVisuals(float Alpha)
 			// Otherwise the deleted cars stay permanently frozen on your screen!
 			VehicleISM->UpdateInstanceTransform(i, FTransform(FRotator::ZeroRotator, FVector::ZeroVector, FVector::ZeroVector), false, true, true);
 		}
+	}
+}
+
+void ASimulationManager::ShowHeatmapOverlay()
+{
+	if (!HeatmapOverlayClass)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("HeatmapOverlayClass is not assigned."));
+		return;
+	}
+
+	UUserWidget* HeatmapWidget = CreateWidget<UUserWidget>(GetWorld(), HeatmapOverlayClass);
+
+	if (HeatmapWidget)
+	{
+		HeatmapWidget->AddToViewport(100);
 	}
 }

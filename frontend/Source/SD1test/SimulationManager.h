@@ -13,6 +13,7 @@ THIRD_PARTY_INCLUDES_START
 THIRD_PARTY_INCLUDES_END
 
 #include "TrafficSimulation.h"
+#include "Blueprint/UserWidget.h"
 
 #include "SimulationManager.generated.h"
 
@@ -38,6 +39,9 @@ public:
 		void StartSimulation();
 	UFUNCTION(BlueprintCallable, Category = "Simulation")
 		void StopSimulation();
+
+	UFUNCTION(BlueprintCallable, Category = "Heatmaps")
+	void ShowHeatmapOverlay();
 
 	// Creates a button in the Unreal Editor to generate the map
 	UFUNCTION(CallInEditor, Category = "Simulation Setup")
@@ -69,6 +73,20 @@ protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
+	// Widget to display telemetry heatmaps.
+	UPROPERTY(EditAnywhere, Category = "Heatmaps")
+	TSubclassOf<UUserWidget> HeatmapOverlayClass;
+
+	UPROPERTY(EditAnywhere, Category = "Heatmaps")
+	TSubclassOf<UUserWidget> TelemetryStatusClass;
+
+	UPROPERTY()
+	UUserWidget* TelemetryStatusWidget;
+
+	bool bWaitingForTelemetry = false;
+
+	FString TelemetryDoneFilePath;
+	
 	// Single HISM for the minimal MVP
 	UPROPERTY(EditDefaultsOnly, Category = "Traffic Visuals")
 	UInstancedStaticMeshComponent* VehicleISM;

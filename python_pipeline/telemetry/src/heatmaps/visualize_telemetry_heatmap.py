@@ -101,6 +101,9 @@ def add_target_coordinates(network_df: pd.DataFrame):
     Then I use the edge's target node ID to find the ending coordinate.
     """
     network_df = network_df.copy()
+    
+    if "target_x" in network_df.columns and "target_y" in network_df.columns:
+        return network_df
 
     required_columns = {"source", "target", "source_x", "source_y"}
     missing = required_columns - set(network_df.columns)
@@ -315,7 +318,7 @@ def main():
 
     parser.add_argument(
         "--network",
-        default=BASE_DIR / "data/network/network_graph.csv",
+        default=BASE_DIR / "data/network/network_graph_waterford.csv",
         help="Path to network graph CSV.",
     )
 
