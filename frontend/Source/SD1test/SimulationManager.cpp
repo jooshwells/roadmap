@@ -107,7 +107,7 @@ void ASimulationManager::GenerateRoadsInEditor()
 		// 4. Command the visualizer to render the instances
 		if (NetworkVisualizer)
 		{
-			NetworkVisualizer->BuildVisualNetwork(MyRoadNetwork);
+			NetworkVisualizer->BuildVisualNetwork(MyRoadNetwork, NodesPath, EdgesPath);
 			if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Green, TEXT("Roads Generated Successfully!"));
 		}
 	}
@@ -441,4 +441,19 @@ int32 ASimulationManager::GetInstanceIndexFromVehicleID(int32 VehicleID)
 
 	// Return -1 if the car is no longer in the simulation
 	return -1;
+}
+
+void ASimulationManager::NotifyBackendOfNewRoad(int64 StartNodeId, int64 EndNodeId, FVector EndNodeUnrealLoc, float LengthMeters, int32 Lanes) {
+    if (TrafficSimEngine && NetworkVisualizer) {
+        // Convert Unreal units back to Map Coordinates using the Visualizer's offsets
+        double BackendX = (EndNodeUnrealLoc.X / 100.0) + NetworkVisualizer->OriginOffsetX;
+        double BackendY = (EndNodeUnrealLoc.Y / 100.0) + NetworkVisualizer->OriginOffsetY;
+
+        // Push to the live simulation
+        TrafficSimEngine->AddRuntimeRoad(StartNodeId, EndNodeId, BackendX, BackendY, LengthMeters, Lanes);
+        
+        if (GEngine) {
+            GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, TEXT("Live Graph Updated!"));
+        }
+    }
 }

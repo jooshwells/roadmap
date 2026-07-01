@@ -81,6 +81,9 @@ public:
 
 	virtual void Tick(float DeltaTime) override; // Called every frame
 
+	UFUNCTION(BlueprintCallable, Category = "Simulation")
+	void NotifyBackendOfNewRoad(int64 StartNodeId, int64 EndNodeId, FVector EndNodeUnrealLoc, float LengthMeters, int32 Lanes);
+
 private:
 	TrafficSimulation* TrafficSimEngine;
 	

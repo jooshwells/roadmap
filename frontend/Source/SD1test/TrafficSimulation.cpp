@@ -81,6 +81,8 @@ void TrafficSimulation::Initialize() {
                 eastEdgeNodes.push_back(nodeId);
             }
         }
+
+        UE_LOG(LogTemp, Warning, TEXT("Total Nodes Loaded: %d"), orlandoMap->getNodes().size());
     }
 
     // 2. Instantiate the rest of the simulation components
@@ -193,4 +195,15 @@ std::vector<VehicleRenderState> TrafficSimulation::GetVehicleRenderStates()
     }
 
     return renderStates;
+}
+void TrafficSimulation::AddRuntimeRoad(uint64_t startNodeId, uint64_t endNodeId, double destX, double destY, double lengthMeters, int lanes) {
+    if (!orlandoMap) return;
+
+    // add new node from road editing
+    if (!orlandoMap->getNode(endNodeId)) {
+        orlandoMap->addNode(endNodeId, 0.0, 0.0, destX, destY);
+    }
+
+    // add directed edge, adjust speed limit later
+    orlandoMap->addDirectedEdge(startNodeId, endNodeId, lengthMeters, 15.646, lanes);
 }

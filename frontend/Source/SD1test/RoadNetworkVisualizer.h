@@ -3,7 +3,9 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "Components/HierarchicalInstancedStaticMeshComponent.h"
-
+#include "Dom/JsonObject.h"
+#include "Serialization/JsonSerializer.h"
+#include "Misc/FileHelper.h"
 #include "network.h" 
 #include "RoadNetworkVisualizer.generated.h"
 
@@ -56,17 +58,32 @@ public:
     float MedianGapCm = 100.0f; // 1 meter gap
 
     // Builds the visual instances from your simulator's network
-    void BuildVisualNetwork(Network* RoadNetwork);
+    void BuildVisualNetwork(Network* RoadNetwork, FString InNodesPath, FString InEdgesPath);
+
+    int64 ExportNewRoadSegment(int64 StartNodeId, int64 EndNodeId, FVector EndNodeUnrealLoc, int32 Lanes);
 
     // Helper function to get an Edge ID when clicking on a road instance
     // Returns int64 because Blueprints do not support uint64
     UFUNCTION(BlueprintCallable, Category = "Road Network")
     int64 GetEdgeIdFromHitItem(int32 HitItemIndex);
 
+    void AddSingleRoadVisually(FVector StartUnrealLoc, FVector EndUnrealLoc, int32 Lanes);
+
+    FVector2D ConvertUnrealToJSONCoords(FVector UnrealLocation);
+
+    // Snaps a clicked location to the nearest node if within the radius
+    UFUNCTION(BlueprintCallable, Category = "Road Network")
+    bool FindClosestNode(FVector SearchLocation, float SnapRadiusCM, FVector& OutNodeLocation, int64& OutNodeId);
+
 private:
     // Maps HISM Instance ID (int32) to the simulator's Edge ID (uint64_t)
     TMap<int32, uint64_t> InstanceIndexToEdgeId;
+    TMap<uint64_t, FVector> CachedNodeLocations;
+    uint64_t CurrentMaxNodeId = 0;
+    uint64_t CurrentMaxEdgeId = 0;
 
+    FString NodesFilePath;
+    FString EdgesFilePath;
 protected:
     int32 CurrentlyHighlightedIndex = INDEX_NONE;
 };
