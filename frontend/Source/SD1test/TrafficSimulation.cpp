@@ -23,14 +23,11 @@ TrafficSimulation::~TrafficSimulation()
 void TrafficSimulation::Initialize() {
     currentTime = 0.0f;
     
-    FString ProjectDir = FPaths::ProjectDir();
+    FString ContentDir = FPaths::ProjectContentDir();
 
-    // 2. Build the path to the python_pipeline folder
-    // Since python_pipeline is next to frontend, we go up one level from the project root
-    FString NodesPath = FPaths::Combine(ProjectDir, TEXT("../python_pipeline/sample_out/waterford_nodes_orange_allroads_offline_xy.jsonl"));
-    FString EdgesPath = FPaths::Combine(ProjectDir, TEXT("../python_pipeline/sample_out/waterford_edges_orange_allroads_offline_xy.jsonl"));
+    FString NodesPath = FPaths::Combine(ContentDir, TEXT("ThirdParty/MapData/waterford_nodes_orange_allroads_offline_xy.jsonl"));
+    FString EdgesPath = FPaths::Combine(ContentDir, TEXT("ThirdParty/MapData/waterford_edges_orange_allroads_offline_xy.jsonl"));
 
-    // 3. (Optional but recommended) Convert it to a clean, absolute path
     FPaths::CollapseRelativeDirectories(NodesPath);
     FPaths::CollapseRelativeDirectories(EdgesPath);
     // 1. Instantiate the network map on the heap

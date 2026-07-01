@@ -53,3 +53,7 @@ Do NOT commit or copy these generated folders/files:
 - telemetry_done.txt
 
 These are generated automatically during execution.
+
+Packaging for Unreal:
+- Make sure you install pyinstaller to the venv like so: ./.venv/Scripts/python.exe -m pip install pyinstaller
+- Then run ./.venv/Scripts/pyinstaller.exe --onefile run_pipeline.py, and put it in frontend/Content/ThirdParty/Telemetry

@@ -21,3 +21,6 @@ data/fdot/
 Thumbs.db
 
 telemetry_done.txt
+
+build
+*.spec

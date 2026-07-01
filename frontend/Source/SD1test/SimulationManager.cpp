@@ -70,16 +70,13 @@ void ASimulationManager::GenerateRoadsInEditor()
 	UE_LOG(LogTemp, Log, TEXT("Generate button clicked!"));
 	// 1. Clean up old data if you click the button multiple times
 	ClearRoadsInEditor();
-	FString ProjectDir = FPaths::ProjectDir();
+	FString ContentDir = FPaths::ProjectContentDir();
 
-	// 2. Build the path to the python_pipeline folder
-	// Since python_pipeline is next to frontend, we go up one level from the project root
-	FString NodesPath = FPaths::Combine(ProjectDir, TEXT("../python_pipeline/sample_out/waterford_nodes_orange_allroads_offline_xy.jsonl"));
-	FString EdgesPath = FPaths::Combine(ProjectDir, TEXT("../python_pipeline/sample_out/waterford_edges_orange_allroads_offline_xy.jsonl"));
+    FString NodesPath = FPaths::Combine(ContentDir, TEXT("ThirdParty/MapData/waterford_nodes_orange_allroads_offline_xy.jsonl"));
+    FString EdgesPath = FPaths::Combine(ContentDir, TEXT("ThirdParty/MapData/waterford_edges_orange_allroads_offline_xy.jsonl"));
 
-	// 3. (Optional but recommended) Convert it to a clean, absolute path
-	FPaths::CollapseRelativeDirectories(NodesPath);
-	FPaths::CollapseRelativeDirectories(EdgesPath);
+    FPaths::CollapseRelativeDirectories(NodesPath);
+    FPaths::CollapseRelativeDirectories(EdgesPath);
 	// 2. Build your simulator network. 
 	// (If this crashes or fails to load the JSONs in the editor, change these to absolute paths like "C:/dev/roadmap/...")
 	MyRoadNetwork = new Network(NetworkBuilder::buildNetworkFromJSONL(
@@ -206,61 +203,33 @@ void ASimulationManager::StopSimulation()
 		TrafficSimEngine = nullptr;
 	}
 
-	FString ProjectDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
+	FString ContentDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectContentDir());
+    FString ProjectDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
 
-	// Prefer the project's virtual environment if it exists.
-	// Otherwise fall back to the system Python installation.
-	FString VenvPython = FPaths::ConvertRelativePathToFull(
-		FPaths::Combine(ProjectDir, TEXT("../python_pipeline/telemetry/.venv/Scripts/python.exe"))
-	);
+    // Point to the executable in the Content folder
+    FString ExecutablePath = FPaths::Combine(ContentDir, TEXT("ThirdParty/Telemetry/run_pipeline.exe"));
+    FPaths::CollapseRelativeDirectories(ExecutablePath);
 
-	FString PythonExePath;
+    // Keep the CSV in the Project or Saved directory (so it has write permissions)
+    FString SimulationCsvPath = FPaths::ConvertRelativePathToFull(
+        FPaths::Combine(ProjectDir, TEXT("simulation_output.csv"))
+    );
 
-	if (FPaths::FileExists(VenvPython))
-	{
-		PythonExePath = VenvPython;
-	}
-	else
-	{
-		PythonExePath = TEXT("python");
-	}
-
-	if (FPaths::FileExists(VenvPython))
-	{
-		PythonExePath = VenvPython;
-		UE_LOG(LogTemp, Warning, TEXT("Using project virtual environment."));
-	}
-	else
-	{
-		PythonExePath = TEXT("python");
-		UE_LOG(LogTemp, Warning, TEXT("Using system Python from PATH."));
-	}
-
-	FString ScriptPath = FPaths::ConvertRelativePathToFull(
-		FPaths::Combine(ProjectDir, TEXT("../python_pipeline/telemetry/run_pipeline.py"))
-	);
-
-	FString SimulationCsvPath = FPaths::ConvertRelativePathToFull(
-		FPaths::Combine(ProjectDir, TEXT("simulation_output.csv"))
-	);
-
-	FString TelemetryDonePath = FPaths::ConvertRelativePathToFull(
-		FPaths::Combine(ProjectDir, TEXT("../python_pipeline/telemetry/telemetry_done.txt"))
-	);
-	TelemetryDoneFilePath = TelemetryDonePath;
+    // Point to the done file in the Content folder
+    FString TelemetryDonePath = FPaths::ConvertRelativePathToFull(
+        FPaths::Combine(ContentDir, TEXT("ThirdParty/Telemetry/telemetry_done.txt"))
+    );
+    TelemetryDoneFilePath = TelemetryDonePath;
 	bWaitingForTelemetry = true;
 
-	// Remove the old done file so this run has to create a fresh one.
 	if (FPaths::FileExists(TelemetryDonePath))
 	{
 		IFileManager::Get().Delete(*TelemetryDonePath);
 	}
 
-	// Show a small status widget while Python generates the telemetry outputs.
 	if (TelemetryStatusClass)
 	{
 		TelemetryStatusWidget = CreateWidget<UUserWidget>(GetWorld(), TelemetryStatusClass);
-
 		if (TelemetryStatusWidget)
 		{
 			TelemetryStatusWidget->AddToViewport(100);
@@ -271,12 +240,8 @@ void ASimulationManager::StopSimulation()
 		UE_LOG(LogTemp, Warning, TEXT("TelemetryStatusClass is not assigned."));
 	}
 
-	// Run the Python telemetry pipeline after the simulation has finished.
-	PythonBridge::RunTelemetryAnalysis(
-		PythonExePath,
-		ScriptPath,
-		SimulationCsvPath
-	);
+	// Call the simplified bridge
+	PythonBridge::RunTelemetryAnalysis(ExecutablePath, SimulationCsvPath);
 
 	//ShowHeatmapOverlay();
 	

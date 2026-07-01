@@ -8,8 +8,7 @@ class PythonBridge
 {
 public:
     static bool RunTelemetryAnalysis(
-        const FString& PythonExePath,
-        const FString& ScriptPath,
+        const FString& ExecutablePath,
         const FString& SimulationCsvPath
     );
 };

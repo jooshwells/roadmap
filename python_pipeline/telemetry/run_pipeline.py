@@ -1,5 +1,4 @@
 from pathlib import Path
-import subprocess
 import sys
 import json
 import pandas as pd
@@ -9,13 +8,26 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib import colors
 
+# Detect if we are running as a PyInstaller packaged .exe or a normal .py script
+if getattr(sys, 'frozen', False):
+    # RUNTIME_DIR is where the .exe physically lives on the hard drive
+    RUNTIME_DIR = Path(sys.executable).parent
+    # BUNDLE_DIR is the temporary folder where PyInstaller extracts your code
+    BUNDLE_DIR = Path(sys._MEIPASS)
+else:
+    # Running normally via python.exe
+    RUNTIME_DIR = Path(__file__).resolve().parent
+    BUNDLE_DIR = RUNTIME_DIR
 
 TELEMETRY_DIR = Path(__file__).resolve().parent
 PYTHON_PIPELINE_DIR = TELEMETRY_DIR.parent
 BASE_DIR = PYTHON_PIPELINE_DIR.parent
 
-TELEMETRY_SCRIPT = TELEMETRY_DIR / "src" / "telemetry" / "telemetry_analysis.py"
-HEATMAP_SCRIPT = TELEMETRY_DIR / "src" / "heatmaps" / "generate_all_heatmaps.py"
+sys.path.append(str(TELEMETRY_DIR / "src"))
+
+# Import sub-scripts as Python modules
+from telemetry import telemetry_analysis
+from heatmaps import generate_all_heatmaps
 
 OUTPUT_DIR = TELEMETRY_DIR / "outputs"
 CSV_DIR = OUTPUT_DIR / "csv"
@@ -24,24 +36,6 @@ INPUT_DIR = TELEMETRY_DIR / "inputs"
 
 EDGE_JSONL_PATH = PYTHON_PIPELINE_DIR / "sample_out" / "waterford_edges_orange_allroads_offline_xy.jsonl"
 EDITED_EDGES_PATH = INPUT_DIR / "edited_edges.csv"
-
-
-def run_command(command: list[str], cwd: Path) -> None:
-    print("Running command:")
-    print(" ".join(str(part) for part in command))
-
-    result = subprocess.run(
-        command,
-        cwd=cwd,
-        text=True,
-        capture_output=True,
-    )
-
-    print(result.stdout)
-
-    if result.returncode != 0:
-        print(result.stderr)
-        raise RuntimeError(f"Command failed with return code {result.returncode}")
 
 
 def clean_label_value(value):
@@ -288,33 +282,14 @@ def main() -> int:
     (OUTPUT_DIR / "telemetry").mkdir(parents=True, exist_ok=True)
     (OUTPUT_DIR / "heatmaps").mkdir(parents=True, exist_ok=True)
 
-    # First, call the real telemetry analysis script if it exists.
-    if TELEMETRY_SCRIPT.exists():
-        run_command(
-            [
-                sys.executable,
-                str(TELEMETRY_SCRIPT),
-                "--input",
-                str(simulation_csv),
-            ],
-            cwd=TELEMETRY_DIR,
-        )
-    else:
-        print(f"Telemetry script not found: {TELEMETRY_SCRIPT}")
-        
-    # Then generate the telemetry heatmap PNGs if the script exists.
-    if HEATMAP_SCRIPT.exists():
-        run_command(
-            [
-                sys.executable,
-                str(HEATMAP_SCRIPT),
-            ],
-            cwd=TELEMETRY_DIR,
-        )
-    else:
-        print(f"Heatmap script not found: {HEATMAP_SCRIPT}") 
+    # 3. Call the imported module functions directly
+    print("Running telemetry analysis...")
+    telemetry_analysis.run_telemetry(simulation_csv)
+    
+    print("Generating heatmaps...")
+    generate_all_heatmaps.generate()
            
-    # Then create the Unreal-friendly/user-friendly outputs.
+    # Create the Unreal-friendly/user-friendly outputs.
     create_simple_outputs(simulation_csv)
     write_text_report(simulation_csv)
     write_pdf_report()
