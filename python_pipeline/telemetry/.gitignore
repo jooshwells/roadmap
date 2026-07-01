@@ -2,6 +2,7 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.venv
 
 # Generated outputs
 outputs/
@@ -18,3 +19,5 @@ data/fdot/
 
 # Windows
 Thumbs.db
+
+telemetry_done.txt
