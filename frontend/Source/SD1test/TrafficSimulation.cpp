@@ -118,6 +118,12 @@ void TrafficSimulation::Step(float dt)
 // Example getter implementation:
 const std::vector<VehicleState*>& TrafficSimulation::GetActiveVehicles() const 
 {
+    if (!controller)
+    {
+        static std::vector<VehicleState*> EmptyList;
+        return EmptyList;
+    }
+
     return controller->getActiveVehicles();
 }
 
@@ -129,6 +135,7 @@ std::vector<VehicleRenderState> TrafficSimulation::GetVehicleRenderStates()
 
     for (VehicleState* v : controller->getActiveVehicles()) 
     {
+        if (!v) continue;
         // 1. Safety Guard: Skip if route is invalid, empty, or at the end
         if (v->currentRoute.empty() || v->currentRouteIndex >= v->currentRoute.size() - 1) continue;
 
@@ -177,6 +184,8 @@ std::vector<VehicleRenderState> TrafficSimulation::GetVehicleRenderStates()
             // Apply the offset
             state.x += rightVecX * laneOffsetMeters;
             state.y += rightVecY * laneOffsetMeters;
+
+            state.id = v->getId();
         }
         // ---------------------------------------------------------
 

@@ -17,6 +17,27 @@ THIRD_PARTY_INCLUDES_END
 
 #include "SimulationManager.generated.h"
 
+struct FVehicleTransformState
+{
+	FTransform Previous;
+	FTransform Target;
+};
+
+USTRUCT(BlueprintType)
+struct FVehicleIDMStats
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "Vehicle Stats") int32 VehicleID = 0;
+	UPROPERTY(BlueprintReadOnly, Category = "Vehicle Stats") float CurrentSpeed = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Vehicle Stats") float DesiredSpeed = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Vehicle Stats") float MaxAcceleration = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Vehicle Stats") float AccelerationExponent = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Vehicle Stats") float MinGap = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Vehicle Stats") float SafeBrakePower = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Vehicle Stats") float SafeTimeHeadway = 0.0f;
+};
+
 
 UCLASS()
 class SD1TEST_API ASimulationManager : public AActor
@@ -30,6 +51,12 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Simulation Setup")
 	TSubclassOf<class ARoadNetworkVisualizer> VisualizerBlueprint;
 	
+	UFUNCTION(BlueprintCallable, Category = "Simulation")
+	bool GetVehicleStatsFromInstance(int32 InstanceIndex, FVehicleIDMStats& OutStats);
+
+	UFUNCTION(BlueprintCallable, Category = "Simulation")
+	int32 GetInstanceIndexFromVehicleID(int32 VehicleID);
+
 	//for the start sim button
 	UPROPERTY(BlueprintReadWrite, Category = "Simulation")
 	bool bSimulationRunning = false;
@@ -63,10 +90,11 @@ private:
 
 	void StepSimulation(double dt);
 
-	void UpdateVehicleVisuals(float Alpha);
-
+	void UpdateVehicleVisuals(float Alpha, bool bDidPhysicsStep);
 	Network* MyRoadNetwork;
     ARoadNetworkVisualizer* NetworkVisualizer;
+	TMap<int32, FVehicleTransformState> InterpolationData;
+	TMap<int32, int32> InstanceIndexToVehicleId;
 
 protected:
 	// Called when the game starts or when spawned
