@@ -70,12 +70,12 @@ void ASimulationManager::GenerateRoadsInEditor()
 	UE_LOG(LogTemp, Log, TEXT("Generate button clicked!"));
 	// 1. Clean up old data if you click the button multiple times
 	ClearRoadsInEditor();
-	FString ProjectDir = FPaths::ProjectDir();
+	FString ProjectDir = FPaths::ProjectContentDir();
 
 	// 2. Build the path to the python_pipeline folder
 	// Since python_pipeline is next to frontend, we go up one level from the project root
-	FString NodesPath = FPaths::Combine(ProjectDir, TEXT("../python_pipeline/sample_out/waterford_nodes_orange_allroads_offline_xy.jsonl"));
-	FString EdgesPath = FPaths::Combine(ProjectDir, TEXT("../python_pipeline/sample_out/waterford_edges_orange_allroads_offline_xy.jsonl"));
+	FString NodesPath = FPaths::Combine(ProjectDir, TEXT("ThirdParty/MapData/waterford_nodes_orange_allroads_offline_xy.jsonl"));
+	FString EdgesPath = FPaths::Combine(ProjectDir, TEXT("ThirdParty/MapData/waterford_edges_orange_allroads_offline_xy.jsonl"));
 
 	// 3. (Optional but recommended) Convert it to a clean, absolute path
 	FPaths::CollapseRelativeDirectories(NodesPath);
@@ -207,11 +207,11 @@ void ASimulationManager::StopSimulation()
 	}
 
 	FString ProjectDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
-
+	FString ProjectContentDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectContentDir());	
 	// Prefer the project's virtual environment if it exists.
 	// Otherwise fall back to the system Python installation.
 	FString VenvPython = FPaths::ConvertRelativePathToFull(
-		FPaths::Combine(ProjectDir, TEXT("../python_pipeline/telemetry/.venv/Scripts/python.exe"))
+		FPaths::Combine(ProjectContentDir, TEXT("ThirdParty/python_pipeline/telemetry/.venv/Scripts/python.exe"))
 	);
 
 	FString PythonExePath;
@@ -237,7 +237,7 @@ void ASimulationManager::StopSimulation()
 	}
 
 	FString ScriptPath = FPaths::ConvertRelativePathToFull(
-		FPaths::Combine(ProjectDir, TEXT("../python_pipeline/telemetry/run_pipeline.py"))
+		FPaths::Combine(ProjectContentDir, TEXT("ThirdParty/python_pipeline/telemetry/run_pipeline.py"))
 	);
 
 	FString SimulationCsvPath = FPaths::ConvertRelativePathToFull(
@@ -245,7 +245,7 @@ void ASimulationManager::StopSimulation()
 	);
 
 	FString TelemetryDonePath = FPaths::ConvertRelativePathToFull(
-		FPaths::Combine(ProjectDir, TEXT("../python_pipeline/telemetry/telemetry_done.txt"))
+		FPaths::Combine(ProjectContentDir, TEXT("ThirdParty/python_pipeline/telemetry/telemetry_done.txt"))
 	);
 	TelemetryDoneFilePath = TelemetryDonePath;
 	bWaitingForTelemetry = true;

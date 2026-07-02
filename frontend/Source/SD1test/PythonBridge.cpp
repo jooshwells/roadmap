@@ -22,8 +22,8 @@ bool PythonBridge::RunTelemetryAnalysis(
     UE_LOG(LogTemp, Warning, TEXT("Arguments: %s"), *Args);
 
     FString DoneFile = FPaths::Combine(
-        FPaths::ProjectDir(),
-        TEXT("../python_pipeline/telemetry/telemetry_done.txt")
+        FPaths::ProjectContentDir(),
+        TEXT("ThirdParty/python_pipeline/telemetry/telemetry_done.txt")
     );
 
     FPaths::CollapseRelativeDirectories(DoneFile);
