@@ -3,7 +3,7 @@
 
 a = Analysis(
     ['run_pipeline.py'],
-    pathex=['src'],
+    pathex=[],
     binaries=[],
     datas=[],
     hiddenimports=[],

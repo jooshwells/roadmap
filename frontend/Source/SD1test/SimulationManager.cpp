@@ -208,45 +208,40 @@ void ASimulationManager::StopSimulation()
 
 	FString ProjectDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
 	FString ProjectContentDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectContentDir());	
-	// Prefer the project's virtual environment if it exists.
-	// Otherwise fall back to the system Python installation.
-	FString VenvPython = FPaths::ConvertRelativePathToFull(
-		FPaths::Combine(ProjectContentDir, TEXT("ThirdParty/python_pipeline/telemetry/.venv/Scripts/python.exe"))
+
+	FString SourceTelemetryDir = FPaths::ConvertRelativePathToFull(
+		FPaths::Combine(ProjectDir, TEXT("../python_pipeline/telemetry"))
 	);
 
-	FString PythonExePath;
-
-	if (FPaths::FileExists(VenvPython))
-	{
-		PythonExePath = VenvPython;
-	}
-	else
-	{
-		PythonExePath = TEXT("python");
-	}
-
-	if (FPaths::FileExists(VenvPython))
-	{
-		PythonExePath = VenvPython;
-		UE_LOG(LogTemp, Warning, TEXT("Using project virtual environment."));
-	}
-	else
-	{
-		PythonExePath = TEXT("python");
-		UE_LOG(LogTemp, Warning, TEXT("Using system Python from PATH."));
-	}
-
-	FString ScriptPath = FPaths::ConvertRelativePathToFull(
-		FPaths::Combine(ProjectContentDir, TEXT("ThirdParty/python_pipeline/telemetry/run_pipeline.py"))
+	FString PackagedTelemetryDir = FPaths::ConvertRelativePathToFull(
+		FPaths::Combine(ProjectContentDir, TEXT("ThirdParty/python_pipeline/telemetry"))
 	);
+
+	FString PipelineExePath = FPaths::Combine(PackagedTelemetryDir, TEXT("run_pipeline.exe"));
+
+	if (!FPaths::FileExists(PipelineExePath))
+	{
+		PipelineExePath = FPaths::Combine(SourceTelemetryDir, TEXT("run_pipeline.exe"));
+	}
+
+	if (!FPaths::FileExists(PipelineExePath))
+	{
+		UE_LOG(LogTemp, Error, TEXT("Telemetry executable not found in packaged or source telemetry folder."));
+		UE_LOG(LogTemp, Error, TEXT("Checked packaged path: %s"), *FPaths::Combine(PackagedTelemetryDir, TEXT("run_pipeline.exe")));
+		UE_LOG(LogTemp, Error, TEXT("Checked source path: %s"), *FPaths::Combine(SourceTelemetryDir, TEXT("run_pipeline.exe")));
+		return;
+	}
+
+	FString TelemetryDir = FPaths::GetPath(PipelineExePath);
 
 	FString SimulationCsvPath = FPaths::ConvertRelativePathToFull(
 		FPaths::Combine(ProjectDir, TEXT("simulation_output.csv"))
 	);
 
 	FString TelemetryDonePath = FPaths::ConvertRelativePathToFull(
-		FPaths::Combine(ProjectContentDir, TEXT("ThirdParty/python_pipeline/telemetry/telemetry_done.txt"))
+		FPaths::Combine(TelemetryDir, TEXT("telemetry_done.txt"))
 	);
+
 	TelemetryDoneFilePath = TelemetryDonePath;
 	bWaitingForTelemetry = true;
 
@@ -273,8 +268,7 @@ void ASimulationManager::StopSimulation()
 
 	// Run the Python telemetry pipeline after the simulation has finished.
 	PythonBridge::RunTelemetryAnalysis(
-		PythonExePath,
-		ScriptPath,
+		PipelineExePath,
 		SimulationCsvPath
 	);
 

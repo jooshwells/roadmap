@@ -1,8 +1,10 @@
 from pathlib import Path
-import subprocess
 import sys
 import json
 import pandas as pd
+
+from src.telemetry.telemetry_analysis import run_analysis
+from src.heatmaps.visualize_telemetry_heatmap import load_files, plot_heatmap
 
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
@@ -10,7 +12,10 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib import colors
 
 
-TELEMETRY_DIR = Path(__file__).resolve().parent
+if getattr(sys, "frozen", False):
+    TELEMETRY_DIR = Path(sys.executable).resolve().parent
+else:
+    TELEMETRY_DIR = Path(__file__).resolve().parent
 PYTHON_PIPELINE_DIR = TELEMETRY_DIR.parent
 BASE_DIR = PYTHON_PIPELINE_DIR.parent
 
@@ -25,23 +30,6 @@ INPUT_DIR = TELEMETRY_DIR / "inputs"
 EDGE_JSONL_PATH = PYTHON_PIPELINE_DIR / "sample_out" / "waterford_edges_orange_allroads_offline_xy.jsonl"
 EDITED_EDGES_PATH = INPUT_DIR / "edited_edges.csv"
 
-
-def run_command(command: list[str], cwd: Path) -> None:
-    print("Running command:")
-    print(" ".join(str(part) for part in command))
-
-    result = subprocess.run(
-        command,
-        cwd=cwd,
-        text=True,
-        capture_output=True,
-    )
-
-    print(result.stdout)
-
-    if result.returncode != 0:
-        print(result.stderr)
-        raise RuntimeError(f"Command failed with return code {result.returncode}")
 
 
 def clean_label_value(value):
@@ -268,6 +256,35 @@ def write_pdf_report() -> None:
 
     print(f"PDF report written to: {pdf_path}")
 
+def generate_heatmaps() -> None:
+    network_path = TELEMETRY_DIR / "data" / "network" / "network_graph_waterford.csv"
+    edge_metrics_path = OUTPUT_DIR / "telemetry" / "edge_metrics.csv"
+    heatmap_dir = OUTPUT_DIR / "heatmaps"
+    heatmap_dir.mkdir(parents=True, exist_ok=True)
+
+    metrics = [
+        "bottleneck_score",
+        "estimated_flow_veh_per_hr",
+        "avg_speed_mph",
+        "total_wait_added_s",
+    ]
+
+    network_df, metrics_df = load_files(network_path, edge_metrics_path)
+
+    for metric in metrics:
+        print(f"Generating heatmap: {metric}")
+
+        output_path = heatmap_dir / f"heatmap_{metric}.png"
+
+        plot_heatmap(
+            network_df,
+            metrics_df,
+            metric,
+            output_path,
+        )
+
+    print("Finished generating all heatmaps.")
+
 def main() -> int:
     if len(sys.argv) < 2:
         print("ERROR: Missing simulation CSV path.")
@@ -288,42 +305,24 @@ def main() -> int:
     (OUTPUT_DIR / "telemetry").mkdir(parents=True, exist_ok=True)
     (OUTPUT_DIR / "heatmaps").mkdir(parents=True, exist_ok=True)
 
-    # First, call the real telemetry analysis script if it exists.
-    if TELEMETRY_SCRIPT.exists():
-        run_command(
-            [
-                sys.executable,
-                str(TELEMETRY_SCRIPT),
-                "--input",
-                str(simulation_csv),
-            ],
-            cwd=TELEMETRY_DIR,
-        )
-    else:
-        print(f"Telemetry script not found: {TELEMETRY_SCRIPT}")
-        
-    # Then generate the telemetry heatmap PNGs if the script exists.
-    if HEATMAP_SCRIPT.exists():
-        run_command(
-            [
-                sys.executable,
-                str(HEATMAP_SCRIPT),
-            ],
-            cwd=TELEMETRY_DIR,
-        )
-    else:
-        print(f"Heatmap script not found: {HEATMAP_SCRIPT}") 
+    run_analysis(
+        input_file=simulation_csv,
+        output_dir=OUTPUT_DIR / "telemetry",
+    )
+
+    generate_heatmaps()
            
     # Then create the Unreal-friendly/user-friendly outputs.
-    create_simple_outputs(simulation_csv)
-    write_text_report(simulation_csv)
-    write_pdf_report()
+    # create_simple_outputs(simulation_csv)
+    # write_text_report(simulation_csv)
+    # write_pdf_report()
 
+
+    done_file = TELEMETRY_DIR / "telemetry_done.txt"
+    done_file.write_text("Telemetry processing complete.\n", encoding="utf-8")
+    print(f"Wrote done file: {done_file}")
 
     print("RoadMap Python pipeline finished successfully.")
-
-    done_file = Path(__file__).parent / "telemetry_done.txt"
-    done_file.write_text("Telemetry processing complete.\n")
     
     return 0
 
