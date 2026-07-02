@@ -60,7 +60,7 @@ public:
     // Builds the visual instances from your simulator's network
     void BuildVisualNetwork(Network* RoadNetwork, FString InNodesPath, FString InEdgesPath);
 
-    int64 ExportNewRoadSegment(int64 StartNodeId, int64 EndNodeId, FVector EndNodeUnrealLoc, int32 Lanes);
+    int64 ExportNewRoadSegment(int64 StartNodeId, int64 EndNodeId, FVector EndNodeUnrealLoc, int32 Lanes, float SpeedLimit, FString TurnLanes);
 
     // Helper function to get an Edge ID when clicking on a road instance
     // Returns int64 because Blueprints do not support uint64

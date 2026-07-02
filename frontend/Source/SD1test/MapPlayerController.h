@@ -18,9 +18,9 @@ public:
 	UPROPERTY()
 	UUserWidget* EditorUIWidget;
 
-	// Call this from your UMG UI Widget to turn drawing on/off
+	// updated for turn lanes and speed limit
 	UFUNCTION(BlueprintCallable, Category = "Map Editor")
-	void SetDrawMode(bool bEnable, int32 InLanes, bool bTwoWay);
+    void SetDrawMode(bool bEnable, int32 InLanes, bool bTwoWay, float InSpeedLimit, FString InTurnLanes);
 
 	UFUNCTION(BlueprintImplementableEvent, Category = "UI")
 	void OnVehicleClickedUI(FVehicleIDMStats VehicleStats);
@@ -53,4 +53,7 @@ private:
 
 	// Cached reference to your visualizer
 	class ARoadNetworkVisualizer* CachedVisualizer;
+
+	float CurrentDrawSpeedLimit = 20f; // default around 45 mph
+    FString CurrentDrawTurnLanes;   // string for turn lanes
 };

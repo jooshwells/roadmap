@@ -290,21 +290,27 @@ int64 ARoadNetworkVisualizer::ExportNewRoadSegment(int64 StartNodeId, int64 EndN
 
     // 2. Handle Edge Generation
     CurrentMaxEdgeId++;
-    FVector StartNodeUnrealLoc = CachedNodeLocations[StartNodeId]; // Retrieve from cache
+    FVector StartNodeUnrealLoc = CachedNodeLocations[StartNodeId]; 
     FVector2D StartJsonCoords = ConvertUnrealToJSONCoords(StartNodeUnrealLoc);
 
     // Calculate length in meters
     double LengthMeters = FVector::Distance(StartNodeUnrealLoc, EndNodeUnrealLoc) / 100.0;
 
     TSharedPtr<FJsonObject> EdgeObj = MakeShareable(new FJsonObject);
-    // You might want to assign an ID to the edge JSON if your schema requires it, but based on your example, u and v are the primary keys
     EdgeObj->SetNumberField(TEXT("u"), StartNodeId);
     EdgeObj->SetNumberField(TEXT("v"), FinalEndNodeId);
     EdgeObj->SetNumberField(TEXT("length_m"), LengthMeters);
-    EdgeObj->SetNumberField(TEXT("speed_mps"), 15.646); // Default or passed from UI
+    EdgeObj->SetNumberField(TEXT("speed_mps"), SpeedLimit); // use custom speedlimit field
+    
     EdgeObj->SetNumberField(TEXT("lanes"), Lanes);
     EdgeObj->SetBoolField(TEXT("oneway"), true);
-    EdgeObj->SetStringField(TEXT("highway"), TEXT("residential")); // Default type
+    EdgeObj->SetStringField(TEXT("highway"), TEXT("residential")); 
+
+    // turn lanes if needed
+    if (!TurnLanes.IsEmpty())
+    {
+        EdgeObj->SetStringField(TEXT("turn:lanes"), TurnLanes);
+    }
 
     // Create geometry_xy array representing the straight line
     TArray<TSharedPtr<FJsonValue>> GeometryArray;

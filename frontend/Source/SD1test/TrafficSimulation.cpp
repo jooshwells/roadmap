@@ -196,7 +196,7 @@ std::vector<VehicleRenderState> TrafficSimulation::GetVehicleRenderStates()
 
     return renderStates;
 }
-void TrafficSimulation::AddRuntimeRoad(uint64_t startNodeId, uint64_t endNodeId, double destX, double destY, double lengthMeters, int lanes) {
+void TrafficSimulation::AddRuntimeRoad(uint64_t startNodeId, uint64_t endNodeId, double destX, double destY, double lengthMeters, int lanes, float speedLimit) {
     if (!orlandoMap) return;
 
     // add new node from road editing
@@ -204,6 +204,6 @@ void TrafficSimulation::AddRuntimeRoad(uint64_t startNodeId, uint64_t endNodeId,
         orlandoMap->addNode(endNodeId, 0.0, 0.0, destX, destY);
     }
 
-    // add directed edge, adjust speed limit later
-    orlandoMap->addDirectedEdge(startNodeId, endNodeId, lengthMeters, 15.646, lanes);
+    // add directed edge, using the dynamic speed limit
+    orlandoMap->addDirectedEdge(startNodeId, endNodeId, lengthMeters, speedLimit, lanes);
 }
