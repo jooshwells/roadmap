@@ -18,7 +18,13 @@ class TelemetryLogger
         std::ofstream outFile;
         std::ostringstream buffer;
         int frameCount = 0;
-        const int FLUSH_INTERVAL = 60; 
+        const int FLUSH_INTERVAL = 60;
+
+        // Telemetry sampling period in sim seconds. The sim may step at 30-60 Hz,
+        // but the analysis pipeline only needs ~10 Hz rows, so frames arriving
+        // sooner than this since the last logged frame are skipped.
+        const float LOG_INTERVAL_SECONDS = 0.1f;
+        float lastLogTime = -1.0f; // negative sentinel: always log the first frame
 
         // Threading components
         std::thread workerThread;
@@ -93,8 +99,16 @@ class TelemetryLogger
             }
         }
 
-        void logFrame(float currentTime, const std::vector<VehicleState*>& activeCars) 
+        void logFrame(float currentTime, const std::vector<VehicleState*>& activeCars)
         {
+            // Downsample to LOG_INTERVAL_SECONDS. The 1ms tolerance keeps float
+            // drift in the summed sim clock from postponing a sample one step.
+            if (lastLogTime >= 0.0f && (currentTime - lastLogTime) < (LOG_INTERVAL_SECONDS - 0.001f))
+            {
+                return;
+            }
+            lastLogTime = currentTime;
+
             // The main thread only writes to memory (fast string building)
             for (const VehicleState* vhcl : activeCars) 
             {

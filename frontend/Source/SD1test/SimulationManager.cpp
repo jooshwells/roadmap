@@ -14,7 +14,10 @@ ASimulationManager::ASimulationManager()
 	PrimaryActorTick.bStartWithTickEnabled = true;
 
 	Accumulator = 0.0f;
-	FixedDelta = 0.016f;
+	// 30 Hz sim: IDM/MOBIL are stable well below this, and UpdateVehicleVisuals
+	// interpolates between steps, so rendering stays smooth at any frame rate.
+	FixedDelta = 0.0333f;
+	MaxStepsPerFrame = 4;
 	TrafficSimEngine = nullptr;
 
 	// Use standard ISM for moving objects!
@@ -159,11 +162,19 @@ void ASimulationManager::Tick(float DeltaTime)
 	Accumulator += DeltaTime;
 	int StepsThisFrame = 0;
 
-	while (Accumulator >= FixedDelta)
+	while (Accumulator >= FixedDelta && StepsThisFrame < MaxStepsPerFrame)
 	{
 		TrafficSimEngine->Step(FixedDelta);
 		Accumulator -= FixedDelta;
 		StepsThisFrame++;
+	}
+
+	// If the machine couldn't keep up this frame, drop the whole-step backlog
+	// (sim runs briefly in slow motion) instead of demanding even more steps
+	// next frame. Keep the sub-step remainder so Alpha stays in [0, 1).
+	if (Accumulator >= FixedDelta)
+	{
+		Accumulator = FMath::Fmod(Accumulator, static_cast<double>(FixedDelta));
 	}
 
 	float Alpha = Accumulator / FixedDelta;

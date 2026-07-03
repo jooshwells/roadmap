@@ -126,4 +126,10 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Simulation Settings")
 	float FixedDelta;
 
+	// Max physics steps per rendered frame. When a slow machine falls behind,
+	// the excess sim time is dropped rather than queued, so one long frame
+	// can't snowball into ever-more steps per frame.
+	UPROPERTY(EditAnywhere, Category = "Simulation Settings")
+	int32 MaxStepsPerFrame;
+
 };
