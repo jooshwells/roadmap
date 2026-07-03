@@ -4,10 +4,59 @@
 #include <cmath>     // For std::pow
 
 // Added edgeId (eId) to the initializer list
-Road::Road(uint64_t eId, uint64_t origin, uint64_t dest, double dist, double sL, int l) 
+Road::Road(uint64_t eId, uint64_t origin, uint64_t dest, double dist, double sL, int l)
     : edgeId(eId), originId(origin), destId(dest), length(dist), speedLimit(sL), lanes(l) {}
 
 Road::~Road() {}
+
+void Road::setGeometry(std::vector<RoadGeomPoint> pts)
+{
+    // Drop consecutive duplicates so zero-length segments never produce a
+    // degenerate (NaN) tangent, then accumulate arc length.
+    geometry.clear();
+    geometryLength = 0.0;
+    for (const RoadGeomPoint& p : pts)
+    {
+        if (!geometry.empty())
+        {
+            const double dx = p.x - geometry.back().x;
+            const double dy = p.y - geometry.back().y;
+            const double d = std::sqrt(dx * dx + dy * dy);
+            if (d < 1e-6) continue;
+            geometryLength += d;
+        }
+        geometry.push_back({ p.x, p.y, geometryLength });
+    }
+    if (geometry.size() < 2)
+    {
+        geometry.clear();
+        geometryLength = 0.0;
+    }
+}
+
+bool Road::samplePointAt(double dist, double& outX, double& outY,
+                         double& outTanX, double& outTanY) const
+{
+    if (geometry.size() < 2 || geometryLength <= 0.0 || length <= 0.0) return false;
+
+    // Remap sim-length position onto the polyline's own arc length.
+    double s = std::clamp(dist / length, 0.0, 1.0) * geometryLength;
+
+    // Find the segment containing s (last segment for s == geometryLength).
+    size_t i = 0;
+    while (i + 2 < geometry.size() && geometry[i + 1].s <= s) i++;
+
+    const RoadGeomPoint& a = geometry[i];
+    const RoadGeomPoint& b = geometry[i + 1];
+    const double segLen = b.s - a.s;
+    const double t = (segLen > 0.0) ? (s - a.s) / segLen : 0.0;
+
+    outX = a.x + (b.x - a.x) * t;
+    outY = a.y + (b.y - a.y) * t;
+    outTanX = (b.x - a.x) / segLen;
+    outTanY = (b.y - a.y) / segLen;
+    return true;
+}
 
 double Road::getDynamicCost() const {
     // Capacity roughly equals physical space: length / 7 meters per car * lanes.

@@ -118,7 +118,13 @@ void PhysicsProcessor::update(float dt)
         Road* currentEdge = vhcl->getCurrentEdge();
         
         // ---> CRITICAL FIX 1: Guard against missing edges <---
-        if (currentEdge == nullptr) continue; 
+        // If a car spawned with a bad route and has no edge, trying to get lanes will segfault!
+        if (currentEdge == nullptr) continue;
+
+        // Advance any transition in progress; while sliding between lanes (or
+        // cooling down afterwards) the car doesn't make a new MOBIL decision.
+        vhcl->updateLaneChange(dt);
+        if (!vhcl->canStartLaneChange()) continue;
 
         int currentLane = vhcl->getLane();
         int totalLanes = currentEdge->getLanes(); 
@@ -164,9 +170,10 @@ void PhysicsProcessor::update(float dt)
                bestIncentive = rightIncentive;
            }
        }
-        // take lane with best MOBIL incentive
+        // take lane with best MOBIL incentive; the change plays out over a
+        // politeness-scaled interval rather than snapping instantly
        if (bestLane != currentLane) {
-           vhcl->setLane(bestLane);
+           vhcl->startLaneChange(bestLane);
        }
     }
     vehicleUpdates.clear();
@@ -193,6 +200,16 @@ void PhysicsProcessor::update(float dt)
 
         vhcl->setLeader(getLeader(vhcl, vhcl->getLane()));
         float acceleration = IDM(vhcl, vhcl->getLeader(), false);
+
+        // While straddling two lanes mid-change, also respect the leader in
+        // the lane being vacated and follow whichever is more restrictive.
+        if (vhcl->isChangingLanes() && vhcl->getPreviousLane() != vhcl->getLane()) {
+            VehicleState* oldLaneLeader = getLeader(vhcl, vhcl->getPreviousLane());
+            if (oldLaneLeader != nullptr) {
+                acceleration = std::min(acceleration, IDM(vhcl, oldLaneLeader, false));
+            }
+        }
+
         float dv = acceleration * dt;
 
         vhcl->setAcceleration(acceleration); 
@@ -477,7 +494,7 @@ float  PhysicsProcessor::MOBIL(VehicleState* vhcl, int targetLane)
     VehicleState* oldFollower = getFollower(vhcl, vhcl->getLane());
     VehicleState* curLeader = vhcl->getLeader();
 
-    float politeness = 0.2f; // 0 is selfish, 1 is selfless
+    float politeness = vhcl->getPoliteness(); // 0 is selfish, 1 is selfless
     float safeBrake = 2.0f; // b_safe, max deceleration vehicle can cause on new follower
 
     // saftey criterion, check if lane change is safe to do 

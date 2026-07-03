@@ -1,4 +1,5 @@
 #include "network.h"
+#include <algorithm>
 #include <cstdint>
 #include <iostream>
 #include <fstream>
@@ -47,13 +48,36 @@ Node* Network::getRandomNode(std::mt19937& rng)
     return getNode(randomId);
 }
 
-void Network::addDirectedEdge(uint64_t fromId, uint64_t toId, double dist, double speedLimit, int lanes)
+void Network::addDirectedEdge(uint64_t fromId, uint64_t toId, double dist, double speedLimit, int lanes,
+                              std::vector<RoadGeomPoint> geometry)
 {
     if (nodes.find(fromId) != nodes.end() && nodes.find(toId) != nodes.end())
     {
-        nodes[fromId].outgoingEdges.emplace_back(nextEdgeId++, fromId, toId, dist, speedLimit, lanes);
-        
+        Road& edge = nodes[fromId].outgoingEdges.emplace_back(nextEdgeId++, fromId, toId, dist, speedLimit, lanes);
+
         nodes[toId].incomingEdgeNodeIds.push_back(fromId);
+
+        if (geometry.size() >= 2)
+        {
+            // OSM geometry is stored per way, so a reversed directed edge can
+            // carry a to->from point order. Orient by whichever end sits
+            // closest to each node, then snap the endpoints exactly onto the
+            // node coordinates so road visuals stay flush at junctions.
+            const Node& a = nodes[fromId];
+            const Node& b = nodes[toId];
+            auto dist2 = [](const RoadGeomPoint& p, const Node& n) {
+                const double dx = p.x - n.getX();
+                const double dy = p.y - n.getY();
+                return dx * dx + dy * dy;
+            };
+            const double fwd = dist2(geometry.front(), a) + dist2(geometry.back(), b);
+            const double rev = dist2(geometry.front(), b) + dist2(geometry.back(), a);
+            if (rev < fwd) std::reverse(geometry.begin(), geometry.end());
+
+            geometry.front() = { a.getX(), a.getY(), 0.0 };
+            geometry.back()  = { b.getX(), b.getY(), 0.0 };
+            edge.setGeometry(std::move(geometry));
+        }
     }
     else
     {

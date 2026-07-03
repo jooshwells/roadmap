@@ -22,6 +22,7 @@ struct VehicleRenderState
 {
     float x, y, z;
     float yaw; // Heading direction in radians
+    int id; // vhcl id in sim backend
 };
 
 class TrafficSimulation 
@@ -41,6 +42,9 @@ public:
     // Accessor for the Unreal frontend to grab data for rendering
     // Replace 'auto' or 'VehicleData' with your actual vehicle data struct
     const std::vector<VehicleState*>& GetActiveVehicles() const;
+
+    // add new road when road editing
+    void AddRuntimeRoad(uint64_t startNodeId, uint64_t endNodeId, double destX, double destY, double lengthMeters, int lanes);
 
 private:
     double originOffsetX;

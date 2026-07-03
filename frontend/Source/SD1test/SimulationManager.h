@@ -13,8 +13,30 @@ THIRD_PARTY_INCLUDES_START
 THIRD_PARTY_INCLUDES_END
 
 #include "TrafficSimulation.h"
+#include "Blueprint/UserWidget.h"
 
 #include "SimulationManager.generated.h"
+
+struct FVehicleTransformState
+{
+	FTransform Previous;
+	FTransform Target;
+};
+
+USTRUCT(BlueprintType)
+struct FVehicleIDMStats
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "Vehicle Stats") int32 VehicleID = 0;
+	UPROPERTY(BlueprintReadOnly, Category = "Vehicle Stats") float CurrentSpeed = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Vehicle Stats") float DesiredSpeed = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Vehicle Stats") float MaxAcceleration = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Vehicle Stats") float AccelerationExponent = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Vehicle Stats") float MinGap = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Vehicle Stats") float SafeBrakePower = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Vehicle Stats") float SafeTimeHeadway = 0.0f;
+};
 
 
 UCLASS()
@@ -29,6 +51,12 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Simulation Setup")
 	TSubclassOf<class ARoadNetworkVisualizer> VisualizerBlueprint;
 	
+	UFUNCTION(BlueprintCallable, Category = "Simulation")
+	bool GetVehicleStatsFromInstance(int32 InstanceIndex, FVehicleIDMStats& OutStats);
+
+	UFUNCTION(BlueprintCallable, Category = "Simulation")
+	int32 GetInstanceIndexFromVehicleID(int32 VehicleID);
+
 	//for the start sim button
 	UPROPERTY(BlueprintReadWrite, Category = "Simulation")
 	bool bSimulationRunning = false;
@@ -38,6 +66,9 @@ public:
 		void StartSimulation();
 	UFUNCTION(BlueprintCallable, Category = "Simulation")
 		void StopSimulation();
+
+	UFUNCTION(BlueprintCallable, Category = "Heatmaps")
+	void ShowHeatmapOverlay();
 
 	// Creates a button in the Unreal Editor to generate the map
 	UFUNCTION(CallInEditor, Category = "Simulation Setup")
@@ -50,6 +81,9 @@ public:
 
 	virtual void Tick(float DeltaTime) override; // Called every frame
 
+	UFUNCTION(BlueprintCallable, Category = "Simulation")
+	void NotifyBackendOfNewRoad(int64 StartNodeId, int64 EndNodeId, FVector EndNodeUnrealLoc, float LengthMeters, int32 Lanes);
+
 private:
 	TrafficSimulation* TrafficSimEngine;
 	
@@ -59,16 +93,31 @@ private:
 
 	void StepSimulation(double dt);
 
-	void UpdateVehicleVisuals(float Alpha);
-
+	void UpdateVehicleVisuals(float Alpha, bool bDidPhysicsStep);
 	Network* MyRoadNetwork;
     ARoadNetworkVisualizer* NetworkVisualizer;
+	TMap<int32, FVehicleTransformState> InterpolationData;
+	TMap<int32, int32> InstanceIndexToVehicleId;
 
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
+	// Widget to display telemetry heatmaps.
+	UPROPERTY(EditAnywhere, Category = "Heatmaps")
+	TSubclassOf<UUserWidget> HeatmapOverlayClass;
+
+	UPROPERTY(EditAnywhere, Category = "Heatmaps")
+	TSubclassOf<UUserWidget> TelemetryStatusClass;
+
+	UPROPERTY()
+	UUserWidget* TelemetryStatusWidget;
+
+	bool bWaitingForTelemetry = false;
+
+	FString TelemetryDoneFilePath;
+	
 	// Single HISM for the minimal MVP
 	UPROPERTY(EditDefaultsOnly, Category = "Traffic Visuals")
 	UInstancedStaticMeshComponent* VehicleISM;

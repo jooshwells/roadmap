@@ -26,7 +26,11 @@ class Network {
         Node* getRandomNode(std::mt19937& rng);
         
         void visualizeNetworkForPython();
-        void addDirectedEdge(uint64_t fromId, uint64_t toId, double dist, double speedLimit, int lanes);
+        // 'geometry' is the optional OSM centerline polyline (map meters, y
+        // sign-flipped to match Node coords). It may arrive in either point
+        // order; it is oriented from->to and endpoint-snapped before storage.
+        void addDirectedEdge(uint64_t fromId, uint64_t toId, double dist, double speedLimit, int lanes,
+                             std::vector<RoadGeomPoint> geometry = {});
         void visualizeNetwork();
         void calculateIntersectionPriorities();
         void resetPathfindingState();

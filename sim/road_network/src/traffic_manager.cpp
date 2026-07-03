@@ -3,6 +3,7 @@
 #include "heuristics3d.h"
 #include "idm_profiles.h"
 #include "physics_processor.h"
+#include <algorithm>
 
 // Update constructor to take targetCount
 TrafficManager::TrafficManager(Network* net, PhysicsProcessor* phys, int targetCount) 
@@ -110,13 +111,18 @@ bool TrafficManager::spawnRandomVehicle()
     // Abort spawn if the intersection is blocked
     if (!isSpawnClear) return false; 
 
+    // Jitter politeness per driver so some cars merge quickly and others
+    // drift over slowly (also weights their MOBIL incentive).
+    IDMParameters params = IDM_Profiles::getBasicDriverProfile();
+    params.politeness = std::clamp(params.politeness + politenessSpread(rng), 0.0f, 1.0f);
+
     VehicleState* newCar = new VehicleState(
-        originId, 
-        destId, 
-        30.0f, 
-        0.0f,  
-        0,     
-        IDM_Profiles::getBasicDriverProfile()
+        originId,
+        destId,
+        30.0f,
+        0.0f,
+        0,
+        params
     );
     
     newCar->currentRoute = route;
