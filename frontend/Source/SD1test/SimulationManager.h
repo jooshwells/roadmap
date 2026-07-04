@@ -85,8 +85,16 @@ public:
 	void NotifyBackendOfNewRoad(int64 StartNodeId, int64 EndNodeId, FVector EndNodeUnrealLoc, float LengthMeters, int32 Lanes);
 
 private:
+	// The JSONL pair to simulate: the active roadmap chosen in the main menu,
+	// or the bundled default map when launched straight into this level.
+	void ResolveActiveMapPaths(FString& OutNodesPath, FString& OutEdgesPath) const;
+
+	// Builds the active roadmap's network and writes the graph-geometry CSV the
+	// Python heatmap pipeline draws on. Returns false (and logs) on failure.
+	bool ExportActiveNetworkGraph(const FString& NodesPath, const FString& EdgesPath, const FString& OutCsvPath) const;
+
 	TrafficSimulation* TrafficSimEngine;
-	
+
 	double Accumulator = 0.0;
 
 	int StepCount = 0;

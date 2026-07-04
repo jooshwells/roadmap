@@ -6,6 +6,7 @@
 #include "Misc/Paths.h"
 #include "HAL/FileManager.h"
 #include "PythonBridge.h"
+#include "RoadmapGameInstance.h"
 
 // Sets default values
 ASimulationManager::ASimulationManager()
@@ -50,8 +51,10 @@ void ASimulationManager::BeginPlay()
 	// 1. Allocate the memory for the backend
 	TrafficSimEngine = new TrafficSimulation();
 
-	// 2. Load the map and initialize physics (this is where your JSON paths get called)
-	TrafficSimEngine->Initialize();
+	// 2. Load the active roadmap and initialize physics
+	FString NodesPath, EdgesPath;
+	ResolveActiveMapPaths(NodesPath, EdgesPath);
+	TrafficSimEngine->Initialize(TCHAR_TO_UTF8(*NodesPath), TCHAR_TO_UTF8(*EdgesPath));
 
 	if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Green, TEXT("Traffic Simulation Initialized successfully!"));
 }
@@ -68,22 +71,72 @@ void ASimulationManager::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	}
 }
 
+void ASimulationManager::ResolveActiveMapPaths(FString& OutNodesPath, FString& OutEdgesPath) const
+{
+	// Prefer the roadmap the player picked in the main menu. The GameInstance
+	// is null when this runs from the editor's CallInEditor button.
+	if (const UWorld* World = GetWorld())
+	{
+		if (const URoadmapGameInstance* GameInstance = World->GetGameInstance<URoadmapGameInstance>())
+		{
+			if (GameInstance->HasActiveRoadmap())
+			{
+				OutNodesPath = GameInstance->GetActiveNodesPath();
+				OutEdgesPath = GameInstance->GetActiveEdgesPath();
+				UE_LOG(LogTemp, Log, TEXT("Simulating roadmap '%s'"), *GameInstance->GetActiveRoadmapName());
+				return;
+			}
+		}
+	}
+
+	// Fallback: the bundled default map (editor tools, or PIE straight into MainLevel).
+	FString ProjectDir = FPaths::ProjectContentDir();
+	OutNodesPath = FPaths::Combine(ProjectDir, TEXT("ThirdParty/MapData/waterford_nodes_orange_allroads_offline_xy.jsonl"));
+	OutEdgesPath = FPaths::Combine(ProjectDir, TEXT("ThirdParty/MapData/waterford_edges_orange_allroads_offline_xy.jsonl"));
+	FPaths::CollapseRelativeDirectories(OutNodesPath);
+	FPaths::CollapseRelativeDirectories(OutEdgesPath);
+}
+
+bool ASimulationManager::ExportActiveNetworkGraph(const FString& NodesPath, const FString& EdgesPath, const FString& OutCsvPath) const
+{
+	// Make sure the destination folder exists before the sim tries to open the file.
+	const FString OutDir = FPaths::GetPath(OutCsvPath);
+	if (!OutDir.IsEmpty())
+	{
+		IFileManager::Get().MakeDirectory(*OutDir, /*Tree=*/true);
+	}
+
+	// Build a throwaway network purely to emit the graph CSV. Using the same
+	// NetworkBuilder as the simulation guarantees the exported edge_ids line up
+	// with the EdgeIDs recorded in the telemetry output.
+	Network GraphNetwork = NetworkBuilder::buildNetworkFromJSONL(
+		TCHAR_TO_UTF8(*NodesPath),
+		TCHAR_TO_UTF8(*EdgesPath)
+	);
+
+	GraphNetwork.visualizeNetworkForPython(TCHAR_TO_UTF8(*OutCsvPath));
+
+	if (!FPaths::FileExists(OutCsvPath))
+	{
+		UE_LOG(LogTemp, Error, TEXT("Failed to export network graph CSV to: %s"), *OutCsvPath);
+		return false;
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("Exported network graph CSV for the active roadmap to: %s"), *OutCsvPath);
+	return true;
+}
+
 void ASimulationManager::GenerateRoadsInEditor()
 {
 	UE_LOG(LogTemp, Log, TEXT("Generate button clicked!"));
 	// 1. Clean up old data if you click the button multiple times
 	ClearRoadsInEditor();
-	FString ProjectDir = FPaths::ProjectContentDir();
 
-	// 2. Build the path to the python_pipeline folder
-	// Since python_pipeline is next to frontend, we go up one level from the project root
-	FString NodesPath = FPaths::Combine(ProjectDir, TEXT("ThirdParty/MapData/waterford_nodes_orange_allroads_offline_xy.jsonl"));
-	FString EdgesPath = FPaths::Combine(ProjectDir, TEXT("ThirdParty/MapData/waterford_edges_orange_allroads_offline_xy.jsonl"));
+	// 2. Resolve which roadmap to build (menu selection or bundled default)
+	FString NodesPath, EdgesPath;
+	ResolveActiveMapPaths(NodesPath, EdgesPath);
 
-	// 3. (Optional but recommended) Convert it to a clean, absolute path
-	FPaths::CollapseRelativeDirectories(NodesPath);
-	FPaths::CollapseRelativeDirectories(EdgesPath);
-	// 2. Build your simulator network. 
+	// 3. Build your simulator network.
 	// (If this crashes or fails to load the JSONs in the editor, change these to absolute paths like "C:/dev/roadmap/...")
 	MyRoadNetwork = new Network(NetworkBuilder::buildNetworkFromJSONL(
 		TCHAR_TO_UTF8(*NodesPath),
@@ -192,7 +245,9 @@ void ASimulationManager::StartSimulation()
     if (!TrafficSimEngine)
     {
         TrafficSimEngine = new TrafficSimulation();
-        TrafficSimEngine->Initialize();
+        FString NodesPath, EdgesPath;
+        ResolveActiveMapPaths(NodesPath, EdgesPath);
+        TrafficSimEngine->Initialize(TCHAR_TO_UTF8(*NodesPath), TCHAR_TO_UTF8(*EdgesPath));
     }
 
     bSimulationRunning = true;
@@ -249,6 +304,17 @@ void ASimulationManager::StopSimulation()
 		FPaths::Combine(ProjectDir, TEXT("simulation_output.csv"))
 	);
 
+	// Generate the network-graph CSV for whichever roadmap was simulated so the
+	// heatmaps draw on the active map instead of the bundled Waterford default.
+	FString NodesPath, EdgesPath;
+	ResolveActiveMapPaths(NodesPath, EdgesPath);
+
+	FString NetworkGraphCsvPath = FPaths::ConvertRelativePathToFull(
+		FPaths::Combine(TelemetryDir, TEXT("data/network/network_graph_active.csv"))
+	);
+
+	ExportActiveNetworkGraph(NodesPath, EdgesPath, NetworkGraphCsvPath);
+
 	FString TelemetryDonePath = FPaths::ConvertRelativePathToFull(
 		FPaths::Combine(TelemetryDir, TEXT("telemetry_done.txt"))
 	);
@@ -278,9 +344,13 @@ void ASimulationManager::StopSimulation()
 	}
 
 	// Run the Python telemetry pipeline after the simulation has finished.
+	// Hand it the sim-generated graph CSV and the active roadmap's edge JSONL so
+	// its heatmaps and road labels match the map that was actually simulated.
 	PythonBridge::RunTelemetryAnalysis(
 		PipelineExePath,
-		SimulationCsvPath
+		SimulationCsvPath,
+		NetworkGraphCsvPath,
+		EdgesPath
 	);
 
 	//ShowHeatmapOverlay();

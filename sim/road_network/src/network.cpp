@@ -100,8 +100,8 @@ void Network::visualizeNetwork()
     }
 }
 
-void Network::visualizeNetworkForPython() {
-    std::string filename = "wf_network_graph.csv";
+void Network::visualizeNetworkForPython(const std::string& outputPath) {
+    std::string filename = outputPath;
     std::ofstream outFile(filename);
     
     if (!outFile.is_open()) {
@@ -114,18 +114,23 @@ void Network::visualizeNetworkForPython() {
     for (const auto& pair : nodes) {
         std::uint64_t sourceId = pair.first;
         const Node& node = pair.second;
-        
+
+        // NetworkBuilder stores y negated (-j["y"]) for the sim's coordinate
+        // convention. Undo that here so the exported CSV matches the source map
+        // orientation the Python heatmaps expect (north up).
+        const double sourceY = -node.getY();
+
         if (node.outgoingEdges.empty()) {
             // Write the dead-end, leaving target, length, and edge_id blank
-            outFile << sourceId << ",,," << node.getX() << "," << node.getY() << ",\n"; 
+            outFile << sourceId << ",,," << node.getX() << "," << sourceY << ",\n";
         } else {
             for (const Road& road : node.outgoingEdges) {
                 // UPDATE: Output the unique edge ID at the end of the line
-                outFile << sourceId << "," 
-                        << road.getDest() << "," 
-                        << road.getLength() << "," 
-                        << node.getX() << "," 
-                        << node.getY() << "," 
+                outFile << sourceId << ","
+                        << road.getDest() << ","
+                        << road.getLength() << ","
+                        << node.getX() << ","
+                        << sourceY << ","
                         << road.getEdgeId() << "\n";
             }
         }

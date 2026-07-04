@@ -22,24 +22,11 @@ TrafficSimulation::~TrafficSimulation()
     delete orlandoMap;
 }
 
-void TrafficSimulation::Initialize() {
+void TrafficSimulation::Initialize(const std::string& nodesPath, const std::string& edgesPath) {
     currentTime = 0.0f;
-    
-    FString ProjectDir = FPaths::ProjectContentDir();
 
-    // 2. Build the path to the python_pipeline folder
-    // Since python_pipeline is next to frontend, we go up one level from the project root
-    FString NodesPath = FPaths::Combine(ProjectDir, TEXT("ThirdParty/MapData/waterford_nodes_orange_allroads_offline_xy.jsonl"));
-	FString EdgesPath = FPaths::Combine(ProjectDir, TEXT("ThirdParty/MapData/waterford_edges_orange_allroads_offline_xy.jsonl"));
-
-    // 3. (Optional but recommended) Convert it to a clean, absolute path
-    FPaths::CollapseRelativeDirectories(NodesPath);
-    FPaths::CollapseRelativeDirectories(EdgesPath);
     // 1. Instantiate the network map on the heap
-    orlandoMap = new Network(NetworkBuilder::buildNetworkFromJSONL(
-        TCHAR_TO_UTF8(*NodesPath),
-        TCHAR_TO_UTF8(*EdgesPath)
-    ));
+    orlandoMap = new Network(NetworkBuilder::buildNetworkFromJSONL(nodesPath, edgesPath));
 
     std::vector<uint64_t> westEdgeNodes;
     std::vector<uint64_t> eastEdgeNodes;
