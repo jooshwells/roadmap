@@ -1,4 +1,5 @@
 #pragma once
+#include <string>
 #include <vector>
 #include "network_builder.h"
 #include "network.h"
@@ -33,8 +34,9 @@ public:
 
     std::vector<VehicleRenderState> GetVehicleRenderStates();
 
-    // Replaces your setup logic before the while loop
-    void Initialize();
+    // Replaces your setup logic before the while loop. The caller decides
+    // which roadmap JSONL pair to simulate (menu selection or default map).
+    void Initialize(const std::string& nodesPath, const std::string& edgesPath);
 
     // The single deterministic step that replaces the while loop
     void Step(float dt);

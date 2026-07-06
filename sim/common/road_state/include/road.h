@@ -2,6 +2,16 @@
 #define ROAD_H
 
 #include <cstdint>
+#include <vector>
+
+// One vertex of an edge's real-world centerline polyline (OSM geometry_xy),
+// in the same projected map coordinates as Node x/y (y already sign-flipped).
+// 's' is the cumulative arc length in meters from the first point.
+struct RoadGeomPoint {
+    double x;
+    double y;
+    double s;
+};
 
 class Road {
 
@@ -12,11 +22,27 @@ class Road {
         inline double getSpeedLimit() const       { return speedLimit; }
         inline int getLanes() const               { return lanes; }
         inline double getLength() const           { return length; }
-        
+
         // Setters
         inline void setSpeedLimit(double sL) { speedLimit = sL; }
         inline void setLanes(int l)          { lanes = l; }
-        
+
+        // Curved centerline (empty for edges without OSM shape data, e.g.
+        // runtime-created roads -- consumers fall back to a straight line).
+        // Points are oriented origin -> dest and cumulative arc lengths are
+        // filled in by setGeometry.
+        void setGeometry(std::vector<RoadGeomPoint> pts);
+        inline const std::vector<RoadGeomPoint>& getGeometry() const { return geometry; }
+        inline bool hasCurveGeometry() const { return geometry.size() >= 2; }
+
+        // Position + unit tangent on the centerline at 'dist' meters along the
+        // edge. 'dist' is measured against the simulator's edge length and is
+        // remapped proportionally onto the polyline's own arc length, so it
+        // stays consistent with vehicle positions even if the two differ
+        // slightly. Returns false when no usable geometry is stored.
+        bool samplePointAt(double dist, double& outX, double& outY,
+                           double& outTanX, double& outTanY) const;
+
         // volume tracking and dynamic cost for pathfinding
         void addVehicle() { currentVolume++; }
         void removeVehicle() { if (currentVolume > 0) currentVolume--; }
@@ -34,6 +60,8 @@ class Road {
         double speedLimit;
         int lanes;
         int currentVolume = 0;
+        std::vector<RoadGeomPoint> geometry; // empty = straight line
+        double geometryLength = 0.0;         // total polyline arc length (m)
 };
 
 #endif

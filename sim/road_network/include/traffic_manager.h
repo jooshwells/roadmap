@@ -20,6 +20,9 @@ class TrafficManager
         // New probability distribution for the 70/30 split
         std::uniform_real_distribution<float> routingProbability{0.0f, 1.0f};
 
+        // Per-driver politeness spread so lane-change speed varies car to car
+        std::uniform_real_distribution<float> politenessSpread{-0.2f, 0.4f};
+
         // Containers for through-traffic nodes
         std::vector<uint64_t> sourceNodes;
         std::vector<uint64_t> sinkNodes;

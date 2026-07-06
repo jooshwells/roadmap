@@ -6,13 +6,14 @@
 #include <cstdint>
 
 struct IDMParameters {
-    float accelExp;        
-    float maxAccel;        
-    float desiredSpeed;    
-    float minGap;          
-    float safeBrakePower;  
-    float safeTimeHeadway; 
-    float length; 
+    float accelExp;
+    float maxAccel;
+    float desiredSpeed;
+    float minGap;
+    float safeBrakePower;
+    float safeTimeHeadway;
+    float length;
+    float politeness;      // MOBIL p: 0 = selfish, 1 = selfless
 };
 
 class VehicleState {
@@ -25,6 +26,12 @@ class VehicleState {
         void setLeader(VehicleState* newLeader);
         void setLane(int newLane);
         void setDesiredSpeed(float new_des_speed);
+
+        // Progressive lane changing: setLane() snaps instantly (used for lane
+        // clamping at edge transitions); startLaneChange() begins a timed
+        // transition whose duration scales with the driver's politeness.
+        void startLaneChange(int targetLane);
+        void updateLaneChange(float dt);
         
         // NEW: Allow physics engine to update these values
         void setAcceleration(float accel); 
@@ -52,6 +59,18 @@ class VehicleState {
         inline VehicleState* getLeader() const    { return leader; }
         inline float getMaxAccel() const          { return maxAccel; }
         inline float getLength() const            { return m_length;}
+        inline float getPoliteness() const        { return politeness; }
+
+        // Lane transition state (m_lane is always the committed target lane)
+        inline bool  isChangingLanes() const      { return m_laneChangeElapsed < m_laneChangeDuration; }
+        inline int   getPreviousLane() const      { return m_laneFrom; }
+        inline bool  canStartLaneChange() const   { return !isChangingLanes() && m_laneChangeCooldown <= 0.0f; }
+        // Continuous lane position for rendering: eases from the old lane to
+        // the new one (smoothstep) over the transition interval.
+        float getRenderLane() const;
+        // d(renderLane)/dt in lanes per second; lets the renderer angle the
+        // car toward the target lane proportionally to how fast it is merging.
+        float getLaneChangeLateralRate() const;
 
         Road* getCurrentEdge() const;
         void setCurrentEdge(Road* edge);
@@ -65,8 +84,15 @@ class VehicleState {
 
     private:
         float m_speed;
-        float m_pos; 
-        int m_lane; 
+        float m_pos;
+        int m_lane;
+
+        // Lane transition state: while elapsed < duration the car is sliding
+        // from m_laneFrom toward m_lane. Duration of 0 means "not changing".
+        int   m_laneFrom = 0;
+        float m_laneChangeElapsed = 0.0f;
+        float m_laneChangeDuration = 0.0f;
+        float m_laneChangeCooldown = 0.0f;
 
         // NEW: Telemetry state variables
         float m_acceleration = 0.0f;
@@ -78,9 +104,10 @@ class VehicleState {
         float maxAccel;
         float desiredSpeed; 
         float minGap; 
-        float safeBrakePower; 
-        float safeTimeHeadway; 
+        float safeBrakePower;
+        float safeTimeHeadway;
         float m_length;
+        float politeness;
 
         Road* currentEdge = nullptr; 
     
