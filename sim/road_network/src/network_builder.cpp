@@ -1,6 +1,7 @@
 #include "network_builder.h"
 #include <fstream>
 #include <iostream>
+#include <vector>
 #include "json.hpp"
 
 using json = nlohmann::json;
@@ -60,13 +61,32 @@ Network NetworkBuilder::buildNetworkFromJSONL(const std::string& nodePath, const
             {
                 json j = json::parse(line); // parse object
                 int lanes = j.value("lanes", 1);
-               
+
+                // Optional real-world centerline shape. The y flip matches the
+                // node convention above (-j["y"]).
+                std::vector<RoadGeomPoint> geometry;
+                auto geomIt = j.find("geometry_xy");
+                if (geomIt != j.end() && geomIt->is_array())
+                {
+                    geometry.reserve(geomIt->size());
+                    for (const auto& p : *geomIt)
+                    {
+                        if (!p.contains("x") || !p.contains("y")) continue;
+                        geometry.push_back({
+                            p["x"].get<double>(),
+                            -p["y"].get<double>(),
+                            0.0
+                        });
+                    }
+                }
+
                 roadNetwork.addDirectedEdge(
                     j["u"],
                     j["v"],
                     j["length_m"],
                     j["speed_mps"],
-                    lanes
+                    lanes,
+                    std::move(geometry)
                 );
             }
             catch(const json::exception& e)
