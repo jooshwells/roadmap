@@ -25,7 +25,11 @@ class Network {
         Node* getNode(uint64_t id);
         Node* getRandomNode(std::mt19937& rng);
         
-        void visualizeNetworkForPython();
+        // Exports the graph geometry as the CSV the Python heatmap pipeline
+        // reads (columns: source,target,length,source_x,source_y,edge_id).
+        // Pass an absolute path so the file lands where the pipeline expects
+        // it regardless of the process working directory.
+        void visualizeNetworkForPython(const std::string& outputPath = "wf_network_graph.csv");
         // 'geometry' is the optional OSM centerline polyline (map meters, y
         // sign-flipped to match Node coords). It may arrive in either point
         // order; it is oriented from->to and endpoint-snapped before storage.

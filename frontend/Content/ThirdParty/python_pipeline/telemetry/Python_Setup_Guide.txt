@@ -1,0 +1,55 @@
+RoadMap Python Telemetry Setup Guide
+
+Follow these steps before running the Unreal project on a new computer.
+
+1. Install Python 3.12
+   - During installation, check "Add Python to PATH".
+
+2. Open a terminal in:
+   roadmap/python_pipeline/telemetry
+
+3. Create a virtual environment:
+   python -m venv .venv
+
+4. Install the required Python packages:
+   .\.venv\Scripts\python.exe -m pip install -r requirements.txt
+
+   Note:
+   Activating the virtual environment is optional. If PowerShell blocks
+   activation, the command above will still work.
+
+5. Verify the installation:
+   .\.venv\Scripts\python.exe --version
+   .\.venv\Scripts\python.exe -m pip list
+
+6. Open the Unreal project.
+
+Expected Workflow
+
+1. Click Start Simulation.
+2. Run the simulation.
+3. Click Stop Simulation.
+4. "Generating heatmaps..." appears.
+5. Python processes the telemetry data.
+6. The heatmap viewer opens automatically.
+7. Use the buttons to switch between:
+   - Bottleneck
+   - Estimated Flow
+   - Average Speed
+   - Total Wait
+
+Troubleshooting
+
+If the telemetry pipeline does not run:
+- Verify the virtual environment exists in:
+  roadmap/python_pipeline/telemetry/.venv
+- Verify the required packages were installed using requirements.txt.
+- Confirm Python 3.12 is installed.
+
+Do NOT commit or copy these generated folders/files:
+- .venv/
+- outputs/
+- __pycache__/
+- telemetry_done.txt
+
+These are generated automatically during execution.

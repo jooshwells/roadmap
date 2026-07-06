@@ -1,0 +1,23 @@
+# Python cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv
+
+# Generated outputs
+outputs/
+telemetry_done.txt
+
+# Simulation input (changes every run)
+data/simulation/
+
+# FDOT source data (large reference files)
+data/fdot/
+
+# VS Code
+.vscode/
+
+# Windows
+Thumbs.db
+
+telemetry_done.txt

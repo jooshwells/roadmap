@@ -7,6 +7,8 @@ __pycache__/
 # Generated outputs
 outputs/
 telemetry_done.txt
+build/
+dist
 
 # Simulation input (changes every run)
 data/simulation/
