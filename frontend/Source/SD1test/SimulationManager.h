@@ -85,8 +85,16 @@ public:
 	void NotifyBackendOfNewRoad(int64 StartNodeId, int64 EndNodeId, FVector EndNodeUnrealLoc, float LengthMeters, int32 Lanes);
 
 private:
+	// The JSONL pair to simulate: the active roadmap chosen in the main menu,
+	// or the bundled default map when launched straight into this level.
+	void ResolveActiveMapPaths(FString& OutNodesPath, FString& OutEdgesPath) const;
+
+	// Builds the active roadmap's network and writes the graph-geometry CSV the
+	// Python heatmap pipeline draws on. Returns false (and logs) on failure.
+	bool ExportActiveNetworkGraph(const FString& NodesPath, const FString& EdgesPath, const FString& OutCsvPath) const;
+
 	TrafficSimulation* TrafficSimEngine;
-	
+
 	double Accumulator = 0.0;
 
 	int StepCount = 0;
@@ -125,5 +133,11 @@ protected:
 	// Time step configuration (e.g., 0.1f for 10 updates/second)
 	UPROPERTY(EditAnywhere, Category = "Simulation Settings")
 	float FixedDelta;
+
+	// Max physics steps per rendered frame. When a slow machine falls behind,
+	// the excess sim time is dropped rather than queued, so one long frame
+	// can't snowball into ever-more steps per frame.
+	UPROPERTY(EditAnywhere, Category = "Simulation Settings")
+	int32 MaxStepsPerFrame;
 
 };

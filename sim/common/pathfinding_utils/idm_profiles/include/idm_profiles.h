@@ -16,7 +16,8 @@ class IDM_Profiles
                 2.0f,       // minGap (s0)
                 1.5f,       // safeBrakePower (b)
                 1.5f,       // safeTimeHeadway (T)
-                4.5f        // car length
+                4.5f,       // car length
+                0.3f        // politeness (p)
             };
         }
         
@@ -29,8 +30,9 @@ class IDM_Profiles
                 40.0f,      // desiredSpeed ~90mph
                 1.0f,       // minGap
                 2.5f,       // safeBrakePower
-                0.8f,        // safeTimeHeadway
-                4.5f        // car lenght
+                0.8f,       // safeTimeHeadway
+                4.5f,       // car lenght
+                0.05f       // politeness (darts across lanes)
             };
         }
 
@@ -42,9 +44,10 @@ class IDM_Profiles
                 0.8f,       // maxAccel 
                 25.0f,      // desiredSpeed abt 55mph
                 4.0f,       // minGap 
-                1.0f,       // safeBrakePower 
-                2.5f,       // safeTimeHeadway 
-                18.0f       // car length 
+                1.0f,       // safeBrakePower
+                2.5f,       // safeTimeHeadway
+                18.0f,      // car length
+                0.6f        // politeness (slow, deliberate merges)
             };
         }
 };
