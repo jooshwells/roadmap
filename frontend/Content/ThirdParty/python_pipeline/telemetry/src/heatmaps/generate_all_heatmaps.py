@@ -11,7 +11,7 @@ import sys
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 
-VISUALIZER_SCRIPT = BASE_DIR / "src/heatmaps/visualize_telemetry_heatmap.py"
+VISUALIZER_SCRIPT = BASE_DIR / "src/heatmaps/visualize_telemetry_heatmap_v2.py"
 
 DEFAULT_NETWORK = BASE_DIR / "data/network/network_graph_waterford.csv"
 

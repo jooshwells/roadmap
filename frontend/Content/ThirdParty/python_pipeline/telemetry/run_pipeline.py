@@ -2,8 +2,10 @@ from pathlib import Path
 import sys
 import json
 import pandas as pd
+import shutil
 
 from src.telemetry.telemetry_analysis import run_analysis
+from src.telemetry.run_manager import create_run_folder
 from src.heatmaps.visualize_telemetry_heatmap import load_files, plot_heatmap
 
 from reportlab.lib.pagesizes import letter
@@ -256,10 +258,14 @@ def write_pdf_report() -> None:
 
     print(f"PDF report written to: {pdf_path}")
 
-def generate_heatmaps() -> None:
-    network_path = TELEMETRY_DIR / "data" / "network" / "network_graph_waterford.csv"
-    edge_metrics_path = OUTPUT_DIR / "telemetry" / "edge_metrics.csv"
-    heatmap_dir = OUTPUT_DIR / "heatmaps"
+# Generates heatmap PNGs for one specific saved run.
+# The edge metrics come from the run folder, and the PNGs are saved inside that same run.
+def generate_heatmaps(run_folder: Path, network_path: Path) -> None:
+    # This run's edge metrics
+    edge_metrics_path = run_folder / "edge_metrics.csv"
+
+    # Save heatmaps inside this run so old runs keep their own images.
+    heatmap_dir = run_folder / "heatmaps"
     heatmap_dir.mkdir(parents=True, exist_ok=True)
 
     metrics = [
@@ -285,6 +291,111 @@ def generate_heatmaps() -> None:
 
     print("Finished generating all heatmaps.")
 
+# Creates a small JSON summary that Unreal can read for the dashboard.
+# This uses the real run summary from telemetry_analysis.py so totals are accurate.
+def write_dashboard_summary(run_folder: Path, run_summary: dict) -> None:
+    edge_metrics_path = run_folder / "edge_metrics.csv"
+    bottlenecks_path = run_folder / "bottleneck_edges.csv"
+    summary_path = run_folder / "telemetry_summary.json"
+
+    edge_metrics = pd.read_csv(edge_metrics_path)
+    bottlenecks = pd.read_csv(bottlenecks_path)
+
+    # Load road names and road types from the original edge JSONL when available.
+    # This gives the dashboard better labels than only showing EdgeID numbers.
+    metadata = load_edge_metadata()
+
+    if not metadata.empty:
+        bottlenecks = bottlenecks.merge(
+            metadata[["EdgeID", "road_label"]],
+            on="EdgeID",
+            how="left",
+        )
+    else:
+        bottlenecks["road_label"] = None
+
+    # Gives every bottleneck a readable label.
+    # If we do not have a real road name, we fall back to Road Segment <edge_id>.
+    def get_dashboard_road_label(row) -> str:
+        edge_id = int(row["EdgeID"])
+        road_label = row.get("road_label")
+
+        if pd.notna(road_label) and str(road_label).strip():
+            return str(road_label).strip()
+
+        return f"Road Segment {edge_id}"
+
+    worst_bottleneck = None
+    top_5_bottlenecks = []
+
+    if not bottlenecks.empty:
+        worst_row = bottlenecks.iloc[0]
+
+        worst_bottleneck = {
+            "edge_id": int(worst_row["EdgeID"]),
+            "road_label": get_dashboard_road_label(worst_row),
+            "bottleneck_score": float(worst_row["bottleneck_score"]),
+            "avg_speed_mph": float(worst_row["avg_speed_mph"]),
+            "total_wait_added_s": float(worst_row["total_wait_added_s"]),
+        }
+
+        for _, row in bottlenecks.head(5).iterrows():
+            edge_id = int(row["EdgeID"])
+
+            top_5_bottlenecks.append({
+                "edge_id": edge_id,
+                "road_label": get_dashboard_road_label(row),
+                "bottleneck_score": float(row["bottleneck_score"]),
+                "avg_speed_mph": float(row["avg_speed_mph"]),
+                "total_wait_added_s": float(row["total_wait_added_s"]),
+            })
+
+    summary = {
+        "total_vehicles": int(run_summary["vehicles"]),
+        "simulation_duration_s": float(run_summary["simulation_duration_s"]),
+        "edges_used": int(run_summary["edges_used"]),
+        "average_speed_mph": float(run_summary["average_speed_mph"]),
+        "total_wait_added_s": float(run_summary["total_wait_added_s"]),
+        "max_wait_time_s": float(run_summary["max_wait_time_s"]),
+        "worst_bottleneck": worst_bottleneck,
+        "top_5_bottleneck_roads": top_5_bottlenecks,
+    }
+
+    with open(summary_path, "w", encoding="utf-8") as file:
+        json.dump(summary, file, indent=4)
+
+    print(f"Wrote dashboard summary: {summary_path}")
+
+# Updates the run metadata after the analysis finishes.
+# This helps Unreal know that the run is ready and which files belong to it.
+def update_run_metadata(run_folder: Path, run_id: str) -> None:
+    metadata_path = run_folder / "run_metadata.json"
+
+    if metadata_path.exists():
+        with open(metadata_path, "r", encoding="utf-8") as file:
+            metadata = json.load(file)
+    else:
+        metadata = {
+            "run_id": run_id,
+        }
+
+    metadata["status"] = "analysis_complete"
+    metadata["summary_path"] = "telemetry_summary.json"
+    metadata["csv_path"] = "simulation_output.csv"
+    metadata["edge_metrics_path"] = "edge_metrics.csv"
+    metadata["bottleneck_edges_path"] = "bottleneck_edges.csv"
+    metadata["vehicle_metrics_path"] = "vehicle_metrics.csv"
+    metadata["od_metrics_path"] = "od_metrics.csv"
+    metadata["telemetry_flags_path"] = "telemetry_flags.csv"
+    metadata["heatmaps_folder"] = "heatmaps"
+    metadata["fdot_folder"] = "fdot"
+    metadata["available_heatmaps"] = []
+
+    with open(metadata_path, "w", encoding="utf-8") as file:
+        json.dump(metadata, file, indent=4)
+
+    print(f"Updated run metadata: {metadata_path}")
+
 def main() -> int:
     if len(sys.argv) < 2:
         print("ERROR: Missing simulation CSV path.")
@@ -305,12 +416,40 @@ def main() -> int:
     (OUTPUT_DIR / "telemetry").mkdir(parents=True, exist_ok=True)
     (OUTPUT_DIR / "heatmaps").mkdir(parents=True, exist_ok=True)
 
-    run_analysis(
-        input_file=simulation_csv,
-        output_dir=OUTPUT_DIR / "telemetry",
+    # Create a new folder for this simulation run.
+    # This keeps the current telemetry results separate from older runs.
+    run_id, run_folder = create_run_folder(OUTPUT_DIR)
+
+    print(f"Created telemetry run: {run_id}")
+    print(f"Run folder: {run_folder}")
+
+    # Save a copy of the raw simulation CSV inside this run folder.
+    # This lets us keep the original telemetry data that belongs to each run.
+    saved_simulation_csv = run_folder / "simulation_output.csv"
+    shutil.copy2(simulation_csv, saved_simulation_csv)
+
+    print(f"Saved simulation CSV: {saved_simulation_csv}")
+
+    # Run the telemetry analysis and keep the returned results.
+    # We use the summary values from this result to build the dashboard JSON.
+    analysis_results = run_analysis(
+        input_file=saved_simulation_csv,
+        output_dir=run_folder,
     )
 
-    generate_heatmaps()
+    # Create the dashboard-friendly JSON summary for this run.
+    write_dashboard_summary(run_folder, analysis_results["summary"])
+
+    # Mark this run as finished and list the files Unreal can read later.
+    update_run_metadata(run_folder, run_id)
+
+    # For now this uses the active/current network graph path.
+    # Later, Unreal can pass in the exact active roadmap network path.
+    active_network_path = TELEMETRY_DIR / "data" / "network" / "network_graph_waterford.csv"
+
+    # Heatmaps are now generated on demand from the dashboard.
+    # We leave this off so every simulation run does not create every heatmap automatically.
+    # generate_heatmaps(run_folder, active_network_path)
            
     # Then create the Unreal-friendly/user-friendly outputs.
     # create_simple_outputs(simulation_csv)
