@@ -14,7 +14,7 @@ FString UTelemetryPanelBridge::GetTelemetryExePath()
     );
 }
 
-// Runs one telemetry Python script and returns anything printed by Python.
+// Runs one telemetry panel command through the packaged telemetry EXE.
 bool UTelemetryPanelBridge::RunTelemetryScript(const FString& RelativeScriptPath, const TArray<FString>& Arguments, FString& OutJson)
 {
     OutJson.Empty();
