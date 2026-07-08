@@ -33,11 +33,8 @@ public:
 
 private:
 
-    // Finds the python.exe inside the RoadMap python_pipeline virtual environment.
-    static FString GetPythonExePath();
-
-    // Finds the telemetry folder inside the RoadMap Python pipeline.
-    static FString GetTelemetryRootPath();
+    // Finds the packaged telemetry EXE inside Content/ThirdParty.
+    static FString GetTelemetryExePath();
 
     // Runs one telemetry Python script and returns anything printed by Python.
     static bool RunTelemetryScript(const FString& RelativeScriptPath, const TArray<FString>& Arguments, FString& OutJson);

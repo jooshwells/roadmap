@@ -22,8 +22,13 @@ ALLOWED_METRICS = {
 }
 
 
-# Finds the telemetry folder no matter where the script is run from.
+# Finds the real telemetry folder in both development and packaged builds.
+# Packaged builds use the folder containing run_pipeline.exe instead of
+# PyInstaller's temporary extraction folder.
 def get_telemetry_dir() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+
     return Path(__file__).resolve().parents[2]
 
 
@@ -101,7 +106,8 @@ def generate_selected_heatmap(run_id: str, metric: str, network_path: Path | Non
 
 
 # Reads command-line arguments and creates the requested heatmap.
-def main() -> None:
+# The final print is JSON so Unreal can safely read the result.
+def main() -> int:
     parser = argparse.ArgumentParser(description="Generate one RoadMap heatmap for a saved run.")
 
     parser.add_argument(
@@ -125,16 +131,31 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    network_path = Path(args.network) if args.network else None
+    try:
+        network_path = Path(args.network) if args.network else None
 
-    output_path = generate_selected_heatmap(
-        run_id=args.run_id,
-        metric=args.metric,
-        network_path=network_path,
-    )
+        output_path = generate_selected_heatmap(
+            run_id=args.run_id,
+            metric=args.metric,
+            network_path=network_path,
+        )
 
-    print(f"Generated selected heatmap: {output_path}")
+        print(json.dumps({
+            "success": True,
+            "run_id": args.run_id,
+            "metric": args.metric,
+            "heatmap_path": str(output_path),
+        }))
 
+        return 0
+
+    except Exception as error:
+        print(json.dumps({
+            "success": False,
+            "error": str(error),
+        }))
+
+        return 1
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

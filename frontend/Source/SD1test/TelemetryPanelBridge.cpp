@@ -4,55 +4,68 @@
 #include "Misc/Paths.h"
 
 
-// Finds the python.exe inside the RoadMap python_pipeline virtual environment.
-FString UTelemetryPanelBridge::GetPythonExePath()
+// Finds the packaged telemetry EXE inside Content/ThirdParty.
+FString UTelemetryPanelBridge::GetTelemetryExePath()
 {
     const FString ProjectDir = FPaths::ProjectDir();
 
     return FPaths::ConvertRelativePathToFull(
-        FPaths::Combine(ProjectDir, TEXT(".."), TEXT("python_pipeline"), TEXT(".venv"), TEXT("Scripts"), TEXT("python.exe"))
+        FPaths::Combine(ProjectDir, TEXT("Content"), TEXT("ThirdParty"), TEXT("python_pipeline"), TEXT("telemetry"), TEXT("run_pipeline.exe"))
     );
 }
-
-
-// Finds the telemetry folder that Unreal uses inside Content/ThirdParty.
-FString UTelemetryPanelBridge::GetTelemetryRootPath()
-{
-    const FString ProjectDir = FPaths::ProjectDir();
-
-    return FPaths::ConvertRelativePathToFull(
-        FPaths::Combine(ProjectDir, TEXT("Content"), TEXT("ThirdParty"), TEXT("python_pipeline"), TEXT("telemetry"))
-    );
-}
-
 
 // Runs one telemetry Python script and returns anything printed by Python.
 bool UTelemetryPanelBridge::RunTelemetryScript(const FString& RelativeScriptPath, const TArray<FString>& Arguments, FString& OutJson)
 {
     OutJson.Empty();
 
-    const FString PythonExePath = GetPythonExePath();
-    const FString TelemetryRootPath = GetTelemetryRootPath();
-
-    const FString ScriptPath = FPaths::ConvertRelativePathToFull(
-        FPaths::Combine(TelemetryRootPath, RelativeScriptPath)
-    );
+    const FString TelemetryExePath = GetTelemetryExePath();
 
     IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
 
-    if (!PlatformFile.FileExists(*PythonExePath))
+    if (!PlatformFile.FileExists(*TelemetryExePath))
     {
-        OutJson = FString::Printf(TEXT("{\"success\":false,\"error\":\"Python executable not found.\",\"path\":\"%s\"}"), *PythonExePath);
+        OutJson = FString::Printf(
+            TEXT("{\"success\":false,\"error\":\"Telemetry executable not found.\",\"path\":\"%s\"}"),
+            *TelemetryExePath
+        );
+
         return false;
     }
 
-    if (!PlatformFile.FileExists(*ScriptPath))
+    // Tell the packaged telemetry EXE that this request came from the telemetry panel.
+    FString Params = TEXT("--panel-command ");
+
+    // Convert the old script path into the matching command inside run_pipeline.exe.
+    if (RelativeScriptPath.Contains(TEXT("list_available_metrics.py")))
     {
-        OutJson = FString::Printf(TEXT("{\"success\":false,\"error\":\"Telemetry script not found.\",\"path\":\"%s\"}"), *ScriptPath);
+        Params += TEXT("list-metrics");
+    }
+    else if (RelativeScriptPath.Contains(TEXT("list_runs.py")))
+    {
+        Params += TEXT("list-runs");
+    }
+    else if (RelativeScriptPath.Contains(TEXT("get_run_details.py")))
+    {
+        Params += TEXT("get-run-details");
+    }
+    else if (RelativeScriptPath.Contains(TEXT("get_heatmap_path.py")))
+    {
+        Params += TEXT("get-heatmap-path");
+    }
+    else if (RelativeScriptPath.Contains(TEXT("generate_selected_heatmap.py")))
+    {
+        Params += TEXT("generate-heatmap");
+    }
+    else
+    {
+        OutJson = FString::Printf(
+            TEXT("{\"success\":false,\"error\":\"Unknown telemetry panel script.\",\"script\":\"%s\"}"),
+            *RelativeScriptPath
+        );
+
         return false;
     }
-
-    FString Params = FString::Printf(TEXT("\"%s\""), *ScriptPath);
 
     for (const FString& Arg : Arguments)
     {
@@ -65,7 +78,7 @@ bool UTelemetryPanelBridge::RunTelemetryScript(const FString& RelativeScriptPath
     int32 ReturnCode = -1;
 
     const bool bStarted = FPlatformProcess::ExecProcess(
-        *PythonExePath,
+        *TelemetryExePath,
         *Params,
         &ReturnCode,
         &StdOut,
@@ -74,14 +87,14 @@ bool UTelemetryPanelBridge::RunTelemetryScript(const FString& RelativeScriptPath
 
     if (!bStarted)
     {
-        OutJson = TEXT("{\"success\":false,\"error\":\"Failed to start telemetry Python process.\"}");
+        OutJson = TEXT("{\"success\":false,\"error\":\"Failed to start telemetry EXE process.\"}");
         return false;
     }
 
     if (ReturnCode != 0)
     {
         OutJson = FString::Printf(
-            TEXT("{\"success\":false,\"error\":\"Telemetry Python script failed.\",\"return_code\":%d,\"stderr\":\"%s\"}"),
+            TEXT("{\"success\":false,\"error\":\"Telemetry EXE command failed.\",\"return_code\":%d,\"stderr\":\"%s\"}"),
             ReturnCode,
             *StdErr.ReplaceCharWithEscapedChar()
         );

@@ -7,9 +7,14 @@ from pathlib import Path
 from typing import Any
 
 
-# Adds the telemetry folder to Python's import path when this file is run directly.
+# Finds the real telemetry folder in both development and packaged builds.
+# PyInstaller extracts bundled Python files to a temporary folder, so packaged
+# builds use the folder containing run_pipeline.exe instead.
 def add_telemetry_root_to_path() -> Path:
-    telemetry_root = Path(__file__).resolve().parents[2]
+    if getattr(sys, "frozen", False):
+        telemetry_root = Path(sys.executable).resolve().parent
+    else:
+        telemetry_root = Path(__file__).resolve().parents[2]
 
     if str(telemetry_root) not in sys.path:
         sys.path.insert(0, str(telemetry_root))
