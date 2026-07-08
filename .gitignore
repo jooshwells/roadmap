@@ -162,13 +162,18 @@ __pycache__/
 *.pyc
 .pytest_cache/
 
-# Telemetry generated outputs (paths are relative to the repo root)
+# --- Cross-component generated artifacts (scripts/build_all.ps1) ---
+# NOTE: .venv/ (any location) is already ignored above.
+
+# PyInstaller outputs (telemetry run_pipeline.exe build)
+python_pipeline/telemetry/build/
+python_pipeline/telemetry/dist/
+
+# Generated telemetry outputs
 python_pipeline/telemetry/outputs/
 frontend/Content/ThirdParty/python_pipeline/telemetry/outputs/
-**/telemetry_done.txt
 
-# Network graph CSV regenerated for the active roadmap on every sim stop
-**/network_graph_active.csv
-
-# Optional generated simulation CSV
-frontend/simulation_output.csv
+# Generated sim/telemetry run artifacts (any location, incl. frontend copies)
+simulation_output.csv
+telemetry_done.txt
+network_graph_active.csv
