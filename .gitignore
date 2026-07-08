@@ -162,9 +162,13 @@ __pycache__/
 *.pyc
 .pytest_cache/
 
-# Telemetry generated outputs
-roadmap/python_pipeline/telemetry/outputs/
-roadmap/python_pipeline/telemetry/telemetry_done.txt
+# Telemetry generated outputs (paths are relative to the repo root)
+python_pipeline/telemetry/outputs/
+frontend/Content/ThirdParty/python_pipeline/telemetry/outputs/
+**/telemetry_done.txt
+
+# Network graph CSV regenerated for the active roadmap on every sim stop
+**/network_graph_active.csv
 
 # Optional generated simulation CSV
-roadmap/frontend/simulation_output.csv
+frontend/simulation_output.csv

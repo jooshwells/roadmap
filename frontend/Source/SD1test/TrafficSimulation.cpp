@@ -4,6 +4,7 @@
 #include "physics_processor.h"
 #include "traffic_manager.h"
 #include "dstarlite.h"
+#include "heuristics3d.h"
 #include "IntersectionGeometry.h"
 #include "Misc/Paths.h"
 #include "HAL/FileManager.h"
@@ -95,6 +96,10 @@ void TrafficSimulation::Step(float dt)
 {
     // Safety check to ensure things were initialized
     if (!spawner || !controller || !logger) return; 
+
+    // A few queued route replans per step: spread out so a big road edit
+    // never causes a frame hitch (each replan is one D* Lite search).
+    ProcessPendingReplans(2);
 
     // The core of your previous while-loop lives here now.
     // Notice we use the arrow operator (->) because they are now pointers.
@@ -316,4 +321,313 @@ void TrafficSimulation::AddRuntimeRoad(uint64_t startNodeId, uint64_t endNodeId,
 
     // add directed edge, using the dynamic speed limit
     orlandoMap->addDirectedEdge(startNodeId, endNodeId, lengthMeters, speedLimit, lanes);
+
+    // Adding to a node's outgoingEdges vector can reallocate it, which would
+    // leave vehicles on that node's other edges holding dangling Road*.
+    RefreshVehicleEdgePointers();
+}
+
+void TrafficSimulation::SplitRuntimeEdge(uint64_t u, uint64_t v, uint64_t newNodeId, double x, double y)
+{
+    if (!orlandoMap) return;
+
+    const bool fwd = orlandoMap->splitDirectedEdge(u, v, newNodeId, x, y);
+    // The opposite direction of a two-way street is an independent directed
+    // edge; split it through the same node so the junction works both ways.
+    const bool rev = orlandoMap->splitDirectedEdge(v, u, newNodeId, x, y);
+    if (!fwd && !rev) return;
+
+    // Patch active routes: every consecutive (u, v) or (v, u) hop now passes
+    // through the new node. Vehicles currently on the split edge keep their
+    // route index and position; the physics advance loop carries anyone past
+    // the first half onto the second at the next step.
+    if (controller)
+    {
+        for (VehicleState* veh : controller->getActiveVehicles())
+        {
+            if (!veh) continue;
+            std::vector<uint64_t>& route = veh->currentRoute;
+            for (size_t i = 0; i + 1 < route.size(); i++)
+            {
+                const bool hitFwd = fwd && route[i] == u && route[i + 1] == v;
+                const bool hitRev = rev && route[i] == v && route[i + 1] == u;
+                if (!hitFwd && !hitRev) continue;
+
+                route.insert(route.begin() + i + 1, newNodeId);
+                if (veh->currentRouteIndex >= i + 1) veh->currentRouteIndex++;
+                i++; // skip over the node we just inserted
+            }
+        }
+    }
+
+    RefreshVehicleEdgePointers();
+}
+
+void TrafficSimulation::DeleteRuntimeEdge(uint64_t u, uint64_t v, bool bBothDirections)
+{
+    if (!orlandoMap) return;
+
+    // Which directions actually exist right now.
+    auto EdgeExists = [&](uint64_t a, uint64_t b) -> bool
+    {
+        Node* from = orlandoMap->getNode(a);
+        if (!from) return false;
+        for (const Road& e : from->outgoingEdges)
+        {
+            if (e.getDest() == b) return true;
+        }
+        return false;
+    };
+    const bool fwd = EdgeExists(u, v);
+    const bool rev = bBothDirections && EdgeExists(v, u);
+    if (!fwd && !rev) return;
+
+    auto IsDeletedHop = [&](uint64_t a, uint64_t b) -> bool
+    {
+        return (fwd && a == u && b == v) || (rev && a == v && b == u);
+    };
+
+    // Sort affected vehicles BEFORE touching the graph, while their
+    // currentEdge pointers are still valid (despawnVehicle balances the edge
+    // volume through that pointer).
+    std::vector<VehicleState*> toDespawn;
+    std::vector<VehicleState*> toReroute;
+    if (controller)
+    {
+        for (VehicleState* veh : controller->getActiveVehicles())
+        {
+            if (!veh || veh->currentRoute.size() < 2) continue;
+            if (veh->currentRouteIndex + 1 >= veh->currentRoute.size()) continue;
+
+            const std::vector<uint64_t>& route = veh->currentRoute;
+            for (size_t i = veh->currentRouteIndex; i + 1 < route.size(); i++)
+            {
+                if (!IsDeletedHop(route[i], route[i + 1])) continue;
+
+                if (i == veh->currentRouteIndex)
+                {
+                    // Physically on the road being deleted: no way to keep it
+                    // driving on a graph edge that no longer exists.
+                    toDespawn.push_back(veh);
+                }
+                else
+                {
+                    toReroute.push_back(veh);
+                }
+                break;
+            }
+        }
+
+        for (VehicleState* veh : toDespawn)
+        {
+            controller->despawnVehicle(veh);
+        }
+    }
+
+    if (fwd) orlandoMap->removeDirectedEdge(u, v);
+    if (rev) orlandoMap->removeDirectedEdge(v, u);
+
+    // Endpoints with nothing left connected disappear along with the road
+    // (mirrors the visual network / JSONL cleanup on the frontend side).
+    orlandoMap->removeNodeIfIsolated(u);
+    orlandoMap->removeNodeIfIsolated(v);
+
+    // Reroute survivors around the gap now (the edge is already gone, so D*
+    // Lite cannot pick it). Deletion is rare enough that a synchronous search
+    // per affected vehicle beats letting anyone drive into a missing edge.
+    for (VehicleState* veh : toReroute)
+    {
+        std::vector<uint64_t>& route = veh->currentRoute;
+        const uint64_t hereId = route[veh->currentRouteIndex];
+        const uint64_t nextId = route[veh->currentRouteIndex + 1];
+        const uint64_t destId = route.back();
+
+        std::vector<uint64_t> fresh;
+        Node* next = orlandoMap->getNode(nextId);
+        Node* dest = orlandoMap->getNode(destId);
+        if (next && dest && nextId != destId)
+        {
+            DStarLite router(orlandoMap, next, dest, Heuristics3D::Euclidean);
+            router.ComputeShortestPath();
+            fresh = router.ExtractRoute(*orlandoMap, next, dest);
+        }
+
+        if (fresh.size() >= 2 && fresh.front() == nextId)
+        {
+            std::vector<uint64_t> spliced;
+            spliced.reserve(fresh.size() + 1);
+            spliced.push_back(hereId);
+            spliced.insert(spliced.end(), fresh.begin(), fresh.end());
+            route = std::move(spliced);
+            veh->currentRouteIndex = 0;
+        }
+        else
+        {
+            // No path around the gap: cut the route just before the deleted
+            // hop. The car drives to that node, stops, and the destination
+            // check despawns it there.
+            for (size_t i = veh->currentRouteIndex; i + 1 < route.size(); i++)
+            {
+                if (IsDeletedHop(route[i], route[i + 1]))
+                {
+                    route.resize(i + 1);
+                    break;
+                }
+            }
+        }
+    }
+
+    // removeDirectedEdge shifts the surviving Roads inside outgoingEdges, so
+    // every cached currentEdge pointer must be re-resolved.
+    RefreshVehicleEdgePointers();
+}
+
+void TrafficSimulation::UpdateRuntimeRoad(uint64_t u, uint64_t v, int lanes, float speedMps, bool bBothDirections)
+{
+    if (!orlandoMap) return;
+
+    const int safeLanes = std::max(1, lanes);
+    const float safeSpeed = std::max(0.5f, speedMps);
+
+    auto Apply = [&](uint64_t a, uint64_t b)
+    {
+        Node* from = orlandoMap->getNode(a);
+        if (!from) return;
+        for (Road& e : from->outgoingEdges)
+        {
+            if (e.getDest() == b)
+            {
+                e.setLanes(safeLanes);
+                e.setSpeedLimit(safeSpeed);
+                break;
+            }
+        }
+    };
+
+    Apply(u, v);
+    if (bBothDirections) Apply(v, u);
+
+    // Vehicles already driving the edited edge adopt the new speed limit and
+    // get pulled out of lanes that no longer exist.
+    if (!controller) return;
+    for (VehicleState* veh : controller->getActiveVehicles())
+    {
+        if (!veh || veh->currentRoute.empty()) continue;
+        if (veh->currentRouteIndex + 1 >= veh->currentRoute.size()) continue;
+
+        const uint64_t a = veh->currentRoute[veh->currentRouteIndex];
+        const uint64_t b = veh->currentRoute[veh->currentRouteIndex + 1];
+        const bool onFwd = (a == u && b == v);
+        const bool onRev = bBothDirections && (a == v && b == u);
+        if (!onFwd && !onRev) continue;
+
+        if (veh->getLane() >= safeLanes) veh->setLane(safeLanes - 1);
+        veh->setDesiredSpeed(safeSpeed);
+    }
+}
+
+void TrafficSimulation::QueueRouteReplansNear(double x, double y, double radiusMeters, int maxVehicles)
+{
+    if (!controller || !orlandoMap) return;
+
+    const double r2 = radiusMeters * radiusMeters;
+    int queued = 0;
+
+    for (VehicleState* veh : controller->getActiveVehicles())
+    {
+        if (queued >= maxVehicles) break;
+        if (!veh || veh->currentRoute.size() < 2) continue;
+        if (veh->currentRouteIndex + 1 >= veh->currentRoute.size()) continue;
+
+        // Only vehicles whose remaining route passes near the edit could
+        // plausibly benefit from a detour through it.
+        for (size_t i = veh->currentRouteIndex; i < veh->currentRoute.size(); i++)
+        {
+            Node* n = orlandoMap->getNode(veh->currentRoute[i]);
+            if (!n) continue;
+            const double dx = n->getX() - x;
+            const double dy = n->getY() - y;
+            if (dx * dx + dy * dy <= r2)
+            {
+                pendingReplanIds.push_back(veh->getId());
+                queued++;
+                break;
+            }
+        }
+    }
+}
+
+void TrafficSimulation::ProcessPendingReplans(int maxCount)
+{
+    if (pendingReplanIds.empty()) return;
+    if (!controller || !orlandoMap)
+    {
+        pendingReplanIds.clear();
+        return;
+    }
+
+    int done = 0;
+    while (done < maxCount && !pendingReplanIds.empty())
+    {
+        const int vid = pendingReplanIds.front();
+        pendingReplanIds.pop_front();
+        done++;
+
+        VehicleState* veh = nullptr;
+        for (VehicleState* c : controller->getActiveVehicles())
+        {
+            if (c && c->getId() == vid) { veh = c; break; }
+        }
+        if (!veh || veh->currentRoute.size() < 2) continue;
+        if (veh->currentRouteIndex + 1 >= veh->currentRoute.size()) continue;
+
+        // Replan from the node the car is heading toward: it cannot leave its
+        // current edge mid-span, so the hop it is on must be preserved.
+        const uint64_t hereId = veh->currentRoute[veh->currentRouteIndex];
+        const uint64_t nextId = veh->currentRoute[veh->currentRouteIndex + 1];
+        const uint64_t destId = veh->currentRoute.back();
+        if (nextId == destId) continue; // already on the final hop
+
+        Node* next = orlandoMap->getNode(nextId);
+        Node* dest = orlandoMap->getNode(destId);
+        if (!next || !dest) continue;
+
+        DStarLite router(orlandoMap, next, dest, Heuristics3D::Euclidean);
+        router.ComputeShortestPath();
+        std::vector<uint64_t> fresh = router.ExtractRoute(*orlandoMap, next, dest);
+        if (fresh.size() < 2 || fresh.front() != nextId) continue;
+
+        std::vector<uint64_t> spliced;
+        spliced.reserve(fresh.size() + 1);
+        spliced.push_back(hereId);
+        spliced.insert(spliced.end(), fresh.begin(), fresh.end());
+
+        veh->currentRoute = std::move(spliced);
+        veh->currentRouteIndex = 0;
+    }
+
+    RefreshVehicleEdgePointers();
+}
+
+void TrafficSimulation::RefreshVehicleEdgePointers()
+{
+    if (!controller || !orlandoMap) return;
+
+    for (VehicleState* veh : controller->getActiveVehicles())
+    {
+        if (!veh || veh->currentRoute.empty()) continue;
+        if (veh->currentRouteIndex >= veh->currentRoute.size() - 1) continue;
+
+        Node* n = orlandoMap->getNode(veh->currentRoute[veh->currentRouteIndex]);
+        if (!n) continue;
+
+        for (Road& e : n->outgoingEdges)
+        {
+            if (e.getDest() == veh->currentRoute[veh->currentRouteIndex + 1])
+            {
+                veh->setCurrentEdge(&e);
+                break;
+            }
+        }
+    }
 }

@@ -12,6 +12,25 @@
 class UProceduralMeshComponent;
 class UMaterialInterface;
 
+// Everything the road-edit UI needs about one directed edge. Lanes, speed and
+// turn lanes are read-write: edit them and pass the struct back through
+// AMapPlayerController::ApplyRoadEdit.
+USTRUCT(BlueprintType)
+struct FRoadEdgeInfo
+{
+    GENERATED_BODY()
+
+    UPROPERTY(BlueprintReadOnly, Category = "Road Edit") int64 EdgeId = -1;
+    UPROPERTY(BlueprintReadOnly, Category = "Road Edit") int64 NodeU = -1;
+    UPROPERTY(BlueprintReadOnly, Category = "Road Edit") int64 NodeV = -1;
+    UPROPERTY(BlueprintReadOnly, Category = "Road Edit") float LengthMeters = 0.0f;
+    UPROPERTY(BlueprintReadOnly, Category = "Road Edit") bool bTwoWay = false;
+
+    UPROPERTY(BlueprintReadWrite, Category = "Road Edit") int32 Lanes = 1;
+    UPROPERTY(BlueprintReadWrite, Category = "Road Edit") float SpeedLimitMps = 20.0f;
+    UPROPERTY(BlueprintReadWrite, Category = "Road Edit") FString TurnLanes;
+};
+
 UCLASS()
 class SD1TEST_API ARoadNetworkVisualizer : public AActor
 {
@@ -112,14 +131,63 @@ public:
     // Builds the visual instances from your simulator's network
     void BuildVisualNetwork(Network* RoadNetwork, FString InNodesPath, FString InEdgesPath);
 
+    // Rebuilds every road/junction visual from the cached network. Call after
+    // runtime edits so new roads get the full geometry treatment (setbacks,
+    // junction pavement, tapering) instead of a bare rectangle. The world
+    // origin stays locked to the first build so nothing shifts.
+    void RefreshRoadVisuals();
+
+    // Reserves a fresh node id above everything in the network and the files.
+    int64 AllocateNodeId() { return static_cast<int64>(++CurrentMaxNodeId); }
+
+    // Exports the new segment to the JSONL files AND adds it to the cached
+    // visual network (so RefreshRoadVisuals shows it). Returns the end node
+    // id, allocating a new node when EndNodeId is -1.
     int64 ExportNewRoadSegment(int64 StartNodeId, int64 EndNodeId, FVector EndNodeUnrealLoc, int32 Lanes, float SpeedLimit, FString TurnLanes);
+
+    // Snaps a clicked location to the nearest point on an edge centerline
+    // within the radius. The returned point is pulled away from the edge's
+    // endpoints so a split there never degenerates. U/V are the edge's nodes.
+    bool FindClosestEdge(FVector SearchLocation, float SnapRadiusCM, FVector& OutPointOnEdge, int64& OutU, int64& OutV);
+
+    // First place the segment A->B crosses an existing edge, measured from A.
+    // Edges touching a node in IgnoreNodes are skipped (the pieces already
+    // chained at A, and the destination). When the crossing lands close to an
+    // existing node, OutExistingNodeId reports it (weld there instead of
+    // splitting) and OutU/OutV are the crossed edge's nodes otherwise.
+    bool FindFirstCrossing(const FVector& SegStart, const FVector& SegEnd, const TArray<int64>& IgnoreNodes,
+        FVector& OutPoint, int64& OutU, int64& OutV, int64& OutExistingNodeId);
+
+    // Splits edge U->V (and V->U when present) at the new node in the cached
+    // network AND in the edges JSONL file, and appends the node record. Call
+    // SimulationManager::SplitBackendEdge separately for the live sim.
+    bool SplitEdgeForNewNode(int64 U, int64 V, int64 NewNodeId, FVector SplitUnrealLoc);
+
+    // Cached Unreal-space location of a node, if known.
+    bool GetNodeLocation(int64 NodeId, FVector& OutLocation) const;
+
+    // Fills the road-edit UI struct for a clicked edge (see GetEdgeIdFromHitItem).
+    UFUNCTION(BlueprintCallable, Category = "Road Network")
+    bool GetEdgeInfo(int64 EdgeId, FRoadEdgeInfo& OutInfo);
+
+    // Applies new lane count / speed / turn lanes to edge U->V (and V->U when
+    // bBothDirections) in the visual network and the edges JSONL, then
+    // rebuilds the visuals. Push the same change to the live sim through
+    // SimulationManager::UpdateBackendRoad.
+    bool UpdateRoadProperties(int64 U, int64 V, int32 Lanes, float SpeedMps, const FString& TurnLanes, bool bBothDirections);
+
+    // Deletes edge U->V (and V->U when bBothDirections) from the visual
+    // network and the edges JSONL, then rebuilds the visuals. Endpoint nodes
+    // left with no edges at all are removed from the network, the location
+    // cache, and the nodes JSONL, so no orphan intersections linger. Push the
+    // same deletion to the live sim through SimulationManager::
+    // DeleteBackendRoad.
+    bool DeleteRoad(int64 U, int64 V, bool bBothDirections);
 
     // Helper function to get an Edge ID when clicking on a road instance
     // Returns int64 because Blueprints do not support uint64
     UFUNCTION(BlueprintCallable, Category = "Road Network")
     int64 GetEdgeIdFromHitItem(int32 HitItemIndex);
-
-    void AddSingleRoadVisually(FVector StartUnrealLoc, FVector EndUnrealLoc, int32 Lanes);
 
     FVector2D ConvertUnrealToJSONCoords(FVector UnrealLocation);
 
@@ -133,8 +201,42 @@ private:
     void AppendJunctionPolygon(Network* RoadNetwork, const Node& JunctionNode, const FVector& CenterLoc,
         TArray<FVector>& Verts, TArray<int32>& Tris, TArray<FVector>& Normals, TArray<FVector2D>& UVs) const;
 
+    // Appends one node record to the nodes JSONL file and caches its location.
+    void AppendNodeRecord(int64 NodeId, FVector UnrealLoc);
+
+    // Rewrites the edges JSONL: the line for U->V becomes two lines meeting at
+    // NewNodeId, with length_m split proportionally and geometry_xy divided at
+    // the split point. All other fields (highway, turn:lanes, ...) are kept.
+    bool SplitEdgeInFile(int64 U, int64 V, int64 NewNodeId, FVector2D SplitJsonCoords);
+
+    // Rewrites the U->V line's lanes / speed_mps / turn:lanes in place.
+    bool UpdateEdgeInFile(int64 U, int64 V, int32 Lanes, float SpeedMps, const FString& TurnLanes);
+
+    // Drops the U->V line from the edges JSONL.
+    bool RemoveEdgeInFile(int64 U, int64 V);
+
+    // Drops the node's line from the nodes JSONL.
+    bool RemoveNodeInFile(int64 NodeId);
+
+    // Parses the JSONL line for edge U->V, if present.
+    TSharedPtr<FJsonObject> FindEdgeJson(int64 U, int64 V) const;
+
+    // The edge's centerline in Unreal coordinates (shape polyline or chord).
+    void GetEdgePolylineUnreal(const Node& FromNode, const Road& Edge, const Node& DestNode, TArray<FVector>& OutPts) const;
+
+    // The network the visuals are built from (SimulationManager's visual
+    // network, NOT the live sim's). Runtime edits mutate it so rebuilds and
+    // edge queries see them. Node*/Road* into it are never stored.
+    Network* CachedNetwork = nullptr;
+
+    // The world origin is computed from the first build's bounds and then
+    // locked, so runtime rebuilds never shift existing geometry.
+    bool bOriginLocked = false;
+
     // Maps HISM Instance ID (int32) to the simulator's Edge ID (uint64_t)
     TMap<int32, uint64_t> InstanceIndexToEdgeId;
+    // Maps Edge ID back to its (origin, dest) node pair for property edits.
+    TMap<uint64_t, TPair<uint64_t, uint64_t>> EdgeIdToNodes;
     TMap<uint64_t, FVector> CachedNodeLocations;
     uint64_t CurrentMaxNodeId = 0;
     uint64_t CurrentMaxEdgeId = 0;

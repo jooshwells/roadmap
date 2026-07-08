@@ -1,4 +1,5 @@
 #include "RoadNetworkVisualizer.h"
+#include "RoadTurnLaneOptions.h"
 #include "road.h"
 #include "node.h"
 #include "IntersectionGeometry.h"
@@ -55,34 +56,55 @@ void ARoadNetworkVisualizer::BuildVisualNetwork(Network* RoadNetwork, FString In
     NodesFilePath = InNodesPath;
     EdgesFilePath = InEdgesPath;
 
+    // Fresh map: remember the network for runtime edits/rebuilds and let the
+    // origin be recomputed from its bounds.
+    CachedNetwork = RoadNetwork;
+    bOriginLocked = false;
+
+    RefreshRoadVisuals();
+}
+
+void ARoadNetworkVisualizer::RefreshRoadVisuals()
+{
+    Network* RoadNetwork = CachedNetwork;
+    if (!RoadNetwork) return;
+
     // Reset max IDs
     CurrentMaxNodeId = 0;
     CurrentMaxEdgeId = 0;
 
     RoadHISM->ClearInstances();
     InstanceIndexToEdgeId.Empty();
+    EdgeIdToNodes.Empty();
+    CachedNodeLocations.Empty();
 
     const auto& AllNodes = RoadNetwork->getNodes();
     if (AllNodes.empty()) return;
 
-    // Calculate the center of the road network
-    double MinX = std::numeric_limits<double>::max();
-    double MinY = std::numeric_limits<double>::max();
-    double MaxX = std::numeric_limits<double>::lowest();
-    double MaxY = std::numeric_limits<double>::lowest();
-
-    for (const auto& NodePair : AllNodes)
+    if (!bOriginLocked)
     {
-        const Node& N = NodePair.second;
-        if (N.getX() < MinX) MinX = N.getX();
-        if (N.getX() > MaxX) MaxX = N.getX();
-        if (N.getY() < MinY) MinY = N.getY();
-        if (N.getY() > MaxY) MaxY = N.getY();
-    }
+        // Calculate the center of the road network
+        double MinX = std::numeric_limits<double>::max();
+        double MinY = std::numeric_limits<double>::max();
+        double MaxX = std::numeric_limits<double>::lowest();
+        double MaxY = std::numeric_limits<double>::lowest();
 
-    // Set the offset to the exact center of the bounding box
-    OriginOffsetX = (MinX + MaxX) / 2.0;
-    OriginOffsetY = (MinY + MaxY) / 2.0;
+        for (const auto& NodePair : AllNodes)
+        {
+            const Node& N = NodePair.second;
+            if (N.getX() < MinX) MinX = N.getX();
+            if (N.getX() > MaxX) MaxX = N.getX();
+            if (N.getY() < MinY) MinY = N.getY();
+            if (N.getY() > MaxY) MaxY = N.getY();
+        }
+
+        // Set the offset to the exact center of the bounding box. Locked from
+        // here on: a runtime rebuild must not shift the world under the
+        // camera (or under the sim, whose own origin was computed at load).
+        OriginOffsetX = (MinX + MaxX) / 2.0;
+        OriginOffsetY = (MinY + MaxY) / 2.0;
+        bOriginLocked = true;
+    }
 
     TArray<FTransform> NodeTransforms;
     NodeTransforms.Reserve(AllNodes.size());
@@ -136,6 +158,10 @@ void ARoadNetworkVisualizer::BuildVisualNetwork(Network* RoadNetwork, FString In
         for (const Road& Edge : OriginNode.outgoingEdges)
         {
             if (Edge.getEdgeId() > CurrentMaxEdgeId) CurrentMaxEdgeId = Edge.getEdgeId();
+
+            // Recorded before any visual-culling 'continue' below, so every
+            // edge is resolvable for property edits.
+            EdgeIdToNodes.Add(Edge.getEdgeId(), TPair<uint64_t, uint64_t>(OriginNode.getId(), Edge.getDest()));
 
             Node* DestNode = RoadNetwork->getNode(Edge.getDest());
             if (!DestNode) continue;
@@ -708,45 +734,6 @@ int64 ARoadNetworkVisualizer::GetEdgeIdFromHitItem(int32 HitItemIndex)
     return -1; // Edge not found
 }
 
-void ARoadNetworkVisualizer::AddSingleRoadVisually(FVector StartUnrealLoc, FVector EndUnrealLoc, int32 Lanes)
-{
-    FVector Direction = EndUnrealLoc - StartUnrealLoc;
-    float DistanceCM = Direction.Size();
-    FRotator Rotation = Direction.Rotation();
-
-    int32 SafeLanes = FMath::Max(1, Lanes);
-    FVector InstanceLocation = StartUnrealLoc;
-
-    if (bPivotAtCenter)
-    {
-        InstanceLocation = StartUnrealLoc + (Direction * 0.5f);
-    }
-
-    // Reuse your exact Right Vector math for right-side traffic alignment
-    FVector RightVec(-Direction.Y, Direction.X, 0.0);
-    RightVec.Normalize();
-    float TargetWidthCm = SafeLanes * 350.0f;
-    InstanceLocation += RightVec * ((TargetWidthCm * 0.5f) + MedianGapCm);
-
-    float ScaleX = DistanceCM / FMath::Max(1.0f, MeshBaseLengthCm);
-    float ScaleY = bScaleWidthByLanes ? (TargetWidthCm / FMath::Max(1.0f, MeshBaseWidthCm)) : 1.0f;
-
-    FTransform NewTransform(Rotation, InstanceLocation, FVector(ScaleX, ScaleY, 1.0f));
-
-    // Add the instance dynamically
-    int32 NewIndex = RoadHISM->AddInstance(NewTransform, true);
-
-    // Push Custom Data to GPU (Index 0: Lanes, Index 1: ScaleX)
-    RoadHISM->SetCustomDataValue(NewIndex, 0, static_cast<float>(SafeLanes), false);
-    RoadHISM->SetCustomDataValue(NewIndex, 1, ScaleX, false);
-
-    // Add Node visual at the end point
-    FTransform NodeTransform(FRotator::ZeroRotator, EndUnrealLoc, FVector(NodeScale, NodeScale, 0.05f));
-    NodeHISM->AddInstance(NodeTransform, true);
-
-    RoadHISM->MarkRenderStateDirty();
-}
-
 FVector2D ARoadNetworkVisualizer::ConvertUnrealToJSONCoords(FVector UnrealLocation)
 {
     // 1. Convert Unreal units (cm) back to Map units (meters) and add the origin offset back.
@@ -785,7 +772,7 @@ bool ARoadNetworkVisualizer::FindClosestNode(FVector SearchLocation, float SnapR
     return bFound;
 }
 
-int64 ARoadNetworkVisualizer::ExportNewRoadSegment(int64 StartNodeId, int64 EndNodeId, FVector EndNodeUnrealLoc, int32 Lanes)
+int64 ARoadNetworkVisualizer::ExportNewRoadSegment(int64 StartNodeId, int64 EndNodeId, FVector EndNodeUnrealLoc, int32 Lanes, float SpeedLimit, FString TurnLanes)
 {
     // 1. Handle Node Generation (If the user clicked in empty space)
     int64 FinalEndNodeId = EndNodeId;
@@ -793,31 +780,8 @@ int64 ARoadNetworkVisualizer::ExportNewRoadSegment(int64 StartNodeId, int64 EndN
 
     if (FinalEndNodeId == -1)
     {
-        CurrentMaxNodeId++;
-        FinalEndNodeId = CurrentMaxNodeId;
-
-        // Build Node JSON Object
-        TSharedPtr<FJsonObject> NodeObj = MakeShareable(new FJsonObject);
-        NodeObj->SetNumberField(TEXT("id"), FinalEndNodeId);
-        NodeObj->SetNumberField(TEXT("lon"), 0.0); // Or reverse Mercator projection if needed
-        NodeObj->SetNumberField(TEXT("lat"), 0.0);
-        NodeObj->SetNumberField(TEXT("x"), EndJsonCoords.X);
-        NodeObj->SetNumberField(TEXT("y"), EndJsonCoords.Y);
-        // traffic_control is null
-
-        FString NodeString;
-        TSharedRef<TJsonWriter<>> NodeWriter = TJsonWriterFactory<>::Create(&NodeString, 0);
-        FJsonSerializer::Serialize(NodeObj.ToSharedRef(), NodeWriter);
-
-        NodeString.ReplaceInline(TEXT("\n"), TEXT(""));
-        NodeString.ReplaceInline(TEXT("\r"), TEXT(""));
-        NodeString += TEXT("\n"); // Make it JSONL compliant
-
-        // Append to Nodes file
-        FFileHelper::SaveStringToFile(NodeString, *NodesFilePath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM, &IFileManager::Get(), EFileWrite::FILEWRITE_Append);
-
-        // Cache it so the user can immediately snap to this newly created node!
-        CachedNodeLocations.Add(FinalEndNodeId, EndNodeUnrealLoc);
+        FinalEndNodeId = AllocateNodeId();
+        AppendNodeRecord(FinalEndNodeId, EndNodeUnrealLoc);
     }
 
     // 2. Handle Edge Generation
@@ -870,5 +834,660 @@ int64 ARoadNetworkVisualizer::ExportNewRoadSegment(int64 StartNodeId, int64 EndN
     // Append to Edges file
     FFileHelper::SaveStringToFile(EdgeString, *EdgesFilePath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM, &IFileManager::Get(), EFileWrite::FILEWRITE_Append);
 
+    // Mirror the new edge into the visual network so RefreshRoadVisuals draws
+    // it with the full geometry pipeline. (The live sim gets its copy through
+    // SimulationManager::NotifyBackendOfNewRoad.)
+    if (CachedNetwork)
+    {
+        CachedNetwork->addDirectedEdge(StartNodeId, FinalEndNodeId, LengthMeters, SpeedLimit, Lanes);
+    }
+
     return FinalEndNodeId;
+}
+
+void ARoadNetworkVisualizer::AppendNodeRecord(int64 NodeId, FVector UnrealLoc)
+{
+    const FVector2D JsonCoords = ConvertUnrealToJSONCoords(UnrealLoc);
+
+    TSharedPtr<FJsonObject> NodeObj = MakeShareable(new FJsonObject);
+    NodeObj->SetNumberField(TEXT("id"), NodeId);
+    NodeObj->SetNumberField(TEXT("lon"), 0.0); // Or reverse Mercator projection if needed
+    NodeObj->SetNumberField(TEXT("lat"), 0.0);
+    NodeObj->SetNumberField(TEXT("x"), JsonCoords.X);
+    NodeObj->SetNumberField(TEXT("y"), JsonCoords.Y);
+    // traffic_control is null
+
+    FString NodeString;
+    TSharedRef<TJsonWriter<>> NodeWriter = TJsonWriterFactory<>::Create(&NodeString, 0);
+    FJsonSerializer::Serialize(NodeObj.ToSharedRef(), NodeWriter);
+
+    NodeString.ReplaceInline(TEXT("\n"), TEXT(""));
+    NodeString.ReplaceInline(TEXT("\r"), TEXT(""));
+    NodeString += TEXT("\n"); // Make it JSONL compliant
+
+    // Append to Nodes file
+    FFileHelper::SaveStringToFile(NodeString, *NodesFilePath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM, &IFileManager::Get(), EFileWrite::FILEWRITE_Append);
+
+    // Cache it so the user can immediately snap to this newly created node,
+    // and mirror it into the visual network (backend y is the flipped json y).
+    CachedNodeLocations.Add(NodeId, UnrealLoc);
+    if (CachedNetwork)
+    {
+        CachedNetwork->addNode(NodeId, 0.0, 0.0, JsonCoords.X, -JsonCoords.Y);
+    }
+
+    if (static_cast<uint64_t>(NodeId) > CurrentMaxNodeId)
+    {
+        CurrentMaxNodeId = static_cast<uint64_t>(NodeId);
+    }
+}
+
+bool ARoadNetworkVisualizer::GetNodeLocation(int64 NodeId, FVector& OutLocation) const
+{
+    if (const FVector* Found = CachedNodeLocations.Find(static_cast<uint64_t>(NodeId)))
+    {
+        OutLocation = *Found;
+        return true;
+    }
+    return false;
+}
+
+void ARoadNetworkVisualizer::GetEdgePolylineUnreal(const Node& FromNode, const Road& Edge, const Node& DestNode, TArray<FVector>& OutPts) const
+{
+    OutPts.Reset();
+    if (Edge.hasCurveGeometry())
+    {
+        const std::vector<RoadGeomPoint>& Geom = Edge.getGeometry();
+        OutPts.Reserve(Geom.size());
+        for (const RoadGeomPoint& P : Geom)
+        {
+            OutPts.Add(FVector((P.x - OriginOffsetX) * 100.0, (P.y - OriginOffsetY) * 100.0, 0.0));
+        }
+    }
+    else
+    {
+        OutPts.Add(FVector((FromNode.getX() - OriginOffsetX) * 100.0, (FromNode.getY() - OriginOffsetY) * 100.0, 0.0));
+        OutPts.Add(FVector((DestNode.getX() - OriginOffsetX) * 100.0, (DestNode.getY() - OriginOffsetY) * 100.0, 0.0));
+    }
+}
+
+bool ARoadNetworkVisualizer::FindClosestEdge(FVector SearchLocation, float SnapRadiusCM, FVector& OutPointOnEdge, int64& OutU, int64& OutV)
+{
+    if (!CachedNetwork) return false;
+
+    // Keep the split point far enough from the edge's ends that neither half
+    // degenerates and the junction pavement has room. Clicks near a node
+    // should have been snapped to it by FindClosestNode first.
+    const float MinEndDistCm = 500.0f;
+
+    float BestDistSq = SnapRadiusCM * SnapRadiusCM;
+    bool bFound = false;
+
+    TArray<FVector> Pts;
+    for (const auto& NodePair : CachedNetwork->getNodes())
+    {
+        const Node& From = NodePair.second;
+        for (const Road& Edge : From.outgoingEdges)
+        {
+            Node* Dest = CachedNetwork->getNode(Edge.getDest());
+            if (!Dest) continue;
+
+            GetEdgePolylineUnreal(From, Edge, *Dest, Pts);
+            if (Pts.Num() < 2) continue;
+
+            // Cumulative arc lengths, so hits can be clamped away from ends.
+            float TotalLen = 0.0f;
+            for (int32 i = 0; i + 1 < Pts.Num(); i++) TotalLen += FVector::Dist2D(Pts[i], Pts[i + 1]);
+            if (TotalLen < MinEndDistCm * 2.5f) continue; // too short to split
+
+            float ArcAtSegStart = 0.0f;
+            for (int32 i = 0; i + 1 < Pts.Num(); i++)
+            {
+                const FVector A = Pts[i];
+                const FVector B = Pts[i + 1];
+                const FVector AB = B - A;
+                const float SegLenSq = AB.X * AB.X + AB.Y * AB.Y;
+                const float SegLen = FMath::Sqrt(SegLenSq);
+                if (SegLen < KINDA_SMALL_NUMBER) continue;
+
+                float T = ((SearchLocation.X - A.X) * AB.X + (SearchLocation.Y - A.Y) * AB.Y) / SegLenSq;
+                T = FMath::Clamp(T, 0.0f, 1.0f);
+
+                // Clamp the hit's arc position away from the edge endpoints.
+                float Arc = ArcAtSegStart + T * SegLen;
+                Arc = FMath::Clamp(Arc, MinEndDistCm, TotalLen - MinEndDistCm);
+                T = FMath::Clamp((Arc - ArcAtSegStart) / SegLen, 0.0f, 1.0f);
+
+                const FVector P(A.X + AB.X * T, A.Y + AB.Y * T, 0.0f);
+                const float DistSq = FVector::DistSquared2D(SearchLocation, P);
+                if (DistSq < BestDistSq)
+                {
+                    BestDistSq = DistSq;
+                    OutPointOnEdge = P;
+                    OutU = static_cast<int64>(From.getId());
+                    OutV = static_cast<int64>(Edge.getDest());
+                    bFound = true;
+                }
+
+                ArcAtSegStart += SegLen;
+            }
+        }
+    }
+
+    return bFound;
+}
+
+bool ARoadNetworkVisualizer::FindFirstCrossing(const FVector& SegStart, const FVector& SegEnd, const TArray<int64>& IgnoreNodes,
+    FVector& OutPoint, int64& OutU, int64& OutV, int64& OutExistingNodeId)
+{
+    if (!CachedNetwork) return false;
+
+    // Crossings landing this close to an existing node weld to it instead of
+    // splitting the edge right next to a junction.
+    const float NodeWeldDistCm = 1000.0f; // 10 m
+
+    const FVector2D P0(SegStart.X, SegStart.Y);
+    const FVector2D P1(SegEnd.X, SegEnd.Y);
+    const FVector2D D = P1 - P0;
+    if (D.IsNearlyZero()) return false;
+
+    float BestT = TNumericLimits<float>::Max();
+    bool bFound = false;
+
+    TArray<FVector> Pts;
+    for (const auto& NodePair : CachedNetwork->getNodes())
+    {
+        const Node& From = NodePair.second;
+        for (const Road& Edge : From.outgoingEdges)
+        {
+            const int64 U = static_cast<int64>(From.getId());
+            const int64 V = static_cast<int64>(Edge.getDest());
+            if (IgnoreNodes.Contains(U) || IgnoreNodes.Contains(V)) continue;
+
+            Node* Dest = CachedNetwork->getNode(Edge.getDest());
+            if (!Dest) continue;
+
+            GetEdgePolylineUnreal(From, Edge, *Dest, Pts);
+
+            for (int32 i = 0; i + 1 < Pts.Num(); i++)
+            {
+                const FVector2D Q0(Pts[i].X, Pts[i].Y);
+                const FVector2D Q1(Pts[i + 1].X, Pts[i + 1].Y);
+                const FVector2D E = Q1 - Q0;
+
+                // Solve P0 + t*D == Q0 + s*E for t, s in (0, 1).
+                const float Denom = D.X * E.Y - D.Y * E.X;
+                if (FMath::Abs(Denom) < KINDA_SMALL_NUMBER) continue; // parallel
+
+                const FVector2D W = Q0 - P0;
+                const float T = (W.X * E.Y - W.Y * E.X) / Denom;
+                const float S = (W.X * D.Y - W.Y * D.X) / Denom;
+
+                const float Eps = 1e-4f;
+                if (T <= Eps || T >= 1.0f - Eps || S < -Eps || S > 1.0f + Eps) continue;
+                if (T >= BestT) continue;
+
+                BestT = T;
+                OutPoint = FVector(P0.X + D.X * T, P0.Y + D.Y * T, 0.0f);
+                OutU = U;
+                OutV = V;
+                bFound = true;
+            }
+        }
+    }
+
+    if (!bFound) return false;
+
+    // Weld to the crossed edge's endpoint when the hit is basically on it.
+    OutExistingNodeId = -1;
+    for (const int64 NodeId : { OutU, OutV })
+    {
+        FVector NodeLoc;
+        if (GetNodeLocation(NodeId, NodeLoc) && FVector::Dist2D(NodeLoc, OutPoint) <= NodeWeldDistCm)
+        {
+            OutExistingNodeId = NodeId;
+            OutPoint = FVector(NodeLoc.X, NodeLoc.Y, 0.0f);
+            break;
+        }
+    }
+
+    return true;
+}
+
+// Projects 'P' onto the polyline and splits it there: OutA keeps the points
+// before the split plus P; OutB starts at P. Returns the arc fraction of the
+// split in [0, 1]. Everything is in raw JSON-file coordinates.
+static double SplitJsonPolylineAtPoint(const TArray<FVector2D>& Pts, const FVector2D& P,
+    TArray<FVector2D>& OutA, TArray<FVector2D>& OutB)
+{
+    TArray<double> Cum;
+    Cum.Reserve(Pts.Num());
+    Cum.Add(0.0);
+    for (int32 i = 1; i < Pts.Num(); i++)
+    {
+        Cum.Add(Cum[i - 1] + FVector2D::Distance(Pts[i - 1], Pts[i]));
+    }
+    const double Total = Cum.Last();
+    if (Total <= 0.0) return 0.5;
+
+    double BestS = 0.0;
+    double BestD2 = TNumericLimits<double>::Max();
+    for (int32 i = 0; i + 1 < Pts.Num(); i++)
+    {
+        const FVector2D A = Pts[i];
+        const FVector2D AB = Pts[i + 1] - A;
+        const double SegLen2 = AB.X * AB.X + AB.Y * AB.Y;
+        double T = (SegLen2 > 0.0) ? ((P.X - A.X) * AB.X + (P.Y - A.Y) * AB.Y) / SegLen2 : 0.0;
+        T = FMath::Clamp(T, 0.0, 1.0);
+        const FVector2D Q = A + AB * T;
+        const double D2 = FVector2D::DistSquared(P, Q);
+        if (D2 < BestD2)
+        {
+            BestD2 = D2;
+            BestS = Cum[i] + (Cum[i + 1] - Cum[i]) * T;
+        }
+    }
+
+    // Same end margin as Network::splitDirectedEdge so both stay in agreement.
+    const double EndMargin = FMath::Min(1.0, Total * 0.05);
+    BestS = FMath::Clamp(BestS, EndMargin, Total - EndMargin);
+
+    OutA.Reset();
+    OutB.Reset();
+    for (int32 i = 0; i < Pts.Num(); i++)
+    {
+        if (Cum[i] < BestS) OutA.Add(Pts[i]);
+        else if (Cum[i] > BestS) OutB.Add(Pts[i]);
+    }
+    OutA.Add(P);
+    OutB.Insert(P, 0);
+
+    return BestS / Total;
+}
+
+bool ARoadNetworkVisualizer::SplitEdgeInFile(int64 U, int64 V, int64 NewNodeId, FVector2D SplitJsonCoords)
+{
+    TArray<FString> Lines;
+    if (!FFileHelper::LoadFileToStringArray(Lines, *EdgesFilePath))
+    {
+        UE_LOG(LogTemp, Error, TEXT("SplitEdgeInFile: could not read %s"), *EdgesFilePath);
+        return false;
+    }
+
+    // Cheap substring pre-filter before paying for a JSON parse per line.
+    const FString UStr = FString::Printf(TEXT("%lld"), U);
+    const FString VStr = FString::Printf(TEXT("%lld"), V);
+
+    for (int32 LineIdx = 0; LineIdx < Lines.Num(); LineIdx++)
+    {
+        const FString& Line = Lines[LineIdx];
+        if (Line.IsEmpty() || !Line.Contains(UStr) || !Line.Contains(VStr)) continue;
+
+        TSharedPtr<FJsonObject> Obj;
+        TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Line);
+        if (!FJsonSerializer::Deserialize(Reader, Obj) || !Obj.IsValid()) continue;
+
+        int64 LineU = 0, LineV = 0;
+        if (!Obj->TryGetNumberField(TEXT("u"), LineU) || !Obj->TryGetNumberField(TEXT("v"), LineV)) continue;
+        if (LineU != U || LineV != V) continue;
+
+        // Centerline in file coordinates: stored shape, or the node chord.
+        TArray<FVector2D> Pts;
+        const TArray<TSharedPtr<FJsonValue>>* GeomArray = nullptr;
+        if (Obj->TryGetArrayField(TEXT("geometry_xy"), GeomArray))
+        {
+            for (const TSharedPtr<FJsonValue>& Val : *GeomArray)
+            {
+                const TSharedPtr<FJsonObject>* PtObj;
+                if (Val->TryGetObject(PtObj))
+                {
+                    Pts.Add(FVector2D((*PtObj)->GetNumberField(TEXT("x")), (*PtObj)->GetNumberField(TEXT("y"))));
+                }
+            }
+        }
+        if (Pts.Num() < 2)
+        {
+            FVector ULoc, VLoc;
+            if (!GetNodeLocation(U, ULoc) || !GetNodeLocation(V, VLoc)) return false;
+            Pts.Reset();
+            Pts.Add(ConvertUnrealToJSONCoords(ULoc));
+            Pts.Add(ConvertUnrealToJSONCoords(VLoc));
+        }
+
+        TArray<FVector2D> PtsA, PtsB;
+        const double Frac = SplitJsonPolylineAtPoint(Pts, SplitJsonCoords, PtsA, PtsB);
+
+        const double OrigLen = Obj->GetNumberField(TEXT("length_m"));
+        const double LenA = OrigLen * Frac;
+        const double LenB = OrigLen - LenA;
+
+        auto MakeGeomArray = [](const TArray<FVector2D>& InPts)
+        {
+            TArray<TSharedPtr<FJsonValue>> Arr;
+            Arr.Reserve(InPts.Num());
+            for (const FVector2D& Pt : InPts)
+            {
+                TSharedPtr<FJsonObject> PtObj = MakeShareable(new FJsonObject);
+                PtObj->SetNumberField(TEXT("x"), Pt.X);
+                PtObj->SetNumberField(TEXT("y"), Pt.Y);
+                Arr.Add(MakeShareable(new FJsonValueObject(PtObj)));
+            }
+            return Arr;
+        };
+
+        auto SerializeLine = [](const TSharedPtr<FJsonObject>& InObj)
+        {
+            FString Out;
+            TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Out, 0);
+            FJsonSerializer::Serialize(InObj.ToSharedRef(), Writer);
+            Out.ReplaceInline(TEXT("\n"), TEXT(""));
+            Out.ReplaceInline(TEXT("\r"), TEXT(""));
+            return Out;
+        };
+
+        // First half: keep every other field (highway, lanes, turn:lanes, ...)
+        // and retarget v; second half is a copy starting at the new node.
+        // FJsonObject is shared, so deep-copy via a re-parse for the second line.
+        TSharedPtr<FJsonObject> ObjB;
+        TSharedRef<TJsonReader<>> ReaderB = TJsonReaderFactory<>::Create(Line);
+        FJsonSerializer::Deserialize(ReaderB, ObjB);
+        if (!ObjB.IsValid()) return false;
+
+        Obj->SetNumberField(TEXT("v"), NewNodeId);
+        Obj->SetNumberField(TEXT("length_m"), LenA);
+        Obj->SetArrayField(TEXT("geometry_xy"), MakeGeomArray(PtsA));
+
+        ObjB->SetNumberField(TEXT("u"), NewNodeId);
+        ObjB->SetNumberField(TEXT("length_m"), LenB);
+        ObjB->SetArrayField(TEXT("geometry_xy"), MakeGeomArray(PtsB));
+
+        Lines[LineIdx] = SerializeLine(Obj);
+        Lines.Insert(SerializeLine(ObjB), LineIdx + 1);
+
+        return FFileHelper::SaveStringArrayToFile(Lines, *EdgesFilePath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
+    }
+
+    UE_LOG(LogTemp, Warning, TEXT("SplitEdgeInFile: edge %lld -> %lld not found in %s"), U, V, *EdgesFilePath);
+    return false;
+}
+
+bool ARoadNetworkVisualizer::SplitEdgeForNewNode(int64 U, int64 V, int64 NewNodeId, FVector SplitUnrealLoc)
+{
+    if (!CachedNetwork) return false;
+
+    const FVector2D JsonCoords = ConvertUnrealToJSONCoords(SplitUnrealLoc);
+    const double BackendX = JsonCoords.X;
+    const double BackendY = -JsonCoords.Y;
+
+    // Visual network first (it also creates the node), then persistence.
+    const bool bFwd = CachedNetwork->splitDirectedEdge(U, V, NewNodeId, BackendX, BackendY);
+    const bool bRev = CachedNetwork->splitDirectedEdge(V, U, NewNodeId, BackendX, BackendY);
+    if (!bFwd && !bRev) return false;
+
+    // One node record regardless of how many directions were split. Cache and
+    // file both use the exact clicked point; the network node already does.
+    AppendNodeRecord(NewNodeId, SplitUnrealLoc);
+
+    if (bFwd) SplitEdgeInFile(U, V, NewNodeId, JsonCoords);
+    if (bRev) SplitEdgeInFile(V, U, NewNodeId, JsonCoords);
+
+    return true;
+}
+
+TSharedPtr<FJsonObject> ARoadNetworkVisualizer::FindEdgeJson(int64 U, int64 V) const
+{
+    TArray<FString> Lines;
+    if (!FFileHelper::LoadFileToStringArray(Lines, *EdgesFilePath)) return nullptr;
+
+    const FString UStr = FString::Printf(TEXT("%lld"), U);
+    const FString VStr = FString::Printf(TEXT("%lld"), V);
+
+    for (const FString& Line : Lines)
+    {
+        if (Line.IsEmpty() || !Line.Contains(UStr) || !Line.Contains(VStr)) continue;
+
+        TSharedPtr<FJsonObject> Obj;
+        TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Line);
+        if (!FJsonSerializer::Deserialize(Reader, Obj) || !Obj.IsValid()) continue;
+
+        int64 LineU = 0, LineV = 0;
+        if (Obj->TryGetNumberField(TEXT("u"), LineU) && Obj->TryGetNumberField(TEXT("v"), LineV)
+            && LineU == U && LineV == V)
+        {
+            return Obj;
+        }
+    }
+    return nullptr;
+}
+
+bool ARoadNetworkVisualizer::GetEdgeInfo(int64 EdgeId, FRoadEdgeInfo& OutInfo)
+{
+    if (!CachedNetwork) return false;
+
+    const TPair<uint64_t, uint64_t>* Nodes = EdgeIdToNodes.Find(static_cast<uint64_t>(EdgeId));
+    if (!Nodes) return false;
+
+    Node* From = CachedNetwork->getNode(Nodes->Key);
+    if (!From) return false;
+
+    const Road* Edge = nullptr;
+    for (const Road& E : From->outgoingEdges)
+    {
+        if (E.getEdgeId() == static_cast<uint64_t>(EdgeId)) { Edge = &E; break; }
+    }
+    if (!Edge) return false;
+
+    OutInfo.EdgeId = EdgeId;
+    OutInfo.NodeU = static_cast<int64>(Nodes->Key);
+    OutInfo.NodeV = static_cast<int64>(Nodes->Value);
+    OutInfo.Lanes = Edge->getLanes();
+    OutInfo.SpeedLimitMps = static_cast<float>(Edge->getSpeedLimit());
+    OutInfo.LengthMeters = static_cast<float>(Edge->getLength());
+
+    // Two-way = an opposite directed edge exists between the same nodes.
+    OutInfo.bTwoWay = false;
+    if (Node* Dest = CachedNetwork->getNode(Nodes->Value))
+    {
+        for (const Road& E : Dest->outgoingEdges)
+        {
+            if (E.getDest() == Nodes->Key) { OutInfo.bTwoWay = true; break; }
+        }
+    }
+
+    // Turn lanes only live in the JSONL record, not the network.
+    OutInfo.TurnLanes.Empty();
+    if (TSharedPtr<FJsonObject> EdgeJson = FindEdgeJson(OutInfo.NodeU, OutInfo.NodeV))
+    {
+        EdgeJson->TryGetStringField(TEXT("turn:lanes"), OutInfo.TurnLanes);
+    }
+
+    return true;
+}
+
+bool ARoadNetworkVisualizer::UpdateEdgeInFile(int64 U, int64 V, int32 Lanes, float SpeedMps, const FString& TurnLanes)
+{
+    TArray<FString> Lines;
+    if (!FFileHelper::LoadFileToStringArray(Lines, *EdgesFilePath))
+    {
+        UE_LOG(LogTemp, Error, TEXT("UpdateEdgeInFile: could not read %s"), *EdgesFilePath);
+        return false;
+    }
+
+    const FString UStr = FString::Printf(TEXT("%lld"), U);
+    const FString VStr = FString::Printf(TEXT("%lld"), V);
+
+    for (int32 LineIdx = 0; LineIdx < Lines.Num(); LineIdx++)
+    {
+        const FString& Line = Lines[LineIdx];
+        if (Line.IsEmpty() || !Line.Contains(UStr) || !Line.Contains(VStr)) continue;
+
+        TSharedPtr<FJsonObject> Obj;
+        TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Line);
+        if (!FJsonSerializer::Deserialize(Reader, Obj) || !Obj.IsValid()) continue;
+
+        int64 LineU = 0, LineV = 0;
+        if (!Obj->TryGetNumberField(TEXT("u"), LineU) || !Obj->TryGetNumberField(TEXT("v"), LineV)) continue;
+        if (LineU != U || LineV != V) continue;
+
+        Obj->SetNumberField(TEXT("lanes"), Lanes);
+        Obj->SetNumberField(TEXT("speed_mps"), SpeedMps);
+        if (TurnLanes.IsEmpty())
+        {
+            Obj->RemoveField(TEXT("turn:lanes"));
+        }
+        else
+        {
+            Obj->SetStringField(TEXT("turn:lanes"), TurnLanes);
+        }
+
+        FString Out;
+        TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Out, 0);
+        FJsonSerializer::Serialize(Obj.ToSharedRef(), Writer);
+        Out.ReplaceInline(TEXT("\n"), TEXT(""));
+        Out.ReplaceInline(TEXT("\r"), TEXT(""));
+        Lines[LineIdx] = Out;
+
+        return FFileHelper::SaveStringArrayToFile(Lines, *EdgesFilePath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
+    }
+
+    UE_LOG(LogTemp, Warning, TEXT("UpdateEdgeInFile: edge %lld -> %lld not found in %s"), U, V, *EdgesFilePath);
+    return false;
+}
+
+bool ARoadNetworkVisualizer::RemoveEdgeInFile(int64 U, int64 V)
+{
+    TArray<FString> Lines;
+    if (!FFileHelper::LoadFileToStringArray(Lines, *EdgesFilePath))
+    {
+        UE_LOG(LogTemp, Error, TEXT("RemoveEdgeInFile: could not read %s"), *EdgesFilePath);
+        return false;
+    }
+
+    const FString UStr = FString::Printf(TEXT("%lld"), U);
+    const FString VStr = FString::Printf(TEXT("%lld"), V);
+
+    for (int32 LineIdx = 0; LineIdx < Lines.Num(); LineIdx++)
+    {
+        const FString& Line = Lines[LineIdx];
+        if (Line.IsEmpty() || !Line.Contains(UStr) || !Line.Contains(VStr)) continue;
+
+        TSharedPtr<FJsonObject> Obj;
+        TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Line);
+        if (!FJsonSerializer::Deserialize(Reader, Obj) || !Obj.IsValid()) continue;
+
+        int64 LineU = 0, LineV = 0;
+        if (!Obj->TryGetNumberField(TEXT("u"), LineU) || !Obj->TryGetNumberField(TEXT("v"), LineV)) continue;
+        if (LineU != U || LineV != V) continue;
+
+        Lines.RemoveAt(LineIdx);
+        return FFileHelper::SaveStringArrayToFile(Lines, *EdgesFilePath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
+    }
+
+    UE_LOG(LogTemp, Warning, TEXT("RemoveEdgeInFile: edge %lld -> %lld not found in %s"), U, V, *EdgesFilePath);
+    return false;
+}
+
+bool ARoadNetworkVisualizer::RemoveNodeInFile(int64 NodeId)
+{
+    TArray<FString> Lines;
+    if (!FFileHelper::LoadFileToStringArray(Lines, *NodesFilePath))
+    {
+        UE_LOG(LogTemp, Error, TEXT("RemoveNodeInFile: could not read %s"), *NodesFilePath);
+        return false;
+    }
+
+    const FString IdStr = FString::Printf(TEXT("%lld"), NodeId);
+
+    for (int32 LineIdx = 0; LineIdx < Lines.Num(); LineIdx++)
+    {
+        const FString& Line = Lines[LineIdx];
+        if (Line.IsEmpty() || !Line.Contains(IdStr)) continue;
+
+        TSharedPtr<FJsonObject> Obj;
+        TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Line);
+        if (!FJsonSerializer::Deserialize(Reader, Obj) || !Obj.IsValid()) continue;
+
+        int64 LineId = 0;
+        if (!Obj->TryGetNumberField(TEXT("id"), LineId) || LineId != NodeId) continue;
+
+        Lines.RemoveAt(LineIdx);
+        return FFileHelper::SaveStringArrayToFile(Lines, *NodesFilePath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
+    }
+
+    UE_LOG(LogTemp, Warning, TEXT("RemoveNodeInFile: node %lld not found in %s"), NodeId, *NodesFilePath);
+    return false;
+}
+
+bool ARoadNetworkVisualizer::DeleteRoad(int64 U, int64 V, bool bBothDirections)
+{
+    if (!CachedNetwork) return false;
+
+    const bool bFwd = CachedNetwork->removeDirectedEdge(U, V);
+    const bool bRev = bBothDirections && CachedNetwork->removeDirectedEdge(V, U);
+    if (!bFwd && !bRev) return false;
+
+    if (bFwd) RemoveEdgeInFile(U, V);
+    if (bRev) RemoveEdgeInFile(V, U);
+
+    // A node whose last road just vanished has no reason to exist anymore:
+    // scrub it from the network, the snap cache, and the nodes file.
+    for (int64 NodeId : { U, V })
+    {
+        if (CachedNetwork->removeNodeIfIsolated(static_cast<uint64_t>(NodeId)))
+        {
+            CachedNodeLocations.Remove(static_cast<uint64_t>(NodeId));
+            RemoveNodeInFile(NodeId);
+        }
+    }
+
+    // Full rebuild also refreshes junction pavement and tapers at both ends
+    // and drops the deleted edge from the hit-test / edit maps.
+    RefreshRoadVisuals();
+    return true;
+}
+
+bool ARoadNetworkVisualizer::UpdateRoadProperties(int64 U, int64 V, int32 Lanes, float SpeedMps, const FString& TurnLanes, bool bBothDirections)
+{
+    if (!CachedNetwork) return false;
+
+    const int32 SafeLanes = FMath::Max(1, Lanes);
+    const float SafeSpeed = FMath::Max(0.5f, SpeedMps);
+
+    auto ApplyToNetwork = [&](int64 A, int64 B) -> bool
+    {
+        Node* From = CachedNetwork->getNode(static_cast<uint64_t>(A));
+        if (!From) return false;
+        for (Road& E : From->outgoingEdges)
+        {
+            if (E.getDest() == static_cast<uint64_t>(B))
+            {
+                E.setLanes(SafeLanes);
+                E.setSpeedLimit(SafeSpeed);
+                return true;
+            }
+        }
+        return false;
+    };
+
+    bool bAny = false;
+    if (ApplyToNetwork(U, V))
+    {
+        bAny = true;
+        UpdateEdgeInFile(U, V, SafeLanes, SafeSpeed, TurnLanes);
+    }
+    if (bBothDirections && ApplyToNetwork(V, U))
+    {
+        bAny = true;
+        // turn:lanes is ordered in the direction of travel, so the opposite
+        // edge gets the mirrored string, not a verbatim copy.
+        UpdateEdgeInFile(V, U, SafeLanes, SafeSpeed, RoadTurnLaneOptions::MirrorTurnLanes(TurnLanes));
+    }
+
+    if (bAny)
+    {
+        // Lane count changes road width, so rebuild (also refreshes tapers
+        // and junction pavement at both ends).
+        RefreshRoadVisuals();
+    }
+    return bAny;
 }
