@@ -29,10 +29,10 @@ from shapely.geometry import LineString, MultiLineString
 # ---------------------------------------------------
 BASE_DIR = Path(r"E:\dev\OSM")
 
-XML_PATH = BASE_DIR / "orange_drive_roads_clean-260208.osm.bz2"
+XML_PATH = BASE_DIR / "josh_downtown_orlando.osm.bz2"
 
-OUT_NODES = BASE_DIR / "out" / "josh_nodes_orange_allroads_offline_xy.jsonl"
-OUT_EDGES = BASE_DIR / "out" / "josh_edges_orange_allroads_offline_xy.jsonl"
+OUT_NODES = BASE_DIR / "out" / "josh_downtown_orlando_nodes.jsonl"
+OUT_EDGES = BASE_DIR / "out" / "josh_downtown_orlando_edges.jsonl"
 
 
 # ---------------------------------------------------
@@ -91,6 +91,29 @@ def parse_lanes(val):
         return None
 
     m = re.search(r"\d+", str(val))
+
+    if not m:
+        return None
+
+    return int(m.group())
+
+
+# Reads the OSM vertical layer of a way as a signed integer.
+# 0 = ground level, 1 = an overpass/bridge deck, -1 = an underpass/tunnel.
+# Values are usually "1" or "-1" but can be lists after merging or junk
+# like "1;2", so pull the first signed integer found.
+def parse_layer(val):
+    if val is None:
+        return None
+
+    if isinstance(val, list):
+        for item in val:
+            parsed = parse_layer(item)
+            if parsed is not None:
+                return parsed
+        return None
+
+    m = re.search(r"-?\d+", str(val))
 
     if not m:
         return None
@@ -181,6 +204,12 @@ extra_way_tags = [
     "turn:lanes:forward",
     "turn:lanes:backward",
     "lit",
+    # Verticality tags. bridge/tunnel are in OSMnx's defaults but "layer" is
+    # NOT, so without listing it here every exported layer value was null and
+    # overpasses rendered at ground level.
+    "bridge",
+    "tunnel",
+    "layer",
 ]
 
 # highway on nodes is where OSM stores things like traffic_signals and stop signs.
@@ -226,6 +255,9 @@ turn_backward_count = 0
 lit_count = 0
 signal_count = 0
 stop_count = 0
+bridge_count = 0
+tunnel_count = 0
+layer_count = 0
 
 for u, v, key, data in G.edges(keys=True, data=True):
     if data.get("turn:lanes") is not None:
@@ -236,6 +268,12 @@ for u, v, key, data in G.edges(keys=True, data=True):
         turn_backward_count += 1
     if data.get("lit") is not None:
         lit_count += 1
+    if data.get("bridge") is not None:
+        bridge_count += 1
+    if data.get("tunnel") is not None:
+        tunnel_count += 1
+    if data.get("layer") is not None:
+        layer_count += 1
 
 for node_id, data in G.nodes(data=True):
     if data.get("highway") == "traffic_signals":
@@ -248,6 +286,9 @@ print("  turn:lanes:", turn_count)
 print("  turn:lanes:forward:", turn_forward_count)
 print("  turn:lanes:backward:", turn_backward_count)
 print("  lit:", lit_count)
+print("  bridge:", bridge_count)
+print("  tunnel:", tunnel_count)
+print("  layer:", layer_count)
 print("  traffic signals:", signal_count)
 print("  stop signs:", stop_count)
 
@@ -296,6 +337,11 @@ for node_id, data in G.nodes(data=True):
 H_geo = ox.simplification.simplify_graph(
     G,
     track_merged=True,
+    # Keep a node whenever the verticality tags change across it. This stops
+    # simplification from merging a bridge deck with its ground-level approach
+    # roads, which would smear bridge=yes over the whole merged edge and lose
+    # where the elevated span actually starts and ends.
+    edge_attrs_differ=["bridge", "tunnel", "layer"],
     edge_attr_aggs={
         "length": sum,
         "length_m": sum,
@@ -305,6 +351,9 @@ H_geo = ox.simplification.simplify_graph(
         "turn:lanes:forward": first_non_null,
         "turn:lanes:backward": first_non_null,
         "lit": first_non_null,
+        "bridge": first_non_null,
+        "tunnel": first_non_null,
+        "layer": first_non_null,
     },
 )
 
@@ -332,6 +381,9 @@ turn_backward_count_after = 0
 lit_count_after = 0
 signal_count_after = 0
 stop_count_after = 0
+bridge_count_after = 0
+tunnel_count_after = 0
+layer_count_after = 0
 
 for u, v, key, data in H_geo.edges(keys=True, data=True):
     if data.get("turn:lanes") is not None:
@@ -342,6 +394,12 @@ for u, v, key, data in H_geo.edges(keys=True, data=True):
         turn_backward_count_after += 1
     if data.get("lit") is not None:
         lit_count_after += 1
+    if data.get("bridge") is not None:
+        bridge_count_after += 1
+    if data.get("tunnel") is not None:
+        tunnel_count_after += 1
+    if data.get("layer") is not None:
+        layer_count_after += 1
 
 for node_id, data in H_geo.nodes(data=True):
     if data.get("traffic_control") == "signal":
@@ -354,6 +412,9 @@ print("  turn:lanes:", turn_count_after)
 print("  turn:lanes:forward:", turn_forward_count_after)
 print("  turn:lanes:backward:", turn_backward_count_after)
 print("  lit:", lit_count_after)
+print("  bridge:", bridge_count_after)
+print("  tunnel:", tunnel_count_after)
+print("  layer:", layer_count_after)
 print("  traffic signals:", signal_count_after)
 print("  stop signs:", stop_count_after)
 
@@ -449,7 +510,8 @@ for (u, v, key), row in edges_gdf.iterrows():
         "ref": clean_json_value(row.get("ref")),
         "bridge": clean_json_value(row.get("bridge")),
         "tunnel": clean_json_value(row.get("tunnel")),
-        "layer": clean_json_value(row.get("layer")),
+        # Normalized to a signed int (or null): 1 = overpass, -1 = underpass.
+        "layer": parse_layer(clean_json_value(row.get("layer"))),
         "surface": clean_json_value(row.get("surface")),
         "access": clean_json_value(row.get("access")),
         "motor_vehicle": clean_json_value(row.get("motor_vehicle")),

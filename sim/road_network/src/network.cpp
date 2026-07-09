@@ -1,6 +1,7 @@
 #include "network.h"
 #include <algorithm>
 #include <cstdint>
+#include <cstdlib>
 #include <iostream>
 #include <fstream>
 
@@ -47,11 +48,12 @@ Node* Network::getRandomNode(std::mt19937& rng)
 }
 
 void Network::addDirectedEdge(uint64_t fromId, uint64_t toId, double dist, double speedLimit, int lanes,
-                              std::vector<RoadGeomPoint> geometry)
+                              std::vector<RoadGeomPoint> geometry, int layer)
 {
     if (nodes.find(fromId) != nodes.end() && nodes.find(toId) != nodes.end())
     {
         Road& edge = nodes[fromId].outgoingEdges.emplace_back(nextEdgeId++, toId, dist, speedLimit, lanes);
+        edge.setLayer(layer);
 
         nodes[toId].incomingEdgeNodeIds.push_back(fromId);
 
@@ -80,6 +82,60 @@ void Network::addDirectedEdge(uint64_t fromId, uint64_t toId, double dist, doubl
     else
     {
         throw std::invalid_argument("Cannot create edge: Node ID does not exist.");
+    }
+}
+
+void Network::applyVerticality(double layerHeightM, double rampLengthM)
+{
+    // Node elevation = layer of the incident edge closest to ground level.
+    // A bridge endpoint shared with ground approaches stays at 0 (the deck
+    // ramps up inside the bridge edge, so ground roads through the node are
+    // untouched); a node where two elevated spans meet sits at deck height.
+    for (auto& [id, node] : nodes)
+    {
+        bool haveAny = false;
+        int best = 0;
+        auto consider = [&](int layer) {
+            if (!haveAny || std::abs(layer) < std::abs(best))
+            {
+                best = layer;
+                haveAny = true;
+            }
+        };
+
+        for (const Road& e : node.outgoingEdges) consider(e.getLayer());
+        for (uint64_t inId : node.incomingEdgeNodeIds)
+        {
+            auto it = nodes.find(inId);
+            if (it == nodes.end()) continue;
+            for (const Road& e : it->second.outgoingEdges)
+            {
+                if (e.getDest() == id)
+                {
+                    consider(e.getLayer());
+                    break;
+                }
+            }
+        }
+
+        node.setZ(best * layerHeightM);
+    }
+
+    // Write each edge's vertical profile onto its centerline.
+    for (auto& [id, node] : nodes)
+    {
+        for (Road& e : node.outgoingEdges)
+        {
+            auto it = nodes.find(e.getDest());
+            if (it == nodes.end()) continue;
+
+            const double zStart = node.getZ();
+            const double zEnd   = it->second.getZ();
+            const double zMid   = e.getLayer() * layerHeightM;
+            if (zStart == 0.0 && zEnd == 0.0 && zMid == 0.0) continue;
+
+            e.applyVerticalProfile(zStart, zMid, zEnd, rampLengthM);
+        }
     }
 }
 

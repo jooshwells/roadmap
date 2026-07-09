@@ -7,10 +7,14 @@
 // One vertex of an edge's real-world centerline polyline (OSM geometry_xy),
 // in the same projected map coordinates as Node x/y (y already sign-flipped).
 // 's' is the cumulative arc length in meters from the first point.
+// 'z' is the elevation in meters (0 = ground) assigned by
+// Network::applyVerticality from the edge's OSM layer; it is deliberately the
+// LAST member so existing {x, y, s} aggregate initializers stay valid.
 struct RoadGeomPoint {
     double x;
     double y;
     double s;
+    double z = 0.0;
 };
 
 class Road {
@@ -22,10 +26,12 @@ class Road {
         inline double getSpeedLimit() const       { return speedLimit; }
         inline int getLanes() const               { return lanes; }
         inline double getLength() const           { return length; }
+        inline int getLayer() const               { return layer; }
 
         // Setters
         inline void setSpeedLimit(double sL) { speedLimit = sL; }
         inline void setLanes(int l)          { lanes = l; }
+        inline void setLayer(int l)          { layer = l; }
 
         // Curved centerline (empty for edges without OSM shape data, e.g.
         // runtime-created roads -- consumers fall back to a straight line).
@@ -35,13 +41,22 @@ class Road {
         inline const std::vector<RoadGeomPoint>& getGeometry() const { return geometry; }
         inline bool hasCurveGeometry() const { return geometry.size() >= 2; }
 
+        // Writes the vertical profile onto the stored centerline: z holds zMid
+        // (the edge's own layer elevation) over the span and ramps to the
+        // endpoint node elevations zStart/zEnd within rampLen meters of each
+        // end (smoothstep). Extra vertices are inserted inside the ramp zones
+        // so the profile survives on long straight segments that only have two
+        // polyline points. Elevations are meters; arc lengths stay 2D.
+        void applyVerticalProfile(double zStart, double zMid, double zEnd, double rampLen);
+
         // Position + unit tangent on the centerline at 'dist' meters along the
         // edge. 'dist' is measured against the simulator's edge length and is
         // remapped proportionally onto the polyline's own arc length, so it
         // stays consistent with vehicle positions even if the two differ
         // slightly. Returns false when no usable geometry is stored.
+        // 'outZ' receives the interpolated elevation (meters, 0 = ground).
         bool samplePointAt(double dist, double& outX, double& outY,
-                           double& outTanX, double& outTanY) const;
+                           double& outTanX, double& outTanY, double& outZ) const;
 
         // volume tracking and dynamic cost for pathfinding
         void addVehicle() { currentVolume++; }
@@ -59,6 +74,7 @@ class Road {
         double length;
         double speedLimit;
         int lanes;
+        int layer = 0; // OSM vertical layer: 0 ground, +1 overpass, -1 underpass
         int currentVolume = 0;
         std::vector<RoadGeomPoint> geometry; // empty = straight line
         double geometryLength = 0.0;         // total polyline arc length (m)
