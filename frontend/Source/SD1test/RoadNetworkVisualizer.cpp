@@ -598,7 +598,11 @@ void ARoadNetworkVisualizer::RefreshRoadVisuals()
 // (map coordinates). Unlike Road::samplePointAt this measures true polyline
 // arc length -- the same measure the visualizer trims setbacks with -- so a
 // junction face lands exactly on the trimmed road end.
-static bool SampleGeometryAtArcMeters(const std::vector<RoadGeomPoint>& G, double ArcM,
+//
+// Must stay out of line: MSVC 14.44's optimizer crashes (C1001) folding this
+// polyline walk into AppendJunctionPolygon's neighbour loop, where it lands at
+// two call sites under full optimization; newer toolsets inline it cleanly.
+static FORCENOINLINE bool SampleGeometryAtArcMeters(const std::vector<RoadGeomPoint>& G, double ArcM,
     double& OutX, double& OutY, double& OutTanX, double& OutTanY)
 {
     if (G.size() < 2) return false;
