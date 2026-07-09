@@ -141,24 +141,25 @@ std::vector<VehicleRenderState> TrafficSimulation::GetVehicleRenderStates()
         if (edgeLen <= 0.0) return false;
 
         double px, py, tx, ty;
-        if (!(edge && edge->samplePointAt(dist, px, py, tx, ty)))
+        double pz = 0.0;
+        if (!(edge && edge->samplePointAt(dist, px, py, tx, ty, pz)))
         {
             // Straight fallback: lerp node to node.
             double dx = b->getX() - a->getX();
             double dy = b->getY() - a->getY();
             double len = std::sqrt(dx * dx + dy * dy);
             if (len < 0.0001) return false;
-            double t = dist / edgeLen;
+            double t = std::clamp(dist / edgeLen, 0.0, 1.0);
             px = a->getX() + t * dx;
             py = a->getY() + t * dy;
+            pz = a->getZ() + t * (b->getZ() - a->getZ());
             tx = dx / len;
             ty = dy / len;
         }
 
-        double t = std::clamp(dist / edgeLen, 0.0, 1.0);
         out.x = px;
         out.y = py;
-        out.z = a->getZ() + t * (b->getZ() - a->getZ());
+        out.z = pz;
         out.yaw = static_cast<float>(std::atan2(ty, tx));
 
         double laneOffset = MEDIAN_GAP_METERS + (LANE_WIDTH / 2.0) + lane * LANE_WIDTH;

@@ -12,7 +12,8 @@ Road::~Road() {}
 void Road::setGeometry(std::vector<RoadGeomPoint> pts)
 {
     // Drop consecutive duplicates so zero-length segments never produce a
-    // degenerate (NaN) tangent, then accumulate arc length.
+    // degenerate (NaN) tangent, then accumulate arc length (2D -- slopes do
+    // not stretch the arc measure the setbacks and vehicles use).
     geometry.clear();
     geometryLength = 0.0;
     for (const RoadGeomPoint& p : pts)
@@ -25,7 +26,7 @@ void Road::setGeometry(std::vector<RoadGeomPoint> pts)
             if (d < 1e-6) continue;
             geometryLength += d;
         }
-        geometry.push_back({ p.x, p.y, geometryLength });
+        geometry.push_back({ p.x, p.y, geometryLength, p.z });
     }
     if (geometry.size() < 2)
     {
@@ -34,8 +35,68 @@ void Road::setGeometry(std::vector<RoadGeomPoint> pts)
     }
 }
 
+void Road::applyVerticalProfile(double zStart, double zMid, double zEnd, double rampLen)
+{
+    if (geometry.size() < 2 || geometryLength <= 0.0) return;
+
+    if (zStart == zMid && zMid == zEnd)
+    {
+        for (RoadGeomPoint& p : geometry) p.z = zMid;
+        return;
+    }
+
+    const double L = geometryLength;
+    const double rampA = (zStart != zMid) ? std::min(rampLen, L * 0.5) : 0.0;
+    const double rampB = (zEnd   != zMid) ? std::min(rampLen, L * 0.5) : 0.0;
+
+    auto smooth = [](double t) {
+        t = std::clamp(t, 0.0, 1.0);
+        return t * t * (3.0 - 2.0 * t);
+    };
+    auto zAt = [&](double s) -> double {
+        if (rampA > 0.0 && s < rampA)     return zStart + (zMid - zStart) * smooth(s / rampA);
+        if (rampB > 0.0 && s > L - rampB) return zEnd   + (zMid - zEnd)   * smooth((L - s) / rampB);
+        return zMid;
+    };
+
+    // Arc positions to add as vertices so the smoothstep is actually sampled
+    // inside the ramps -- a straight bridge often has only its two endpoints.
+    std::vector<double> cuts;
+    const int STEPS = 6;
+    auto addRampCuts = [&](double s0, double s1) {
+        for (int k = 0; k <= STEPS; k++)
+            cuts.push_back(s0 + (s1 - s0) * k / STEPS);
+    };
+    if (rampA > 0.0) addRampCuts(0.0, rampA);
+    if (rampB > 0.0) addRampCuts(L - rampB, L);
+    std::sort(cuts.begin(), cuts.end());
+    cuts.erase(std::unique(cuts.begin(), cuts.end(),
+        [](double a, double b) { return std::abs(a - b) < 1e-6; }), cuts.end());
+
+    std::vector<RoadGeomPoint> out;
+    out.reserve(geometry.size() + cuts.size());
+    size_t ci = 0;
+    for (size_t i = 0; i + 1 < geometry.size(); i++)
+    {
+        const RoadGeomPoint a = geometry[i];
+        const RoadGeomPoint b = geometry[i + 1];
+        out.push_back(a);
+        const double segLen = b.s - a.s;
+        while (ci < cuts.size() && cuts[ci] <= a.s + 1e-6) ci++;
+        for (; ci < cuts.size() && cuts[ci] < b.s - 1e-6; ci++)
+        {
+            const double t = (cuts[ci] - a.s) / segLen;
+            out.push_back({ a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, cuts[ci], 0.0 });
+        }
+    }
+    out.push_back(geometry.back());
+
+    for (RoadGeomPoint& p : out) p.z = zAt(p.s);
+    geometry = std::move(out);
+}
+
 bool Road::samplePointAt(double dist, double& outX, double& outY,
-                         double& outTanX, double& outTanY) const
+                         double& outTanX, double& outTanY, double& outZ) const
 {
     if (geometry.size() < 2 || geometryLength <= 0.0 || length <= 0.0) return false;
 
@@ -53,6 +114,7 @@ bool Road::samplePointAt(double dist, double& outX, double& outY,
 
     outX = a.x + (b.x - a.x) * t;
     outY = a.y + (b.y - a.y) * t;
+    outZ = a.z + (b.z - a.z) * t;
     outTanX = (b.x - a.x) / segLen;
     outTanY = (b.y - a.y) / segLen;
     return true;

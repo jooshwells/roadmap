@@ -107,9 +107,13 @@ void ARoadNetworkVisualizer::BuildVisualNetwork(Network* RoadNetwork, FString In
     {
         const Node& OriginNode = NodePair.second;
 
+        // Node elevation (cm) from the sim's verticality pass -- nonzero where
+        // elevated spans meet (e.g. mid-viaduct joints), 0 at ground level.
+        const double NodeZCm = OriginNode.getZ() * 100.0;
+
         FVector NodeLoc((OriginNode.getX() - OriginOffsetX) * 100.0,
             (OriginNode.getY() - OriginOffsetY) * 100.0,
-            -2.0f);
+            NodeZCm - 2.0);
 
         if (bSetbackAtIntersections)
         {
@@ -117,9 +121,9 @@ void ARoadNetworkVisualizer::BuildVisualNetwork(Network* RoadNetwork, FString In
             // polygon that meets each incident road's end face.
             if (RoadIntersectionUtil::IsIntersectionNode(OriginNode))
             {
-                // Just below the road surface (z=0) so short-edge overlap hides
+                // Just below the road surface so short-edge overlap hides
                 // under the roads, but above typical floor/ground actors.
-                const FVector JunctionCenter(NodeLoc.X, NodeLoc.Y, -0.2f);
+                const FVector JunctionCenter(NodeLoc.X, NodeLoc.Y, NodeZCm - 0.2);
                 AppendJunctionPolygon(RoadNetwork, OriginNode, JunctionCenter,
                     JunctionVerts, JunctionTris, JunctionNormals, JunctionUVs);
             }
@@ -140,14 +144,15 @@ void ARoadNetworkVisualizer::BuildVisualNetwork(Network* RoadNetwork, FString In
             Node* DestNode = RoadNetwork->getNode(Edge.getDest());
             if (!DestNode) continue;
 
-            // Force Z to 0.0. Subtracting Origin forces the geographic center to 0,0.
+            // Subtracting Origin forces the geographic center to 0,0. Z comes
+            // from the node elevations (0 for ground-level roads).
             FVector StartLoc((OriginNode.getX() - OriginOffsetX) * 100.0,
                 (OriginNode.getY() - OriginOffsetY) * 100.0,
-                0.0);
+                OriginNode.getZ() * 100.0);
 
             FVector EndLoc((DestNode->getX() - OriginOffsetX) * 100.0,
                 (DestNode->getY() - OriginOffsetY) * 100.0,
-                0.0);
+                DestNode->getZ() * 100.0);
 
             // Ensure we always have at least 1 lane to prevent divide-by-zero in the shader
             int32 SafeLanes = FMath::Max(1, Edge.getLanes());
@@ -166,7 +171,8 @@ void ARoadNetworkVisualizer::BuildVisualNetwork(Network* RoadNetwork, FString In
                 for (const RoadGeomPoint& P : Geom)
                 {
                     Pts.Add(FVector((P.x - OriginOffsetX) * 100.0,
-                                    (P.y - OriginOffsetY) * 100.0, 0.0));
+                                    (P.y - OriginOffsetY) * 100.0,
+                                    P.z * 100.0));
                 }
             }
             else
@@ -188,9 +194,11 @@ void ARoadNetworkVisualizer::BuildVisualNetwork(Network* RoadNetwork, FString In
 
             // End tangents of the centerline. Taper detection compares these,
             // not the chord, so a curved edge measures the direction it
-            // actually meets each neighbour at.
-            const FVector StartTangent = (Pts[1] - Pts[0]).GetSafeNormal();
-            const FVector EndTangent = (Pts.Last() - Pts[Pts.Num() - 2]).GetSafeNormal();
+            // actually meets each neighbour at. Flattened to the XY plane so a
+            // ramp's pitch doesn't weaken the alignment dot products (the
+            // neighbour directions below are built without z).
+            const FVector StartTangent = FVector(Pts[1] - Pts[0]).GetSafeNormal2D();
+            const FVector EndTangent = FVector(Pts.Last() - Pts[Pts.Num() - 2]).GetSafeNormal2D();
 
             // Position on the centerline at arc distance S, plus its segment index.
             auto PointAtArc = [&Pts, &Cum](float S, int32& OutSeg) -> FVector
@@ -249,25 +257,34 @@ void ARoadNetworkVisualizer::BuildVisualNetwork(Network* RoadNetwork, FString In
                 TPts = Pts;
             }
 
-            // Per-segment frame of the trimmed centerline.
+            // Per-segment frame of the trimmed centerline. Arc lengths and the
+            // placement axes (SegDir/SegRight) stay 2D so setbacks, tapers and
+            // widths are unaffected by slope; SegRot carries the true 3D pitch
+            // so pieces tilt along bridge ramps, and SegSlopeScale stretches a
+            // piece's length back out so its horizontal footprint still covers
+            // the intended 2D span.
             const int32 NumSegs = TPts.Num() - 1;
             TArray<float> TCum;
             TArray<FVector> SegDir;
             TArray<FVector> SegRight;
             TArray<FRotator> SegRot;
+            TArray<float> SegSlopeScale;
             TCum.Reserve(TPts.Num());
             SegDir.Reserve(NumSegs);
             SegRight.Reserve(NumSegs);
             SegRot.Reserve(NumSegs);
+            SegSlopeScale.Reserve(NumSegs);
             TCum.Add(0.0f);
             for (int32 i = 0; i < NumSegs; i++)
             {
                 const FVector D = TPts[i + 1] - TPts[i];
-                TCum.Add(TCum[i] + D.Size2D());
-                const FVector DN = D.GetSafeNormal();
-                SegDir.Add(DN);
-                SegRight.Add(FVector(-DN.Y, DN.X, 0.0));
-                SegRot.Add(DN.Rotation());
+                const float Len2D = D.Size2D();
+                TCum.Add(TCum[i] + Len2D);
+                const FVector DN2 = D.GetSafeNormal2D();
+                SegDir.Add(DN2);
+                SegRight.Add(FVector(-DN2.Y, DN2.X, 0.0));
+                SegRot.Add(D.GetSafeNormal().Rotation());
+                SegSlopeScale.Add(Len2D > KINDA_SMALL_NUMBER ? D.Size() / Len2D : 1.0f);
             }
             const float DrawLenCm = TCum.Last();
 
@@ -411,9 +428,24 @@ void ARoadNetworkVisualizer::BuildVisualNetwork(Network* RoadNetwork, FString In
 
                     FVector Loc = TPts[i] + SegDir[i] * AlongRef
                                 + SegRight[i] * ((WidthCm * 0.5f) + MedianGapCm);
+
+                    // Height at the piece's pivot. SegDir is planar, so Loc.Z is
+                    // still TPts[i].Z here; replace it with the slope-interpolated
+                    // height so the pitched piece (rotated about its pivot by
+                    // SegRot) lands its ends on the centerline. AlongRef can sit
+                    // slightly outside the segment on mitered joints -- the
+                    // unclamped lerp extends the same slope, which is what the
+                    // miter needs.
+                    const float SegLen2D = TCum[i + 1] - TCum[i];
+                    if (SegLen2D > KINDA_SMALL_NUMBER)
+                    {
+                        Loc.Z = FMath::Lerp(TPts[i].Z, TPts[i + 1].Z, AlongRef / SegLen2D);
+                    }
                     Loc.Z += (i % 3) * 0.03f;
 
-                    const float SX = PieceLen / FMath::Max(1.0f, MeshBaseLengthCm);
+                    // SegSlopeScale keeps the horizontal footprint of a pitched
+                    // piece equal to its 2D arc span.
+                    const float SX = PieceLen * SegSlopeScale[i] / FMath::Max(1.0f, MeshBaseLengthCm);
                     const float SY = bScaleWidthByLanes ? (WidthCm / FMath::Max(1.0f, MeshBaseWidthCm)) : 1.0f;
 
                     Transforms.Add(FTransform(SegRot[i], Loc, FVector(SX, SY, 1.0f)));
