@@ -33,16 +33,19 @@ class Network {
         // 'geometry' is the optional OSM centerline polyline (map meters, y
         // sign-flipped to match Node coords). It may arrive in either point
         // order; it is oriented from->to and endpoint-snapped before storage.
+        // 'layer' is the OSM vertical layer (0 ground, +1 overpass, -1
+        // underpass) used by applyVerticality to elevate the edge.
         void addDirectedEdge(uint64_t fromId, uint64_t toId, double dist, double speedLimit, int lanes,
-                             std::vector<RoadGeomPoint> geometry = {});
+                             std::vector<RoadGeomPoint> geometry = {}, int layer = 0);
 
         // Splits the directed edge from->to at map point (x, y): the existing
         // Road is shortened IN PLACE to end at newNodeId (so Road* pointers
         // held by vehicles stay valid) and a new edge newNodeId->to inherits
-        // its speed limit, lane count, and the rest of the centerline. Creates
-        // newNodeId at (x, y) if it does not exist yet. The split point is
-        // projected onto the edge's centerline and the sim length is divided
-        // proportionally. Returns false if either node or the edge is missing.
+        // its speed limit, lane count, layer, and the rest of the centerline.
+        // Creates newNodeId at (x, y) if it does not exist yet. The split
+        // point is projected onto the edge's centerline and the sim length is
+        // divided proportionally. Returns false if either node or the edge is
+        // missing.
         bool splitDirectedEdge(uint64_t fromId, uint64_t toId, uint64_t newNodeId, double x, double y);
 
         // Removes the directed edge from->to. Erasing from outgoingEdges
@@ -57,6 +60,15 @@ class Network {
         // after deleting edges.
         bool removeNodeIfIsolated(uint64_t id);
 
+        // Assigns vertical elevations from the OSM layer data, run once after
+        // all edges are loaded. Each non-ground edge's centerline holds
+        // layer * layerHeightM over its span and ramps (smoothstep) to its
+        // endpoint node elevations within rampLengthM of each end. A node's
+        // elevation is the incident-edge layer closest to ground, so a bridge
+        // deck ramps up inside its own span while ground-level roads through
+        // the same endpoint node stay flat; where two elevated edges meet the
+        // node sits at deck height and the spans stay flush.
+        void applyVerticality(double layerHeightM = 7.0, double rampLengthM = 50.0);
         void visualizeNetwork();
 
         const std::unordered_map<uint64_t, Node>& getNodes() const { return nodes; }
