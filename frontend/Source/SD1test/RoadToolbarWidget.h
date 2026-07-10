@@ -57,6 +57,11 @@ private:
     UFUNCTION()
     void HandleTurnLaneComboChanged(FString SelectedItem, ESelectInfo::Type SelectionType);
 
+    // Builds the light-text widget for one turn-lane combo entry, used for both
+    // the closed button content and the dropdown rows.
+    UFUNCTION()
+    UWidget* MakeTurnLaneEntry(FString Item);
+
     // Title-bar drag: press starts, move repositions the window, release ends.
     UFUNCTION()
     FEventReply HandleTitleBarMouseDown(FGeometry MyGeometry, const FPointerEvent& MouseEvent);

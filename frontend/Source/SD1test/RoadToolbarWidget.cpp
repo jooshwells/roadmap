@@ -19,6 +19,7 @@
 #include "Misc/DefaultValueHelper.h"
 #include "Styling/CoreStyle.h"
 #include "RoadTurnLaneOptions.h"
+#include "RoadPanelStyle.h"
 
 TSharedRef<SWidget> URoadToolbarWidget::RebuildWidget()
 {
@@ -87,7 +88,7 @@ TSharedRef<SWidget> URoadToolbarWidget::RebuildWidget()
         // Status / hint line under the button.
         StatusText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Status"));
         StatusText->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 9));
-        StatusText->SetColorAndOpacity(FSlateColor(FLinearColor(0.7f, 0.7f, 0.7f)));
+        StatusText->SetColorAndOpacity(FSlateColor(RoadPanelStyle::StatusLabel));
         StatusText->SetAutoWrapText(true);
         UVerticalBoxSlot* StatusSlot = Box->AddChildToVerticalBox(StatusText);
         StatusSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 10.0f));
@@ -95,12 +96,14 @@ TSharedRef<SWidget> URoadToolbarWidget::RebuildWidget()
         // Lanes: plain number entry, clamped to 1-6 on commit.
         LanesBox = WidgetTree->ConstructWidget<UEditableTextBox>(UEditableTextBox::StaticClass(), TEXT("Lanes"));
         LanesBox->SetText(FText::AsNumber(CurrentLanes));
+        RoadPanelStyle::StyleNumberField(LanesBox);
         AddRow(Box, NSLOCTEXT("RoadToolbar", "Lanes", "Lanes (1-6)"), LanesBox);
 
         // Speed limit: plain number entry in mph, clamped to 5-80 on commit
         // (m/s in the sim).
         SpeedBox = WidgetTree->ConstructWidget<UEditableTextBox>(UEditableTextBox::StaticClass(), TEXT("Speed"));
         SpeedBox->SetText(FText::AsNumber(CurrentSpeedMph));
+        RoadPanelStyle::StyleNumberField(SpeedBox);
         AddRow(Box, NSLOCTEXT("RoadToolbar", "Speed", "Speed limit (mph, max 80)"), SpeedBox);
 
         // Two-way
@@ -112,7 +115,7 @@ TSharedRef<SWidget> URoadToolbarWidget::RebuildWidget()
         UTextBlock* TurnHeader = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("TurnHeader"));
         TurnHeader->SetText(NSLOCTEXT("RoadToolbar", "TurnHeader", "Turn lanes (left lane first)"));
         TurnHeader->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 10));
-        TurnHeader->SetColorAndOpacity(FSlateColor(FLinearColor(0.85f, 0.85f, 0.85f)));
+        TurnHeader->SetColorAndOpacity(FSlateColor(RoadPanelStyle::RowLabel));
         UVerticalBoxSlot* TurnHeaderSlot = Box->AddChildToVerticalBox(TurnHeader);
         TurnHeaderSlot->SetPadding(FMargin(0.0f, 8.0f, 0.0f, 2.0f));
 
@@ -220,6 +223,15 @@ void URoadToolbarWidget::HandleTurnLaneComboChanged(FString /*SelectedItem*/, ES
     if (bDrawing) PushDrawParams();
 }
 
+UWidget* URoadToolbarWidget::MakeTurnLaneEntry(FString Item)
+{
+    UTextBlock* Entry = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+    Entry->SetText(FText::FromString(Item));
+    Entry->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 10));
+    Entry->SetColorAndOpacity(FSlateColor(RoadPanelStyle::ControlText));
+    return Entry;
+}
+
 FEventReply URoadToolbarWidget::HandleTitleBarMouseDown(FGeometry /*MyGeometry*/, const FPointerEvent& MouseEvent)
 {
     if (!PanelSlot || MouseEvent.GetEffectingButton() != EKeys::LeftMouseButton)
@@ -284,6 +296,8 @@ void URoadToolbarWidget::RebuildTurnLaneCombos()
     for (int32 LaneIdx = 0; LaneIdx < CurrentLanes; LaneIdx++)
     {
         UComboBoxString* Combo = WidgetTree->ConstructWidget<UComboBoxString>(UComboBoxString::StaticClass());
+        RoadPanelStyle::StyleTurnLaneCombo(Combo);
+        Combo->OnGenerateWidgetEvent.BindUFunction(this, FName("MakeTurnLaneEntry"));
         for (const TCHAR* Option : RoadTurnLaneOptions::Options)
         {
             Combo->AddOption(Option);
@@ -348,7 +362,7 @@ void URoadToolbarWidget::AddRow(UVerticalBox* Parent, const FText& Label, UWidge
 
     UTextBlock* LabelText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
     LabelText->SetText(Label);
-    LabelText->SetColorAndOpacity(FSlateColor(FLinearColor(0.85f, 0.85f, 0.85f)));
+    LabelText->SetColorAndOpacity(FSlateColor(RoadPanelStyle::RowLabel));
 
     UHorizontalBoxSlot* LabelSlot = Row->AddChildToHorizontalBox(LabelText);
     LabelSlot->SetPadding(FMargin(0.0f, 0.0f, 14.0f, 0.0f));

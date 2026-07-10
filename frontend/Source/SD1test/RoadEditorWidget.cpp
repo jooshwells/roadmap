@@ -19,6 +19,7 @@
 #include "Misc/DefaultValueHelper.h"
 #include "Styling/CoreStyle.h"
 #include "RoadTurnLaneOptions.h"
+#include "RoadPanelStyle.h"
 
 void URoadEditorWidget::InitWithEdgeInfo(const FRoadEdgeInfo& Info)
 {
@@ -78,18 +79,20 @@ TSharedRef<SWidget> URoadEditorWidget::RebuildWidget()
 
         // Lanes: plain number entry, clamped to 1-6 on commit.
         LanesBox = WidgetTree->ConstructWidget<UEditableTextBox>(UEditableTextBox::StaticClass(), TEXT("Lanes"));
+        RoadPanelStyle::StyleNumberField(LanesBox);
         AddRow(Box, NSLOCTEXT("RoadEditor", "Lanes", "Lanes (1-6)"), LanesBox);
 
         // Speed limit: plain number entry in mph, clamped to 5-80 on commit
         // (m/s in the sim).
         SpeedBox = WidgetTree->ConstructWidget<UEditableTextBox>(UEditableTextBox::StaticClass(), TEXT("Speed"));
+        RoadPanelStyle::StyleNumberField(SpeedBox);
         AddRow(Box, NSLOCTEXT("RoadEditor", "Speed", "Speed limit (mph, max 80)"), SpeedBox);
 
         // Turn lanes: one dropdown per lane.
         UTextBlock* TurnHeader = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("TurnHeader"));
         TurnHeader->SetText(NSLOCTEXT("RoadEditor", "TurnHeader", "Turn lanes (left lane first)"));
         TurnHeader->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 10));
-        TurnHeader->SetColorAndOpacity(FSlateColor(FLinearColor(0.85f, 0.85f, 0.85f)));
+        TurnHeader->SetColorAndOpacity(FSlateColor(RoadPanelStyle::RowLabel));
         UVerticalBoxSlot* TurnHeaderSlot = Box->AddChildToVerticalBox(TurnHeader);
         TurnHeaderSlot->SetPadding(FMargin(0.0f, 8.0f, 0.0f, 2.0f));
 
@@ -215,6 +218,15 @@ void URoadEditorWidget::HandleTurnLaneComboChanged(FString /*SelectedItem*/, ESe
     CurrentTurnLanes = ComposeTurnLanesFromCombos();
 }
 
+UWidget* URoadEditorWidget::MakeTurnLaneEntry(FString Item)
+{
+    UTextBlock* Entry = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+    Entry->SetText(FText::FromString(Item));
+    Entry->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 10));
+    Entry->SetColorAndOpacity(FSlateColor(RoadPanelStyle::ControlText));
+    return Entry;
+}
+
 FEventReply URoadEditorWidget::HandleTitleBarMouseDown(FGeometry /*MyGeometry*/, const FPointerEvent& MouseEvent)
 {
     if (!PanelSlot || MouseEvent.GetEffectingButton() != EKeys::LeftMouseButton)
@@ -266,6 +278,8 @@ void URoadEditorWidget::RebuildTurnLaneCombos()
     for (int32 LaneIdx = 0; LaneIdx < CurrentLanes; LaneIdx++)
     {
         UComboBoxString* Combo = WidgetTree->ConstructWidget<UComboBoxString>(UComboBoxString::StaticClass());
+        RoadPanelStyle::StyleTurnLaneCombo(Combo);
+        Combo->OnGenerateWidgetEvent.BindUFunction(this, FName("MakeTurnLaneEntry"));
         for (const TCHAR* Option : RoadTurnLaneOptions::Options)
         {
             Combo->AddOption(Option);
@@ -309,7 +323,7 @@ void URoadEditorWidget::AddRow(UVerticalBox* Parent, const FText& Label, UWidget
 
     UTextBlock* LabelText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
     LabelText->SetText(Label);
-    LabelText->SetColorAndOpacity(FSlateColor(FLinearColor(0.85f, 0.85f, 0.85f)));
+    LabelText->SetColorAndOpacity(FSlateColor(RoadPanelStyle::RowLabel));
 
     UHorizontalBoxSlot* LabelSlot = Row->AddChildToHorizontalBox(LabelText);
     LabelSlot->SetPadding(FMargin(0.0f, 0.0f, 14.0f, 0.0f));
