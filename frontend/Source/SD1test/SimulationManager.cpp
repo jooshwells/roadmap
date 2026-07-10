@@ -7,6 +7,8 @@
 #include "HAL/FileManager.h"
 #include "PythonBridge.h"
 #include "RoadmapGameInstance.h"
+#include "MapPlayerController.h"
+#include "Kismet/GameplayStatics.h"
 
 // Sets default values
 ASimulationManager::ASimulationManager()
@@ -251,6 +253,14 @@ void ASimulationManager::StartSimulation()
     }
 
     bSimulationRunning = true;
+
+    // Road editing is pre-run only: kick the controller out of draw mode and
+    // close the edit panel so the map turns view-only while cars are moving.
+    if (AMapPlayerController* PC = Cast<AMapPlayerController>(UGameplayStatics::GetPlayerController(GetWorld(), 0)))
+    {
+        PC->NotifySimulationStarted();
+    }
+
     if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Green, TEXT("Simulation Started!"));
 }
 void ASimulationManager::StopSimulation()
@@ -518,17 +528,57 @@ int32 ASimulationManager::GetInstanceIndexFromVehicleID(int32 VehicleID)
 	return -1;
 }
 
-void ASimulationManager::NotifyBackendOfNewRoad(int64 StartNodeId, int64 EndNodeId, FVector EndNodeUnrealLoc, float LengthMeters, int32 Lanes) {
+void ASimulationManager::NotifyBackendOfNewRoad(int64 StartNodeId, int64 EndNodeId, FVector EndNodeUnrealLoc, float LengthMeters, int32 Lanes, float SpeedLimit) {
     if (TrafficSimEngine && NetworkVisualizer) {
         // Convert Unreal units back to Map Coordinates using the Visualizer's offsets
         double BackendX = (EndNodeUnrealLoc.X / 100.0) + NetworkVisualizer->OriginOffsetX;
         double BackendY = (EndNodeUnrealLoc.Y / 100.0) + NetworkVisualizer->OriginOffsetY;
 
-        // Push to the live simulation
-        TrafficSimEngine->AddRuntimeRoad(StartNodeId, EndNodeId, BackendX, BackendY, LengthMeters, Lanes);
+        // Push to the live simulation with the new SpeedLimit
+        TrafficSimEngine->AddRuntimeRoad(StartNodeId, EndNodeId, BackendX, BackendY, LengthMeters, Lanes, SpeedLimit);
         
         if (GEngine) {
             GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, TEXT("Live Graph Updated!"));
         }
+    }
+}
+
+void ASimulationManager::SplitBackendEdge(int64 U, int64 V, int64 NewNodeId, FVector SplitUnrealLoc)
+{
+    if (TrafficSimEngine && NetworkVisualizer)
+    {
+        // Convert Unreal units back to Map Coordinates using the Visualizer's offsets
+        double BackendX = (SplitUnrealLoc.X / 100.0) + NetworkVisualizer->OriginOffsetX;
+        double BackendY = (SplitUnrealLoc.Y / 100.0) + NetworkVisualizer->OriginOffsetY;
+
+        TrafficSimEngine->SplitRuntimeEdge(U, V, NewNodeId, BackendX, BackendY);
+    }
+}
+
+void ASimulationManager::UpdateBackendRoad(int64 U, int64 V, int32 Lanes, float SpeedMps, bool bBothDirections)
+{
+    if (TrafficSimEngine)
+    {
+        TrafficSimEngine->UpdateRuntimeRoad(U, V, Lanes, SpeedMps, bBothDirections);
+    }
+}
+
+void ASimulationManager::DeleteBackendRoad(int64 U, int64 V, bool bBothDirections)
+{
+    if (TrafficSimEngine)
+    {
+        TrafficSimEngine->DeleteRuntimeEdge(U, V, bBothDirections);
+    }
+}
+
+void ASimulationManager::RequestBackendReroutes(FVector CenterUnrealLoc, float RadiusMeters)
+{
+    if (TrafficSimEngine && NetworkVisualizer)
+    {
+        // Convert Unreal units back to Map Coordinates using the Visualizer's offsets
+        double BackendX = (CenterUnrealLoc.X / 100.0) + NetworkVisualizer->OriginOffsetX;
+        double BackendY = (CenterUnrealLoc.Y / 100.0) + NetworkVisualizer->OriginOffsetY;
+
+        TrafficSimEngine->QueueRouteReplansNear(BackendX, BackendY, RadiusMeters);
     }
 }

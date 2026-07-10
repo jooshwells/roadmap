@@ -24,9 +24,14 @@ class PhysicsProcessor
 
         float calculateDistanceToDestination(VehicleState* vhcl);
 
-        const std::vector<VehicleState*>& getActiveVehicles() const { 
-            return vehicleList; 
+        const std::vector<VehicleState*>& getActiveVehicles() const {
+            return vehicleList;
         }
+
+        // Immediately removes and destroys a vehicle (e.g. the road under it
+        // was deleted). Clears other vehicles' leader references to it. Must
+        // only be called between update() calls, never from inside one.
+        void despawnVehicle(VehicleState* vhcl);
 
         PhysicsProcessor(Network* mapNetwork, VehicleSpatialHash* spatialObj);
         ~PhysicsProcessor();

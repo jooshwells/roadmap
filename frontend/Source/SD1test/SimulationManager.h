@@ -82,7 +82,26 @@ public:
 	virtual void Tick(float DeltaTime) override; // Called every frame
 
 	UFUNCTION(BlueprintCallable, Category = "Simulation")
-	void NotifyBackendOfNewRoad(int64 StartNodeId, int64 EndNodeId, FVector EndNodeUnrealLoc, float LengthMeters, int32 Lanes);
+	void NotifyBackendOfNewRoad(int64 StartNodeId, int64 EndNodeId, FVector EndNodeUnrealLoc, float LengthMeters, int32 Lanes, float SpeedLimit);
+
+	// Splits the live sim's edge U->V (and V->U when present) at a new node so
+	// roads drawn from / crossing existing streets connect for traffic too.
+	UFUNCTION(BlueprintCallable, Category = "Simulation")
+	void SplitBackendEdge(int64 U, int64 V, int64 NewNodeId, FVector SplitUnrealLoc);
+
+	// Pushes edited lane count / speed limit to the live sim's edge(s).
+	UFUNCTION(BlueprintCallable, Category = "Simulation")
+	void UpdateBackendRoad(int64 U, int64 V, int32 Lanes, float SpeedMps, bool bBothDirections);
+
+	// Deletes edge U->V (and V->U when bBothDirections) from the live sim.
+	// Vehicles on the road are despawned; routes through it are repaired.
+	UFUNCTION(BlueprintCallable, Category = "Simulation")
+	void DeleteBackendRoad(int64 U, int64 V, bool bBothDirections);
+
+	// Asks the sim to replan routes for vehicles passing near a road edit, so
+	// existing traffic discovers new connections instead of only new spawns.
+	UFUNCTION(BlueprintCallable, Category = "Simulation")
+	void RequestBackendReroutes(FVector CenterUnrealLoc, float RadiusMeters);
 
 private:
 	// The JSONL pair to simulate: the active roadmap chosen in the main menu,

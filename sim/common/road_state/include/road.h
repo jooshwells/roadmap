@@ -26,6 +26,10 @@ class Road {
         // Setters
         inline void setSpeedLimit(double sL) { speedLimit = sL; }
         inline void setLanes(int l)          { lanes = l; }
+        // Used by Network::splitDirectedEdge to shorten an edge in place so
+        // existing Road* pointers (e.g. VehicleState::currentEdge) stay valid.
+        inline void setDest(uint64_t d)      { destId = d; }
+        inline void setLength(double le)     { length = le; }
 
         // Curved centerline (empty for edges without OSM shape data, e.g.
         // runtime-created roads -- consumers fall back to a straight line).

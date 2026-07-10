@@ -171,6 +171,7 @@ python_pipeline/telemetry/dist/
 
 # Generated telemetry outputs
 python_pipeline/telemetry/outputs/
+frontend/Content/ThirdParty/python_pipeline/telemetry/outputs/
 
 # Generated sim/telemetry run artifacts (any location, incl. frontend copies)
 simulation_output.csv
