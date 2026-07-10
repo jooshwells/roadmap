@@ -36,6 +36,16 @@ struct FVehicleIDMStats
 	UPROPERTY(BlueprintReadOnly, Category = "Vehicle Stats") float MinGap = 0.0f;
 	UPROPERTY(BlueprintReadOnly, Category = "Vehicle Stats") float SafeBrakePower = 0.0f;
 	UPROPERTY(BlueprintReadOnly, Category = "Vehicle Stats") float SafeTimeHeadway = 0.0f;
+
+	// Live telemetry -- changes every sim step, so the stats panel re-polls
+	// these while open (GetVehicleStatsByID) instead of showing a snapshot.
+	UPROPERTY(BlueprintReadOnly, Category = "Vehicle Stats") float CurrentAcceleration = 0.0f; // m/s^2, negative while braking
+	UPROPERTY(BlueprintReadOnly, Category = "Vehicle Stats") float WaitTime = 0.0f;            // seconds spent (nearly) stopped
+	UPROPERTY(BlueprintReadOnly, Category = "Vehicle Stats") int32 Lane = 0;                   // 0-based lane index
+	UPROPERTY(BlueprintReadOnly, Category = "Vehicle Stats") float Politeness = 0.0f;          // MOBIL p: 0 selfish .. 1 selfless
+	UPROPERTY(BlueprintReadOnly, Category = "Vehicle Stats") float RoadSpeedLimit = 0.0f;      // m/s on the current edge (0 = unknown)
+	UPROPERTY(BlueprintReadOnly, Category = "Vehicle Stats") int32 RouteIndex = 0;             // node reached along the route
+	UPROPERTY(BlueprintReadOnly, Category = "Vehicle Stats") int32 RouteLength = 0;            // total nodes in the route
 };
 
 
@@ -53,6 +63,12 @@ public:
 	
 	UFUNCTION(BlueprintCallable, Category = "Simulation")
 	bool GetVehicleStatsFromInstance(int32 InstanceIndex, FVehicleIDMStats& OutStats);
+
+	// Live re-poll for an already-identified vehicle (the stats panel calls
+	// this every UI tick). Returns false once the vehicle has despawned or
+	// the simulation stopped.
+	UFUNCTION(BlueprintCallable, Category = "Simulation")
+	bool GetVehicleStatsByID(int32 VehicleID, FVehicleIDMStats& OutStats);
 
 	UFUNCTION(BlueprintCallable, Category = "Simulation")
 	int32 GetInstanceIndexFromVehicleID(int32 VehicleID);

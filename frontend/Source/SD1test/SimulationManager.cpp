@@ -495,15 +495,20 @@ bool ASimulationManager::GetVehicleStatsFromInstance(int32 InstanceIndex, FVehic
 {
 	if (!TrafficSimEngine || !InstanceIndexToVehicleId.Contains(InstanceIndex)) return false;
 
-	int32 TargetVehId = InstanceIndexToVehicleId[InstanceIndex];
+	return GetVehicleStatsByID(InstanceIndexToVehicleId[InstanceIndex], OutStats);
+}
+
+bool ASimulationManager::GetVehicleStatsByID(int32 VehicleID, FVehicleIDMStats& OutStats)
+{
+	if (!TrafficSimEngine) return false;
 
 	// Find the vehicle in the backend
 	for (VehicleState* v : TrafficSimEngine->GetActiveVehicles())
 	{
 		if (!v) continue; // If the pointer is null, skip it!
-		if (v->getId() == TargetVehId)
+		if (v->getId() == VehicleID)
 		{
-			OutStats.VehicleID = TargetVehId;
+			OutStats.VehicleID = VehicleID;
 			OutStats.CurrentSpeed = v->getSpeed();
 			OutStats.DesiredSpeed = v->getDesiredSpeed();
 			OutStats.MaxAcceleration = v->getMaxAccel();
@@ -511,6 +516,17 @@ bool ASimulationManager::GetVehicleStatsFromInstance(int32 InstanceIndex, FVehic
 			OutStats.MinGap = v->getMinGap();
 			OutStats.SafeBrakePower = v->getSafeBrakePower();
 			OutStats.SafeTimeHeadway = v->getSafeTimeHeadway();
+
+			OutStats.CurrentAcceleration = v->getAcceleration();
+			OutStats.WaitTime = v->getWaitTime();
+			OutStats.Lane = v->getLane();
+			OutStats.Politeness = v->getPoliteness();
+			OutStats.RouteIndex = static_cast<int32>(v->currentRouteIndex);
+			OutStats.RouteLength = static_cast<int32>(v->currentRoute.size());
+			if (const Road* Edge = v->getCurrentEdge())
+			{
+				OutStats.RoadSpeedLimit = static_cast<float>(Edge->getSpeedLimit());
+			}
 			return true;
 		}
 	}

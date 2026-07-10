@@ -4,6 +4,7 @@
 #include "Blueprint/UserWidget.h"
 #include "RoadEditorWidget.h"
 #include "RoadToolbarWidget.h"
+#include "VehicleStatsWidget.h"
 #include "RoadTurnLaneOptions.h"
 #include "SimulationManager.h"
 #include "DrawDebugHelpers.h"
@@ -227,6 +228,23 @@ void AMapPlayerController::OpenRoadEditor(const FRoadEdgeInfo& EdgeInfo)
     }
 }
 
+void AMapPlayerController::OpenVehicleStats(ASimulationManager* SimManager, const FVehicleIDMStats& Stats)
+{
+    // Retarget an already-open panel instead of stacking a second one.
+    if (ActiveVehicleStats && ActiveVehicleStats->IsInViewport())
+    {
+        ActiveVehicleStats->InitWithStats(SimManager, Stats);
+        return;
+    }
+
+    ActiveVehicleStats = CreateWidget<UVehicleStatsWidget>(this);
+    if (ActiveVehicleStats)
+    {
+        ActiveVehicleStats->InitWithStats(SimManager, Stats);
+        ActiveVehicleStats->AddToViewport(10);
+    }
+}
+
 bool AMapPlayerController::ApplyRoadEdit(const FRoadEdgeInfo& EditedInfo, bool bBothDirections)
 {
 	if (!IsRoadEditingAllowed())
@@ -415,6 +433,13 @@ void AMapPlayerController::OnLeftMouseClick()
 
                         // Fire the event to open the Widget in Blueprints!
                         OnVehicleClickedUI(Stats);
+
+                        // Built-in live panel (speed / acceleration / driver
+                        // profile) unless the project uses its own widget.
+                        if (!bUseCustomVehicleStatsUI)
+                        {
+                            OpenVehicleStats(SimManager, Stats);
+                        }
                     }
                 }
                 return; // End execution since we found a vehicle

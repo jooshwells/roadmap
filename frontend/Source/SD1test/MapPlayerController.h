@@ -15,8 +15,16 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Map Editor")
     void SetDrawMode(bool bEnable, int32 InLanes, bool bTwoWay, float InSpeedLimit, FString InTurnLanes, int32 InLayer = 0);
 
+	// Fired when a vehicle is clicked, in case you want a custom Blueprint
+	// widget. The built-in C++ panel (VehicleStatsWidget) opens automatically
+	// either way unless bUseCustomVehicleStatsUI is set.
 	UFUNCTION(BlueprintImplementableEvent, Category = "UI")
 	void OnVehicleClickedUI(FVehicleIDMStats VehicleStats);
+
+	// Set true if you implement OnVehicleClickedUI with your own widget and
+	// don't want the built-in C++ vehicle stats panel to open.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UI")
+	bool bUseCustomVehicleStatsUI = false;
 
 	// Fired when a road is clicked outside draw mode, in case you want a
 	// custom Blueprint widget. The built-in C++ panel (RoadEditorWidget)
@@ -89,9 +97,17 @@ protected:
 	// Opens (or retargets) the built-in C++ road editor panel.
 	void OpenRoadEditor(const FRoadEdgeInfo& EdgeInfo);
 
+	// Opens (or retargets) the built-in C++ vehicle stats panel; it re-polls
+	// SimManager while open so the readouts stay live.
+	void OpenVehicleStats(class ASimulationManager* SimManager, const FVehicleIDMStats& Stats);
+
 	// The built-in road editor panel, when open.
 	UPROPERTY()
 	class URoadEditorWidget* ActiveRoadEditor = nullptr;
+
+	// The built-in vehicle stats panel, when open.
+	UPROPERTY()
+	class UVehicleStatsWidget* ActiveVehicleStats = nullptr;
 
 	// The built-in road-drawing toolbar, when spawned.
 	UPROPERTY()
