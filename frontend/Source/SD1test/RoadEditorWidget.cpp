@@ -19,6 +19,7 @@
 #include "Misc/DefaultValueHelper.h"
 #include "Styling/CoreStyle.h"
 #include "RoadTurnLaneOptions.h"
+#include "RoadLayerOptions.h"
 #include "RoadPanelStyle.h"
 
 void URoadEditorWidget::InitWithEdgeInfo(const FRoadEdgeInfo& Info)
@@ -27,6 +28,7 @@ void URoadEditorWidget::InitWithEdgeInfo(const FRoadEdgeInfo& Info)
     CurrentLanes = FMath::Clamp(EdgeInfo.Lanes, MinLanes, MaxLanes);
     CurrentSpeedMph = FMath::Clamp(FMath::RoundToInt(EdgeInfo.SpeedLimitMps * MpsToMph), MinSpeedMph, MaxSpeedMph);
     CurrentTurnLanes = EdgeInfo.TurnLanes;
+    CurrentLayer = EdgeInfo.Layer;
 
     // While cars are moving the panel is a read-only info card.
     AMapPlayerController* PC = Cast<AMapPlayerController>(GetOwningPlayer());
@@ -88,6 +90,17 @@ TSharedRef<SWidget> URoadEditorWidget::RebuildWidget()
         RoadPanelStyle::StyleNumberField(SpeedBox);
         AddRow(Box, NSLOCTEXT("RoadEditor", "Speed", "Speed limit (mph, max 80)"), SpeedBox);
 
+        // Elevation: applying a non-ground layer turns the road into a
+        // bridge/underpass in place (ramps, deck, and pillars included).
+        LayerCombo = WidgetTree->ConstructWidget<UComboBoxString>(UComboBoxString::StaticClass(), TEXT("LayerCombo"));
+        RoadPanelStyle::StyleTurnLaneCombo(LayerCombo);
+        LayerCombo->OnGenerateWidgetEvent.BindUFunction(this, FName("MakeTurnLaneEntry"));
+        for (const TCHAR* Option : RoadLayerOptions::Options)
+        {
+            LayerCombo->AddOption(Option);
+        }
+        AddRow(Box, NSLOCTEXT("RoadEditor", "Elevation", "Elevation"), LayerCombo);
+
         // Turn lanes: one dropdown per lane.
         UTextBlock* TurnHeader = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("TurnHeader"));
         TurnHeader->SetText(NSLOCTEXT("RoadEditor", "TurnHeader", "Turn lanes (left lane first)"));
@@ -147,6 +160,7 @@ void URoadEditorWidget::NativeConstruct()
     if (DeleteButton) DeleteButton->OnClicked.AddUniqueDynamic(this, &URoadEditorWidget::HandleDeleteClicked);
     if (LanesBox) LanesBox->OnTextCommitted.AddUniqueDynamic(this, &URoadEditorWidget::HandleLanesCommitted);
     if (SpeedBox) SpeedBox->OnTextCommitted.AddUniqueDynamic(this, &URoadEditorWidget::HandleSpeedCommitted);
+    if (LayerCombo) LayerCombo->OnSelectionChanged.AddUniqueDynamic(this, &URoadEditorWidget::HandleLayerComboChanged);
 
     if (TitleBar)
     {
@@ -172,6 +186,17 @@ void URoadEditorWidget::RefreshFields()
     LanesBox->SetText(FText::AsNumber(CurrentLanes));
     SpeedBox->SetText(FText::AsNumber(CurrentSpeedMph));
     BothDirectionsCheck->SetIsChecked(EdgeInfo.bTwoWay);
+    if (LayerCombo)
+    {
+        // A layer outside the dropdown list (e.g. +3 from OSM data) gets a
+        // generic entry so retargeting the panel round-trips it unchanged.
+        const FString Wanted = RoadLayerOptions::LayerToOption(CurrentLayer);
+        if (LayerCombo->FindOptionIndex(Wanted) == INDEX_NONE)
+        {
+            LayerCombo->AddOption(Wanted);
+        }
+        LayerCombo->SetSelectedOption(Wanted);
+    }
     RebuildTurnLaneCombos();
 
     // Read-only while the simulation runs: values stay visible, inputs lock,
@@ -179,6 +204,7 @@ void URoadEditorWidget::RefreshFields()
     LanesBox->SetIsReadOnly(bReadOnly);
     SpeedBox->SetIsReadOnly(bReadOnly);
     BothDirectionsCheck->SetIsEnabled(!bReadOnly);
+    if (LayerCombo) LayerCombo->SetIsEnabled(!bReadOnly);
     if (ApplyButton) ApplyButton->SetVisibility(bReadOnly ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
     if (DeleteButton) DeleteButton->SetVisibility(bReadOnly ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
 
@@ -216,6 +242,13 @@ void URoadEditorWidget::HandleTurnLaneComboChanged(FString /*SelectedItem*/, ESe
     if (SelectionType == ESelectInfo::Direct) return; // programmatic; avoids feedback loops
 
     CurrentTurnLanes = ComposeTurnLanesFromCombos();
+}
+
+void URoadEditorWidget::HandleLayerComboChanged(FString SelectedItem, ESelectInfo::Type SelectionType)
+{
+    if (SelectionType == ESelectInfo::Direct) return; // programmatic; avoids feedback loops
+
+    CurrentLayer = RoadLayerOptions::OptionToLayer(SelectedItem);
 }
 
 UWidget* URoadEditorWidget::MakeTurnLaneEntry(FString Item)
@@ -347,6 +380,7 @@ void URoadEditorWidget::HandleApplyClicked()
     Edited.Lanes = CurrentLanes;
     Edited.SpeedLimitMps = static_cast<float>(CurrentSpeedMph) / MpsToMph;
     Edited.TurnLanes = ComposeTurnLanesFromCombos();
+    Edited.Layer = CurrentLayer;
 
     if (AMapPlayerController* PC = Cast<AMapPlayerController>(GetOwningPlayer()))
     {

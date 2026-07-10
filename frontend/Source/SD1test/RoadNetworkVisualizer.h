@@ -29,6 +29,10 @@ struct FRoadEdgeInfo
     UPROPERTY(BlueprintReadWrite, Category = "Road Edit") int32 Lanes = 1;
     UPROPERTY(BlueprintReadWrite, Category = "Road Edit") float SpeedLimitMps = 20.0f;
     UPROPERTY(BlueprintReadWrite, Category = "Road Edit") FString TurnLanes;
+
+    // OSM vertical layer: 0 ground, +1 overpass, -1 underpass. Editing it
+    // re-runs the elevation pass, so a ground road becomes a bridge in place.
+    UPROPERTY(BlueprintReadWrite, Category = "Road Edit") int32 Layer = 0;
 };
 
 UCLASS()
@@ -128,6 +132,53 @@ public:
     UPROPERTY(EditAnywhere, Category = "Road Visuals|Taper")
     int32 TaperMaxLaneDelta = 2;
 
+    // --- Elevated road dressing ----------------------------------------------
+    // Elevated spans are flat HISM ribbons; without extra geometry they read as
+    // floating paper strips. These add a concrete deck slab under every raised
+    // road piece and support pillars down to the ground at regular intervals,
+    // plus sides and piers for elevated junction pavements.
+
+    // Master switch for deck slabs, pillars, and junction sides.
+    UPROPERTY(EditAnywhere, Category = "Road Visuals|Elevated")
+    bool bElevatedRoadDecor = true;
+
+    // Vertical thickness (cm) of the deck slab under an elevated road piece
+    // (also the depth of an elevated junction's side skirt).
+    UPROPERTY(EditAnywhere, Category = "Road Visuals|Elevated")
+    float DeckThicknessCm = 60.0f;
+
+    // A road piece only gets a deck slab once its surface is at least this
+    // high (cm), so ramp bottoms fade into the ground instead of clipping it.
+    UPROPERTY(EditAnywhere, Category = "Road Visuals|Elevated")
+    float DeckMinHeightCm = 80.0f;
+
+    // Arc-length spacing (cm) between support pillars along an elevated span.
+    UPROPERTY(EditAnywhere, Category = "Road Visuals|Elevated")
+    float PillarSpacingCm = 2500.0f;
+
+    // Minimum clear height (cm) under the deck for a pillar to be placed.
+    UPROPERTY(EditAnywhere, Category = "Road Visuals|Elevated")
+    float PillarMinHeightCm = 300.0f;
+
+    // Minimum horizontal daylight (cm) between a pier and the pavement edge of
+    // any road passing below it. A pier that would land closer than this slides
+    // along its span to a clear spot, or is dropped if none exists nearby.
+    UPROPERTY(EditAnywhere, Category = "Road Visuals|Elevated")
+    float PillarClearanceCm = 150.0f;
+
+    // Material for deck slabs and pillars. Left unset, a concrete-grey tint of
+    // the engine's basic shape material is generated at first build.
+    UPROPERTY(EditAnywhere, Category = "Road Visuals|Elevated")
+    UMaterialInterface* ElevatedConcreteMaterial = nullptr;
+
+    // Deck slabs (engine cube) under elevated road pieces.
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Road Network")
+    UHierarchicalInstancedStaticMeshComponent* DeckHISM;
+
+    // Support pillars (engine cylinder) under elevated spans and junctions.
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Road Network")
+    UHierarchicalInstancedStaticMeshComponent* PillarHISM;
+
     // Builds the visual instances from your simulator's network
     void BuildVisualNetwork(Network* RoadNetwork, FString InNodesPath, FString InEdgesPath);
 
@@ -142,8 +193,10 @@ public:
 
     // Exports the new segment to the JSONL files AND adds it to the cached
     // visual network (so RefreshRoadVisuals shows it). Returns the end node
-    // id, allocating a new node when EndNodeId is -1.
-    int64 ExportNewRoadSegment(int64 StartNodeId, int64 EndNodeId, FVector EndNodeUnrealLoc, int32 Lanes, float SpeedLimit, FString TurnLanes);
+    // id, allocating a new node when EndNodeId is -1. Layer is the OSM
+    // vertical layer (0 ground, +1 overpass, ...); the elevation pass in the
+    // next rebuild turns it into an actual bridge/underpass profile.
+    int64 ExportNewRoadSegment(int64 StartNodeId, int64 EndNodeId, FVector EndNodeUnrealLoc, int32 Lanes, float SpeedLimit, FString TurnLanes, int32 Layer = 0);
 
     // Snaps a clicked location to the nearest point on an edge centerline
     // within the radius. The returned point is pulled away from the edge's
@@ -170,11 +223,12 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Road Network")
     bool GetEdgeInfo(int64 EdgeId, FRoadEdgeInfo& OutInfo);
 
-    // Applies new lane count / speed / turn lanes to edge U->V (and V->U when
-    // bBothDirections) in the visual network and the edges JSONL, then
-    // rebuilds the visuals. Push the same change to the live sim through
-    // SimulationManager::UpdateBackendRoad.
-    bool UpdateRoadProperties(int64 U, int64 V, int32 Lanes, float SpeedMps, const FString& TurnLanes, bool bBothDirections);
+    // Applies new lane count / speed / turn lanes / vertical layer to edge
+    // U->V (and V->U when bBothDirections) in the visual network and the
+    // edges JSONL, then rebuilds the visuals (which re-runs the elevation
+    // pass, so layer changes take effect immediately). Push the same change
+    // to the live sim through SimulationManager::UpdateBackendRoad.
+    bool UpdateRoadProperties(int64 U, int64 V, int32 Lanes, float SpeedMps, const FString& TurnLanes, int32 Layer, bool bBothDirections);
 
     // Deletes edge U->V (and V->U when bBothDirections) from the visual
     // network and the edges JSONL, then rebuilds the visuals. Endpoint nodes
@@ -209,8 +263,10 @@ private:
     // the split point. All other fields (highway, turn:lanes, ...) are kept.
     bool SplitEdgeInFile(int64 U, int64 V, int64 NewNodeId, FVector2D SplitJsonCoords);
 
-    // Rewrites the U->V line's lanes / speed_mps / turn:lanes in place.
-    bool UpdateEdgeInFile(int64 U, int64 V, int32 Lanes, float SpeedMps, const FString& TurnLanes);
+    // Rewrites the U->V line's lanes / speed_mps / turn:lanes / layer in
+    // place. The layer is always written explicitly so it overrides any
+    // legacy bridge/tunnel tag fallback when a road is grounded again.
+    bool UpdateEdgeInFile(int64 U, int64 V, int32 Lanes, float SpeedMps, const FString& TurnLanes, int32 Layer);
 
     // Drops the U->V line from the edges JSONL.
     bool RemoveEdgeInFile(int64 U, int64 V);

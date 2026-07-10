@@ -48,10 +48,17 @@ class Road {
         // Writes the vertical profile onto the stored centerline: z holds zMid
         // (the edge's own layer elevation) over the span and ramps to the
         // endpoint node elevations zStart/zEnd within rampLen meters of each
-        // end (smoothstep). Extra vertices are inserted inside the ramp zones
-        // so the profile survives on long straight segments that only have two
+        // end (smoothstep). flatStart/flatEnd hold the endpoint elevation for
+        // that many meters BEFORE the ramp begins -- the intersection setback
+        // radius -- so the road face the visualizer trims at the junction box
+        // sits exactly at the junction pavement's height instead of partway up
+        // the ramp. Extra vertices are inserted inside the ramp zones so the
+        // profile survives on long straight segments that only have two
         // polyline points. Elevations are meters; arc lengths stay 2D.
-        void applyVerticalProfile(double zStart, double zMid, double zEnd, double rampLen);
+        // Safe to re-run after layer/topology edits: z is recomputed from
+        // scratch and cut vertices landing on existing ones are skipped.
+        void applyVerticalProfile(double zStart, double zMid, double zEnd, double rampLen,
+                                  double flatStart = 0.0, double flatEnd = 0.0);
 
         // Position + unit tangent on the centerline at 'dist' meters along the
         // edge. 'dist' is measured against the simulator's edge length and is

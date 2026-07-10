@@ -20,10 +20,11 @@
 // Note: Ensure this class has NO dependencies on Unreal Engine (#include "Engine.h" etc.)
 // This keeps it completely decoupled and portable.
 
-struct VehicleRenderState 
+struct VehicleRenderState
 {
     float x, y, z;
     float yaw; // Heading direction in radians
+    float pitch; // Road-surface grade under the vehicle in radians (positive = climbing)
     int id; // vhcl id in sim backend
 };
 

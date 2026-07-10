@@ -55,6 +55,9 @@ private:
     void HandleTwoWayChanged(bool bIsChecked);
 
     UFUNCTION()
+    void HandleLayerComboChanged(FString SelectedItem, ESelectInfo::Type SelectionType);
+
+    UFUNCTION()
     void HandleTurnLaneComboChanged(FString SelectedItem, ESelectInfo::Type SelectionType);
 
     // Builds the light-text widget for one turn-lane combo entry, used for both
@@ -98,6 +101,7 @@ private:
     int32 CurrentLanes = 2;
     int32 CurrentSpeedMph = 45;
     FString CurrentTurnLanes;
+    int32 CurrentLayer = 0; // vertical layer for new roads (0 = ground)
 
     // Title-bar drag state (in slate screen space / canvas local space).
     bool bDraggingWindow = false;
@@ -114,6 +118,7 @@ private:
     UPROPERTY() UEditableTextBox* LanesBox = nullptr;
     UPROPERTY() UEditableTextBox* SpeedBox = nullptr; // shown in mph
     UPROPERTY() UCheckBox* TwoWayCheck = nullptr;
+    UPROPERTY() UComboBoxString* LayerCombo = nullptr; // elevation for new roads
     UPROPERTY() UVerticalBox* TurnLaneRows = nullptr;
     UPROPERTY() TArray<UComboBoxString*> TurnLaneCombos;
 

@@ -60,15 +60,29 @@ class Network {
         // after deleting edges.
         bool removeNodeIfIsolated(uint64_t id);
 
-        // Assigns vertical elevations from the OSM layer data, run once after
-        // all edges are loaded. Each non-ground edge's centerline holds
-        // layer * layerHeightM over its span and ramps (smoothstep) to its
-        // endpoint node elevations within rampLengthM of each end. A node's
-        // elevation is the incident-edge layer closest to ground, so a bridge
-        // deck ramps up inside its own span while ground-level roads through
-        // the same endpoint node stay flat; where two elevated edges meet the
-        // node sits at deck height and the spans stay flush.
-        void applyVerticality(double layerHeightM = 7.0, double rampLengthM = 50.0);
+        // Canonical elevation constants, shared by the sim build and the
+        // frontend so both sides always agree on deck heights and ghost
+        // previews. medianGapM must match the visualizer's MedianGapCm.
+        static constexpr double DefaultLayerHeightM = 7.0;
+        static constexpr double DefaultRampLengthM = 50.0;
+        static constexpr double DefaultMedianGapM = 1.0;
+
+        // Assigns vertical elevations from the OSM layer data, run after all
+        // edges are loaded (safe to re-run after runtime road edits). Each
+        // non-ground edge's centerline holds layer * layerHeightM over its
+        // span and ramps (smoothstep) to its endpoint node elevations within
+        // rampLengthM of each end, after holding the node's elevation flat
+        // through the junction setback radius (derived from medianGapM and
+        // the lane counts at the node) so road faces meet the junction
+        // pavement flush. A node's elevation is the layer whose road
+        // continues THROUGH it (edges toward 2+ distinct neighbours; most
+        // neighbours wins, ties go nearest the ground), so a viaduct stays at
+        // deck height where a ramp joins it and the ramp climbs to meet it;
+        // nodes without a through road use the incident layer closest to the
+        // ground, so a bridge that simply ends ramps down inside its own span.
+        void applyVerticality(double layerHeightM = DefaultLayerHeightM,
+                              double rampLengthM = DefaultRampLengthM,
+                              double medianGapM = DefaultMedianGapM);
         void visualizeNetwork();
 
         const std::unordered_map<uint64_t, Node>& getNodes() const { return nodes; }

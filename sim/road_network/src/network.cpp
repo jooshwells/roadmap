@@ -1,4 +1,5 @@
 #include "network.h"
+#include "IntersectionGeometry.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -6,6 +7,8 @@
 #include <iostream>
 #include <fstream>
 #include <limits>
+#include <unordered_map>
+#include <unordered_set>
 
 void Network::addNode(std::uint64_t id, double lat, double lon, double x, double y)
 {
@@ -221,25 +224,24 @@ bool Network::removeNodeIfIsolated(uint64_t id)
     return true;
 }
 
-void Network::applyVerticality(double layerHeightM, double rampLengthM)
+void Network::applyVerticality(double layerHeightM, double rampLengthM, double medianGapM)
 {
-    // Node elevation = layer of the incident edge closest to ground level.
-    // A bridge endpoint shared with ground approaches stays at 0 (the deck
-    // ramps up inside the bridge edge, so ground roads through the node are
-    // untouched); a node where two elevated spans meet sits at deck height.
+    // Node elevation = layer of the road that continues THROUGH the node,
+    // i.e. the layer with edges toward the most distinct neighbours (2+).
+    // That keeps a viaduct at deck height where an on/off-ramp joins it (the
+    // ramp climbs inside its own span) instead of the deck dipping to ground
+    // at every junction. Ties go to the layer nearest the ground. Nodes with
+    // no through layer -- a bridge that simply ends, or a lone dead end --
+    // fall back to the incident layer closest to ground, so ground roads
+    // passing a bridge endpoint stay flat and the deck ramps down in-span.
     for (auto& [id, node] : nodes)
     {
-        bool haveAny = false;
-        int best = 0;
-        auto consider = [&](int layer) {
-            if (!haveAny || std::abs(layer) < std::abs(best))
-            {
-                best = layer;
-                haveAny = true;
-            }
-        };
-
-        for (const Road& e : node.outgoingEdges) consider(e.getLayer());
+        // Distinct neighbours per layer, over both edge directions.
+        std::unordered_map<int, std::unordered_set<uint64_t>> perLayer;
+        for (const Road& e : node.outgoingEdges)
+        {
+            perLayer[e.getLayer()].insert(e.getDest());
+        }
         for (uint64_t inId : node.incomingEdgeNodeIds)
         {
             auto it = nodes.find(inId);
@@ -248,16 +250,50 @@ void Network::applyVerticality(double layerHeightM, double rampLengthM)
             {
                 if (e.getDest() == id)
                 {
-                    consider(e.getLayer());
+                    perLayer[e.getLayer()].insert(inId);
                     break;
                 }
             }
         }
 
-        node.setZ(best * layerHeightM);
+        bool haveAny = false;
+        int closest = 0;
+        bool haveThrough = false;
+        int throughLayer = 0;
+        size_t throughCount = 0;
+        for (const auto& [layer, nbrs] : perLayer)
+        {
+            if (!haveAny || std::abs(layer) < std::abs(closest))
+            {
+                closest = layer;
+                haveAny = true;
+            }
+            if (nbrs.size() >= 2 &&
+                (!haveThrough || nbrs.size() > throughCount ||
+                 (nbrs.size() == throughCount && std::abs(layer) < std::abs(throughLayer))))
+            {
+                throughLayer = layer;
+                throughCount = nbrs.size();
+                haveThrough = true;
+            }
+        }
+
+        node.setZ((haveThrough ? throughLayer : closest) * layerHeightM);
     }
 
-    // Write each edge's vertical profile onto its centerline.
+    // Junction setback radius per node (the same trim the visualizer uses),
+    // computed once and reused as the flat zone of every incident edge.
+    std::unordered_map<uint64_t, double> setbacks;
+    setbacks.reserve(nodes.size());
+    for (auto& [id, node] : nodes)
+    {
+        setbacks[id] = RoadIntersectionUtil::GetNodeSetbackMeters(
+            this, node, static_cast<float>(medianGapM));
+    }
+
+    // Write each edge's vertical profile onto its centerline. Applied even
+    // when start/mid/end are all at ground level: a re-run after a layer edit
+    // must scrub the stale profile off a road that was just grounded.
     for (auto& [id, node] : nodes)
     {
         for (Road& e : node.outgoingEdges)
@@ -268,9 +304,9 @@ void Network::applyVerticality(double layerHeightM, double rampLengthM)
             const double zStart = node.getZ();
             const double zEnd   = it->second.getZ();
             const double zMid   = e.getLayer() * layerHeightM;
-            if (zStart == 0.0 && zEnd == 0.0 && zMid == 0.0) continue;
 
-            e.applyVerticalProfile(zStart, zMid, zEnd, rampLengthM);
+            e.applyVerticalProfile(zStart, zMid, zEnd, rampLengthM,
+                                   setbacks[id], setbacks[e.getDest()]);
         }
     }
 }

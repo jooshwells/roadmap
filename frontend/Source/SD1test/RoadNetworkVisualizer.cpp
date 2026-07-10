@@ -46,6 +46,32 @@ ARoadNetworkVisualizer::ARoadNetworkVisualizer()
     {
         JunctionMaterial = JunctionAsphaltFinder.Get();
     }
+
+    // Bridge dressing: deck slabs (cube) and support pillars (cylinder) from
+    // the engine's basic shapes, so no project asset is required and the
+    // constructor hard references get them cooked.
+    DeckHISM = CreateDefaultSubobject<UHierarchicalInstancedStaticMeshComponent>(TEXT("DeckHISM"));
+    DeckHISM->SetupAttachment(RootComponent);
+    DeckHISM->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    DeckHISM->SetCastShadow(false);
+
+    PillarHISM = CreateDefaultSubobject<UHierarchicalInstancedStaticMeshComponent>(TEXT("PillarHISM"));
+    PillarHISM->SetupAttachment(RootComponent);
+    PillarHISM->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    PillarHISM->SetCastShadow(false);
+
+    static ConstructorHelpers::FObjectFinderOptional<UStaticMesh> CubeFinder(
+        TEXT("/Engine/BasicShapes/Cube.Cube"));
+    if (CubeFinder.Succeeded())
+    {
+        DeckHISM->SetStaticMesh(CubeFinder.Get());
+    }
+    static ConstructorHelpers::FObjectFinderOptional<UStaticMesh> CylinderFinder(
+        TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
+    if (CylinderFinder.Succeeded())
+    {
+        PillarHISM->SetStaticMesh(CylinderFinder.Get());
+    }
 }
 
 void ARoadNetworkVisualizer::BuildVisualNetwork(Network* RoadNetwork, FString InNodesPath, FString InEdgesPath)
@@ -68,6 +94,15 @@ void ARoadNetworkVisualizer::RefreshRoadVisuals()
 {
     Network* RoadNetwork = CachedNetwork;
     if (!RoadNetwork) return;
+
+    // Re-derive elevations before drawing. Runtime edits leave stale z data
+    // behind (splits insert ground-level vertices into elevated centerlines,
+    // new nodes default to z 0, layer edits change profiles entirely); this
+    // pass is idempotent and keeps node heights, ramps, and junction-face
+    // flat zones consistent with the current graph. The median gap must match
+    // the one the setback trimming below uses.
+    RoadNetwork->applyVerticality(Network::DefaultLayerHeightM, Network::DefaultRampLengthM,
+        MedianGapCm / 100.0);
 
     // Reset max IDs
     CurrentMaxNodeId = 0;
@@ -106,6 +141,119 @@ void ARoadNetworkVisualizer::RefreshRoadVisuals()
         bOriginLocked = true;
     }
 
+    // --- Pillar-vs-lower-road occlusion ------------------------------------
+    // Elevated piers drop straight to the ground, so one landing on a road
+    // passing underneath punches through its pavement. Index every edge's
+    // centerline (with surface height and pavement half-width) in a coarse
+    // 2D grid first; pier placement below queries it and shifts or drops
+    // piers that would clip a lower road.
+    struct FBlockerSeg
+    {
+        FVector2D A, B;      // centerline segment endpoints (Unreal cm)
+        float ZA, ZB;        // road surface height at each endpoint (cm)
+        float HalfWidthCm;   // centerline to outer pavement edge
+        uint64_t KeyU, KeyV; // canonical node pair, to skip a pier's own edge
+    };
+    TArray<FBlockerSeg> BlockerSegs;
+    TMap<FIntPoint, TArray<int32>> BlockerGrid;
+    const float BlockerCellCm = 3000.0f;
+
+    if (bElevatedRoadDecor)
+    {
+        for (const auto& NodePair : AllNodes)
+        {
+            const Node& FromNode = NodePair.second;
+            for (const Road& Edge : FromNode.outgoingEdges)
+            {
+                Node* ToNode = RoadNetwork->getNode(Edge.getDest());
+                if (!ToNode) continue;
+
+                const float HalfWidthCm =
+                    MedianGapCm + FMath::Max(1, Edge.getLanes()) * 350.0f;
+                const uint64_t KeyU = FMath::Min(FromNode.getId(), Edge.getDest());
+                const uint64_t KeyV = FMath::Max(FromNode.getId(), Edge.getDest());
+
+                auto AddBlockerSeg = [&](double X0, double Y0, double Z0,
+                                         double X1, double Y1, double Z1)
+                {
+                    FBlockerSeg S;
+                    S.A = FVector2D((X0 - OriginOffsetX) * 100.0, (Y0 - OriginOffsetY) * 100.0);
+                    S.B = FVector2D((X1 - OriginOffsetX) * 100.0, (Y1 - OriginOffsetY) * 100.0);
+                    if (S.A.Equals(S.B, 1.0f)) return;
+                    S.ZA = static_cast<float>(Z0 * 100.0);
+                    S.ZB = static_cast<float>(Z1 * 100.0);
+                    S.HalfWidthCm = HalfWidthCm;
+                    S.KeyU = KeyU;
+                    S.KeyV = KeyV;
+                    const int32 Idx = BlockerSegs.Add(S);
+
+                    // Register in every cell the segment's inflated bounds touch.
+                    const int32 CX0 = FMath::FloorToInt((FMath::Min(S.A.X, S.B.X) - HalfWidthCm) / BlockerCellCm);
+                    const int32 CX1 = FMath::FloorToInt((FMath::Max(S.A.X, S.B.X) + HalfWidthCm) / BlockerCellCm);
+                    const int32 CY0 = FMath::FloorToInt((FMath::Min(S.A.Y, S.B.Y) - HalfWidthCm) / BlockerCellCm);
+                    const int32 CY1 = FMath::FloorToInt((FMath::Max(S.A.Y, S.B.Y) + HalfWidthCm) / BlockerCellCm);
+                    for (int32 CX = CX0; CX <= CX1; CX++)
+                        for (int32 CY = CY0; CY <= CY1; CY++)
+                            BlockerGrid.FindOrAdd(FIntPoint(CX, CY)).Add(Idx);
+                };
+
+                if (Edge.hasCurveGeometry())
+                {
+                    const std::vector<RoadGeomPoint>& Geom = Edge.getGeometry();
+                    for (size_t i = 0; i + 1 < Geom.size(); i++)
+                    {
+                        AddBlockerSeg(Geom[i].x, Geom[i].y, Geom[i].z,
+                                      Geom[i + 1].x, Geom[i + 1].y, Geom[i + 1].z);
+                    }
+                }
+                else
+                {
+                    AddBlockerSeg(FromNode.getX(), FromNode.getY(), FromNode.getZ(),
+                                  ToNode->getX(), ToNode->getY(), ToNode->getZ());
+                }
+            }
+        }
+    }
+
+    // True when a pier shaft at C (radius RadiusCm, spanning ground..TopZ)
+    // would land within PillarClearanceCm of a road lower than the deck it
+    // supports. The pier's own edge is excluded so a ramp can't block its
+    // own piers; higher decks and below-ground underpasses never block.
+    auto PillarBlocked = [&](const FVector2D& C, float RadiusCm, float TopZ,
+                             uint64_t OwnU, uint64_t OwnV) -> bool
+    {
+        if (BlockerSegs.Num() == 0) return false;
+        const float Reach = RadiusCm + PillarClearanceCm;
+        const int32 CX0 = FMath::FloorToInt((C.X - Reach) / BlockerCellCm);
+        const int32 CX1 = FMath::FloorToInt((C.X + Reach) / BlockerCellCm);
+        const int32 CY0 = FMath::FloorToInt((C.Y - Reach) / BlockerCellCm);
+        const int32 CY1 = FMath::FloorToInt((C.Y + Reach) / BlockerCellCm);
+        for (int32 CX = CX0; CX <= CX1; CX++)
+        {
+            for (int32 CY = CY0; CY <= CY1; CY++)
+            {
+                const TArray<int32>* Cell = BlockerGrid.Find(FIntPoint(CX, CY));
+                if (!Cell) continue;
+                for (int32 Idx : *Cell)
+                {
+                    const FBlockerSeg& S = BlockerSegs[Idx];
+                    if (S.KeyU == OwnU && S.KeyV == OwnV) continue;
+
+                    const FVector2D AB = S.B - S.A;
+                    const float LenSq = AB.SizeSquared();
+                    const float T = (LenSq > 1.0f)
+                        ? FMath::Clamp(FVector2D::DotProduct(C - S.A, AB) / LenSq, 0.0f, 1.0f)
+                        : 0.0f;
+                    if (FVector2D::Distance(C, S.A + AB * T) >= S.HalfWidthCm + Reach) continue;
+
+                    const float SurfZ = FMath::Lerp(S.ZA, S.ZB, T);
+                    if (SurfZ < TopZ - 1.0f && SurfZ > -DeckThicknessCm) return true;
+                }
+            }
+        }
+        return false;
+    };
+
     TArray<FTransform> NodeTransforms;
     NodeTransforms.Reserve(AllNodes.size());
 
@@ -124,6 +272,10 @@ void ARoadNetworkVisualizer::RefreshRoadVisuals()
     TempEdgeIds.Reserve(120000);
     TempScaleX.Reserve(120000);
     TempLanes.Reserve(120000);
+
+    // Bridge dressing gathered alongside the road pieces.
+    TArray<FTransform> DeckTransforms;
+    TArray<FTransform> PillarTransforms;
 
     for (const auto& NodePair : AllNodes)
     {
@@ -148,6 +300,23 @@ void ARoadNetworkVisualizer::RefreshRoadVisuals()
                 const FVector JunctionCenter(NodeLoc.X, NodeLoc.Y, NodeZCm - 0.2);
                 AppendJunctionPolygon(RoadNetwork, OriginNode, JunctionCenter,
                     JunctionVerts, JunctionTris, JunctionNormals, JunctionUVs);
+
+                // An elevated junction gets one central pier down to the
+                // ground -- unless a lower road runs beneath the junction, in
+                // which case the deck has to span it unsupported.
+                const float PierTopZ = NodeZCm - DeckThicknessCm;
+                if (bElevatedRoadDecor && PierTopZ > PillarMinHeightCm)
+                {
+                    const float SetbackCm = RoadIntersectionUtil::GetNodeSetbackMeters(
+                        RoadNetwork, OriginNode, MedianGapCm / 100.0f) * 100.0f;
+                    const float Dia = FMath::Clamp(SetbackCm * 0.8f, 300.0f, 600.0f);
+                    if (!PillarBlocked(FVector2D(NodeLoc.X, NodeLoc.Y), Dia * 0.5f, PierTopZ, 0, 0))
+                    {
+                        PillarTransforms.Add(FTransform(FQuat::Identity,
+                            FVector(NodeLoc.X, NodeLoc.Y, PierTopZ * 0.5f),
+                            FVector(Dia / 100.0f, Dia / 100.0f, PierTopZ / 100.0f)));
+                    }
+                }
             }
         }
         else
@@ -478,6 +647,26 @@ void ARoadNetworkVisualizer::RefreshRoadVisuals()
                     TempEdgeIds.Add(Edge.getEdgeId());
                     TempScaleX.Add(SX);
                     TempLanes.Add(LaneData);
+
+                    // Concrete deck slab under a raised piece so the span has
+                    // thickness instead of floating as a paper strip. The cube
+                    // pivot is always centered, so recompute the piece-center
+                    // position even when the road mesh pivots at its edge.
+                    if (bElevatedRoadDecor && Loc.Z > DeckMinHeightCm)
+                    {
+                        const float MidAlong = Local0 + PieceLen * 0.5f;
+                        FVector DeckLoc = TPts[i] + SegDir[i] * MidAlong
+                                        + SegRight[i] * ((WidthCm * 0.5f) + MedianGapCm);
+                        if (SegLen2D > KINDA_SMALL_NUMBER)
+                        {
+                            DeckLoc.Z = FMath::Lerp(TPts[i].Z, TPts[i + 1].Z, MidAlong / SegLen2D);
+                        }
+                        DeckLoc.Z -= DeckThicknessCm * 0.5f + 1.0f; // top just under the surface
+                        DeckTransforms.Add(FTransform(SegRot[i], DeckLoc, FVector(
+                            PieceLen * SegSlopeScale[i] / 100.0f,
+                            WidthCm / 100.0f,
+                            DeckThicknessCm / 100.0f)));
+                    }
                 }
             };
 
@@ -536,6 +725,66 @@ void ARoadNetworkVisualizer::RefreshRoadVisuals()
                 // Narrowing taper at the end (a lane drops).
                 AddTaperZone(DrawLenCm - EndTaper, EndTaper, FullWidthCm, DownWidthCm);
             }
+
+            // --- Support pillars under elevated spans ----------------------
+            // Two-way streets are two directed edges over one centerline, so
+            // only the canonical direction emits piers, centred under the
+            // median where one row carries both decks. One-way spans get the
+            // row under their own deck centre instead.
+            if (bElevatedRoadDecor)
+            {
+                bool bHasReverse = false;
+                for (const Road& Rev : DestNode->outgoingEdges)
+                {
+                    if (Rev.getDest() == OriginNode.getId()) { bHasReverse = true; break; }
+                }
+                if (!bHasReverse || OriginNode.getId() < Edge.getDest())
+                {
+                    const float LateralCm = bHasReverse ? 0.0f : (MedianGapCm + FullWidthCm * 0.5f);
+                    const float DiaCm = bHasReverse
+                        ? FMath::Clamp(2.0f * MedianGapCm + FullWidthCm * 0.5f, 200.0f, 500.0f)
+                        : FMath::Clamp(FullWidthCm * 0.5f, 150.0f, 400.0f);
+
+                    // Deck point + pier top height at arc distance SArc.
+                    auto PierAt = [&](float SArc, FVector& OutP, float& OutTopZ) -> bool
+                    {
+                        int32 I = 0;
+                        while (I + 1 < NumSegs && TCum[I + 1] < SArc) I++;
+                        const float PSegLen = TCum[I + 1] - TCum[I];
+                        if (PSegLen <= KINDA_SMALL_NUMBER) return false;
+                        OutP = FMath::Lerp(TPts[I], TPts[I + 1],
+                            (SArc - TCum[I]) / PSegLen) + SegRight[I] * LateralCm;
+                        OutTopZ = OutP.Z - DeckThicknessCm;
+                        return OutTopZ >= PillarMinHeightCm;
+                    };
+
+                    const uint64_t OwnU = FMath::Min(OriginNode.getId(), Edge.getDest());
+                    const uint64_t OwnV = FMath::Max(OriginNode.getId(), Edge.getDest());
+
+                    // A pier that would clip a road below slides along the
+                    // span to the nearest clear spot; if nothing near the
+                    // ideal position is clear, the deck spans the gap alone.
+                    const float NudgeCm[] = { 0.0f,
+                         0.2f * PillarSpacingCm, -0.2f * PillarSpacingCm,
+                         0.4f * PillarSpacingCm, -0.4f * PillarSpacingCm };
+                    for (float S = PillarSpacingCm * 0.5f; S < DrawLenCm; S += PillarSpacingCm)
+                    {
+                        for (float Nudge : NudgeCm)
+                        {
+                            const float STry = FMath::Clamp(S + Nudge, 0.0f, DrawLenCm);
+                            FVector P;
+                            float TopZ;
+                            if (!PierAt(STry, P, TopZ)) continue;
+                            if (PillarBlocked(FVector2D(P.X, P.Y), DiaCm * 0.5f, TopZ, OwnU, OwnV)) continue;
+
+                            PillarTransforms.Add(FTransform(FQuat::Identity,
+                                FVector(P.X, P.Y, TopZ * 0.5f),
+                                FVector(DiaCm / 100.0f, DiaCm / 100.0f, TopZ / 100.0f)));
+                            break;
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -575,6 +824,32 @@ void ARoadNetworkVisualizer::RefreshRoadVisuals()
                 JunctionMesh->SetMaterial(0, Asphalt);
             }
         }
+    }
+
+    // Bridge dressing: deck slabs + pillars. Concrete-grey fallback material
+    // so the engine shapes don't render bright white against the asphalt.
+    DeckHISM->ClearInstances();
+    PillarHISM->ClearInstances();
+    if (DeckTransforms.Num() > 0 || PillarTransforms.Num() > 0)
+    {
+        if (!ElevatedConcreteMaterial)
+        {
+            if (UMaterialInterface* Base = LoadObject<UMaterialInterface>(nullptr,
+                TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial")))
+            {
+                UMaterialInstanceDynamic* Concrete = UMaterialInstanceDynamic::Create(Base, this);
+                Concrete->SetVectorParameterValue(TEXT("Color"), FLinearColor(0.085f, 0.085f, 0.08f));
+                ElevatedConcreteMaterial = Concrete;
+            }
+        }
+        if (ElevatedConcreteMaterial)
+        {
+            DeckHISM->SetMaterial(0, ElevatedConcreteMaterial);
+            PillarHISM->SetMaterial(0, ElevatedConcreteMaterial);
+        }
+
+        DeckHISM->AddInstances(DeckTransforms, false);
+        PillarHISM->AddInstances(PillarTransforms, false);
     }
 
     TArray<int32> AddedIndices = RoadHISM->AddInstances(Transforms, true);
@@ -759,6 +1034,64 @@ void ARoadNetworkVisualizer::AppendJunctionPolygon(Network* RoadNetwork, const N
         Tris.Add(Ring[(i + 1) % N]);
         Tris.Add(Ring[i]);
     }
+
+    // A raised junction pavement gets side walls and an underside so the slab
+    // matches the thickness of the road decks meeting it, instead of reading
+    // as a floating sheet between them.
+    if (bElevatedRoadDecor && CenterLoc.Z > DeckMinHeightCm)
+    {
+        const float BottomZ = CenterLoc.Z - DeckThicknessCm;
+
+        auto AddSideVert = [&](const FVector& P, const FVector& OutNormal) -> int32
+        {
+            Normals.Add(OutNormal);
+            UVs.Add(FVector2D(P.X + P.Y, P.Z) * UVScale);
+            return Verts.Add(P);
+        };
+
+        for (int32 i = 0; i < N; i++)
+        {
+            const FVector& A = RingPts[i].Pos;
+            const FVector& B = RingPts[(i + 1) % N].Pos;
+            const FVector A2(A.X, A.Y, BottomZ);
+            const FVector B2(B.X, B.Y, BottomZ);
+            const FVector Out = FVector(
+                (A.X + B.X) * 0.5f - CenterLoc.X,
+                (A.Y + B.Y) * 0.5f - CenterLoc.Y, 0.0f).GetSafeNormal();
+
+            const int32 IA = AddSideVert(A, Out);
+            const int32 IB = AddSideVert(B, Out);
+            const int32 IA2 = AddSideVert(A2, Out);
+            const int32 IB2 = AddSideVert(B2, Out);
+
+            // Both triangles face outward (front face = clockwise seen from
+            // outside, same convention the top fan above establishes).
+            Tris.Add(IA); Tris.Add(IB); Tris.Add(IA2);
+            Tris.Add(IB); Tris.Add(IB2); Tris.Add(IA2);
+        }
+
+        auto AddBottomVert = [&](const FVector& P) -> int32
+        {
+            Normals.Add(-FVector::UpVector);
+            UVs.Add(FVector2D(P.X, P.Y) * UVScale);
+            return Verts.Add(P);
+        };
+
+        const int32 CB = AddBottomVert(FVector(CenterLoc.X, CenterLoc.Y, BottomZ));
+        TArray<int32> RingB;
+        RingB.Reserve(N);
+        for (const FRingPoint& R : RingPts)
+        {
+            RingB.Add(AddBottomVert(FVector(R.Pos.X, R.Pos.Y, BottomZ)));
+        }
+        for (int32 i = 0; i < N; i++)
+        {
+            // Same fan as the top but not reversed: front face points down.
+            Tris.Add(CB);
+            Tris.Add(RingB[i]);
+            Tris.Add(RingB[(i + 1) % N]);
+        }
+    }
 }
 
 int64 ARoadNetworkVisualizer::GetEdgeIdFromHitItem(int32 HitItemIndex)
@@ -808,7 +1141,7 @@ bool ARoadNetworkVisualizer::FindClosestNode(FVector SearchLocation, float SnapR
     return bFound;
 }
 
-int64 ARoadNetworkVisualizer::ExportNewRoadSegment(int64 StartNodeId, int64 EndNodeId, FVector EndNodeUnrealLoc, int32 Lanes, float SpeedLimit, FString TurnLanes)
+int64 ARoadNetworkVisualizer::ExportNewRoadSegment(int64 StartNodeId, int64 EndNodeId, FVector EndNodeUnrealLoc, int32 Lanes, float SpeedLimit, FString TurnLanes, int32 Layer)
 {
     // 1. Handle Node Generation (If the user clicked in empty space)
     int64 FinalEndNodeId = EndNodeId;
@@ -822,21 +1155,32 @@ int64 ARoadNetworkVisualizer::ExportNewRoadSegment(int64 StartNodeId, int64 EndN
 
     // 2. Handle Edge Generation
     CurrentMaxEdgeId++;
-    FVector StartNodeUnrealLoc = CachedNodeLocations[StartNodeId]; 
+    FVector StartNodeUnrealLoc = CachedNodeLocations[StartNodeId];
     FVector2D StartJsonCoords = ConvertUnrealToJSONCoords(StartNodeUnrealLoc);
 
-    // Calculate length in meters
-    double LengthMeters = FVector::Distance(StartNodeUnrealLoc, EndNodeUnrealLoc) / 100.0;
+    // Length in meters. 2D on purpose: arc lengths are horizontal everywhere
+    // in the sim, and cached node locations of elevated nodes carry a z that
+    // must not inflate the edge length.
+    double LengthMeters = FVector::Dist2D(StartNodeUnrealLoc, EndNodeUnrealLoc) / 100.0;
 
     TSharedPtr<FJsonObject> EdgeObj = MakeShareable(new FJsonObject);
     EdgeObj->SetNumberField(TEXT("u"), StartNodeId);
     EdgeObj->SetNumberField(TEXT("v"), FinalEndNodeId);
     EdgeObj->SetNumberField(TEXT("length_m"), LengthMeters);
     EdgeObj->SetNumberField(TEXT("speed_mps"), SpeedLimit); // use custom speedlimit field
-    
+
     EdgeObj->SetNumberField(TEXT("lanes"), Lanes);
     EdgeObj->SetBoolField(TEXT("oneway"), true);
-    EdgeObj->SetStringField(TEXT("highway"), TEXT("residential")); 
+    EdgeObj->SetStringField(TEXT("highway"), TEXT("residential"));
+
+    // Vertical layer, in the same OSM-style tagging the map exports use so
+    // NetworkBuilder::parseEdgeLayer picks it up when the sim reloads the
+    // files. Ground roads stay untagged, matching hand-exported data.
+    if (Layer != 0)
+    {
+        EdgeObj->SetNumberField(TEXT("layer"), Layer);
+        EdgeObj->SetStringField(Layer > 0 ? TEXT("bridge") : TEXT("tunnel"), TEXT("yes"));
+    }
 
     // turn lanes if needed
     if (!TurnLanes.IsEmpty())
@@ -871,11 +1215,19 @@ int64 ARoadNetworkVisualizer::ExportNewRoadSegment(int64 StartNodeId, int64 EndN
     FFileHelper::SaveStringToFile(EdgeString, *EdgesFilePath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM, &IFileManager::Get(), EFileWrite::FILEWRITE_Append);
 
     // Mirror the new edge into the visual network so RefreshRoadVisuals draws
-    // it with the full geometry pipeline. (The live sim gets its copy through
-    // SimulationManager::NotifyBackendOfNewRoad.)
+    // it with the full geometry pipeline. The two-point centerline matters:
+    // applyVerticalProfile only writes ramps onto stored geometry, so without
+    // it an elevated segment would lerp node-to-node with no ramps or
+    // junction flat zones. (The live sim gets its copy through
+    // SimulationManager::NotifyBackendOfNewRoad and the JSONL reload.)
     if (CachedNetwork)
     {
-        CachedNetwork->addDirectedEdge(StartNodeId, FinalEndNodeId, LengthMeters, SpeedLimit, Lanes);
+        std::vector<RoadGeomPoint> Centerline = {
+            { StartJsonCoords.X, -StartJsonCoords.Y, 0.0 },
+            { EndJsonCoords.X,   -EndJsonCoords.Y,   0.0 }
+        };
+        CachedNetwork->addDirectedEdge(StartNodeId, FinalEndNodeId, LengthMeters, SpeedLimit, Lanes,
+            std::move(Centerline), Layer);
     }
 
     return FinalEndNodeId;
@@ -1319,6 +1671,7 @@ bool ARoadNetworkVisualizer::GetEdgeInfo(int64 EdgeId, FRoadEdgeInfo& OutInfo)
     OutInfo.Lanes = Edge->getLanes();
     OutInfo.SpeedLimitMps = static_cast<float>(Edge->getSpeedLimit());
     OutInfo.LengthMeters = static_cast<float>(Edge->getLength());
+    OutInfo.Layer = Edge->getLayer();
 
     // Two-way = an opposite directed edge exists between the same nodes.
     OutInfo.bTwoWay = false;
@@ -1340,7 +1693,7 @@ bool ARoadNetworkVisualizer::GetEdgeInfo(int64 EdgeId, FRoadEdgeInfo& OutInfo)
     return true;
 }
 
-bool ARoadNetworkVisualizer::UpdateEdgeInFile(int64 U, int64 V, int32 Lanes, float SpeedMps, const FString& TurnLanes)
+bool ARoadNetworkVisualizer::UpdateEdgeInFile(int64 U, int64 V, int32 Lanes, float SpeedMps, const FString& TurnLanes, int32 Layer)
 {
     TArray<FString> Lines;
     if (!FFileHelper::LoadFileToStringArray(Lines, *EdgesFilePath))
@@ -1375,6 +1728,11 @@ bool ARoadNetworkVisualizer::UpdateEdgeInFile(int64 U, int64 V, int32 Lanes, flo
         {
             Obj->SetStringField(TEXT("turn:lanes"), TurnLanes);
         }
+
+        // Always written explicitly: parseEdgeLayer prefers "layer" over the
+        // bridge/tunnel tag fallback, so grounding an OSM bridge (layer 0)
+        // sticks even when the line keeps its original bridge tag.
+        Obj->SetNumberField(TEXT("layer"), Layer);
 
         FString Out;
         TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Out, 0);
@@ -1482,12 +1840,13 @@ bool ARoadNetworkVisualizer::DeleteRoad(int64 U, int64 V, bool bBothDirections)
     return true;
 }
 
-bool ARoadNetworkVisualizer::UpdateRoadProperties(int64 U, int64 V, int32 Lanes, float SpeedMps, const FString& TurnLanes, bool bBothDirections)
+bool ARoadNetworkVisualizer::UpdateRoadProperties(int64 U, int64 V, int32 Lanes, float SpeedMps, const FString& TurnLanes, int32 Layer, bool bBothDirections)
 {
     if (!CachedNetwork) return false;
 
     const int32 SafeLanes = FMath::Max(1, Lanes);
     const float SafeSpeed = FMath::Max(0.5f, SpeedMps);
+    const int32 SafeLayer = FMath::Clamp(Layer, -5, 5); // same range parseEdgeLayer accepts
 
     auto ApplyToNetwork = [&](int64 A, int64 B) -> bool
     {
@@ -1499,6 +1858,7 @@ bool ARoadNetworkVisualizer::UpdateRoadProperties(int64 U, int64 V, int32 Lanes,
             {
                 E.setLanes(SafeLanes);
                 E.setSpeedLimit(SafeSpeed);
+                E.setLayer(SafeLayer);
                 return true;
             }
         }
@@ -1509,20 +1869,21 @@ bool ARoadNetworkVisualizer::UpdateRoadProperties(int64 U, int64 V, int32 Lanes,
     if (ApplyToNetwork(U, V))
     {
         bAny = true;
-        UpdateEdgeInFile(U, V, SafeLanes, SafeSpeed, TurnLanes);
+        UpdateEdgeInFile(U, V, SafeLanes, SafeSpeed, TurnLanes, SafeLayer);
     }
     if (bBothDirections && ApplyToNetwork(V, U))
     {
         bAny = true;
         // turn:lanes is ordered in the direction of travel, so the opposite
         // edge gets the mirrored string, not a verbatim copy.
-        UpdateEdgeInFile(V, U, SafeLanes, SafeSpeed, RoadTurnLaneOptions::MirrorTurnLanes(TurnLanes));
+        UpdateEdgeInFile(V, U, SafeLanes, SafeSpeed, RoadTurnLaneOptions::MirrorTurnLanes(TurnLanes), SafeLayer);
     }
 
     if (bAny)
     {
-        // Lane count changes road width, so rebuild (also refreshes tapers
-        // and junction pavement at both ends).
+        // Lane count changes road width and the layer changes elevation, so
+        // rebuild (re-runs the elevation pass and refreshes tapers and
+        // junction pavement at both ends).
         RefreshRoadVisuals();
     }
     return bAny;

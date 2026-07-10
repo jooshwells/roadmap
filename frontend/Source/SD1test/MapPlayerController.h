@@ -10,9 +10,10 @@ class SD1TEST_API AMapPlayerController : public APlayerController
 	GENERATED_BODY()
 
 public:
-	// updated for turn lanes and speed limit
+	// updated for turn lanes, speed limit, and vertical layer (0 ground,
+	// +1 overpass, -1 underpass -- newly drawn roads become bridges/tunnels)
 	UFUNCTION(BlueprintCallable, Category = "Map Editor")
-    void SetDrawMode(bool bEnable, int32 InLanes, bool bTwoWay, float InSpeedLimit, FString InTurnLanes);
+    void SetDrawMode(bool bEnable, int32 InLanes, bool bTwoWay, float InSpeedLimit, FString InTurnLanes, int32 InLayer = 0);
 
 	UFUNCTION(BlueprintImplementableEvent, Category = "UI")
 	void OnVehicleClickedUI(FVehicleIDMStats VehicleStats);
@@ -136,4 +137,5 @@ private:
 
 	float CurrentDrawSpeedLimit = 20.0f; // default around 45 mph
     FString CurrentDrawTurnLanes;   // string for turn lanes
+    int32 CurrentDrawLayer = 0;     // vertical layer for new roads (0 = ground)
 };

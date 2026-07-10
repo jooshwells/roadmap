@@ -397,7 +397,10 @@ void ASimulationManager::UpdateVehicleVisuals(float Alpha, bool bDidPhysicsStep)
 		{
 			ActiveVehicleIDs.Add(State.id);
 			FVector UnrealPosition(State.x * 100.0f, State.y * 100.0f, State.z * 100.0f);
-			FRotator UnrealRotation(0.0f, FMath::RadiansToDegrees(State.yaw), 0.0f);
+			// Pitch follows the road grade so cars sit flush on bridge ramps
+			// instead of staying horizontal; positive pitch is nose-up, same
+			// convention as the sim's climbing-positive grade.
+			FRotator UnrealRotation(FMath::RadiansToDegrees(State.pitch), FMath::RadiansToDegrees(State.yaw), 0.0f);
 			FTransform NewTransform(UnrealRotation, UnrealPosition);
 
 			if (InterpolationData.Contains(State.id))

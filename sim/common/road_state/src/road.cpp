@@ -35,7 +35,8 @@ void Road::setGeometry(std::vector<RoadGeomPoint> pts)
     }
 }
 
-void Road::applyVerticalProfile(double zStart, double zMid, double zEnd, double rampLen)
+void Road::applyVerticalProfile(double zStart, double zMid, double zEnd, double rampLen,
+                                double flatStart, double flatEnd)
 {
     if (geometry.size() < 2 || geometryLength <= 0.0) return;
 
@@ -46,16 +47,39 @@ void Road::applyVerticalProfile(double zStart, double zMid, double zEnd, double 
     }
 
     const double L = geometryLength;
-    const double rampA = (zStart != zMid) ? std::min(rampLen, L * 0.5) : 0.0;
-    const double rampB = (zEnd   != zMid) ? std::min(rampLen, L * 0.5) : 0.0;
+
+    // Each end zone = flat run at the node's elevation (the junction setback)
+    // followed by the smoothstep ramp. Zones are capped at half the edge; on
+    // short edges the flat run yields to the ramp so the profile never jumps.
+    double fA = 0.0, rA = 0.0, fB = 0.0, rB = 0.0;
+    if (zStart != zMid)
+    {
+        const double zone = std::min(flatStart + rampLen, L * 0.5);
+        fA = std::min(std::max(flatStart, 0.0), zone * 0.5);
+        rA = zone - fA;
+    }
+    if (zEnd != zMid)
+    {
+        const double zone = std::min(flatEnd + rampLen, L * 0.5);
+        fB = std::min(std::max(flatEnd, 0.0), zone * 0.5);
+        rB = zone - fB;
+    }
 
     auto smooth = [](double t) {
         t = std::clamp(t, 0.0, 1.0);
         return t * t * (3.0 - 2.0 * t);
     };
     auto zAt = [&](double s) -> double {
-        if (rampA > 0.0 && s < rampA)     return zStart + (zMid - zStart) * smooth(s / rampA);
-        if (rampB > 0.0 && s > L - rampB) return zEnd   + (zMid - zEnd)   * smooth((L - s) / rampB);
+        if (rA > 0.0)
+        {
+            if (s <= fA)      return zStart;
+            if (s < fA + rA)  return zStart + (zMid - zStart) * smooth((s - fA) / rA);
+        }
+        if (rB > 0.0)
+        {
+            if (s >= L - fB)     return zEnd;
+            if (s > L - fB - rB) return zEnd + (zMid - zEnd) * smooth((L - fB - s) / rB);
+        }
         return zMid;
     };
 
@@ -67,8 +91,8 @@ void Road::applyVerticalProfile(double zStart, double zMid, double zEnd, double 
         for (int k = 0; k <= STEPS; k++)
             cuts.push_back(s0 + (s1 - s0) * k / STEPS);
     };
-    if (rampA > 0.0) addRampCuts(0.0, rampA);
-    if (rampB > 0.0) addRampCuts(L - rampB, L);
+    if (rA > 0.0) addRampCuts(fA, fA + rA);
+    if (rB > 0.0) addRampCuts(L - fB - rB, L - fB);
     std::sort(cuts.begin(), cuts.end());
     cuts.erase(std::unique(cuts.begin(), cuts.end(),
         [](double a, double b) { return std::abs(a - b) < 1e-6; }), cuts.end());

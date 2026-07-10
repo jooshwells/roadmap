@@ -56,6 +56,9 @@ private:
     void HandleSpeedCommitted(const FText& Text, ETextCommit::Type CommitMethod);
 
     UFUNCTION()
+    void HandleLayerComboChanged(FString SelectedItem, ESelectInfo::Type SelectionType);
+
+    UFUNCTION()
     void HandleTurnLaneComboChanged(FString SelectedItem, ESelectInfo::Type SelectionType);
 
     // Builds the light-text widget for one turn-lane combo entry, used for both
@@ -99,6 +102,7 @@ private:
     int32 CurrentLanes = 2;
     int32 CurrentSpeedMph = 45;
     FString CurrentTurnLanes;
+    int32 CurrentLayer = 0; // vertical layer (0 = ground)
 
     // Title-bar drag state (in slate screen space / canvas local space).
     bool bDraggingWindow = false;
@@ -110,6 +114,7 @@ private:
     UPROPERTY() UTextBlock* HeaderText = nullptr;
     UPROPERTY() UEditableTextBox* LanesBox = nullptr;
     UPROPERTY() UEditableTextBox* SpeedBox = nullptr; // shown in mph
+    UPROPERTY() UComboBoxString* LayerCombo = nullptr; // elevation
     UPROPERTY() UVerticalBox* TurnLaneRows = nullptr;
     UPROPERTY() TArray<UComboBoxString*> TurnLaneCombos;
     UPROPERTY() UCheckBox* BothDirectionsCheck = nullptr;
