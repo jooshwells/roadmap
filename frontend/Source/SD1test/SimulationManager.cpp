@@ -199,13 +199,9 @@ void ASimulationManager::Tick(float DeltaTime)
 	{
 		bWaitingForTelemetry = false;
 
-		if (TelemetryStatusWidget)
-		{
-			TelemetryStatusWidget->RemoveFromParent();
-			TelemetryStatusWidget = nullptr;
-		}
-
-		ShowHeatmapOverlay();
+		// Telemetry data is now saved into a run folder.
+		// Heatmaps are generated later from the telemetry panel only when the user asks for one.
+		UE_LOG(LogTemp, Log, TEXT("Telemetry run saved. Open the telemetry panel to view summaries or generate heatmaps."));
 	}
 
 	if (!TrafficSimEngine || !bSimulationRunning) return;
@@ -328,33 +324,16 @@ void ASimulationManager::StopSimulation()
 		IFileManager::Get().Delete(*TelemetryDonePath);
 	}
 
-	// Show a small status widget while Python generates the telemetry outputs.
-	if (TelemetryStatusClass)
-	{
-		TelemetryStatusWidget = CreateWidget<UUserWidget>(GetWorld(), TelemetryStatusClass);
-
-		if (TelemetryStatusWidget)
-		{
-			TelemetryStatusWidget->AddToViewport(100);
-		}
-	}
-	else
-	{
-		UE_LOG(LogTemp, Warning, TEXT("TelemetryStatusClass is not assigned."));
-	}
-
 	// Run the Python telemetry pipeline after the simulation has finished.
-	// Hand it the sim-generated graph CSV and the active roadmap's edge JSONL so
-	// its heatmaps and road labels match the map that was actually simulated.
+	// Send Python the active roadmap files so it can build a complete
+	// network graph containing coordinates, labels, and curved geometry.
 	PythonBridge::RunTelemetryAnalysis(
-		PipelineExePath,
-		SimulationCsvPath,
-		NetworkGraphCsvPath,
-		EdgesPath
+			PipelineExePath,
+			SimulationCsvPath,
+			NodesPath,
+			EdgesPath
 	);
 
-	//ShowHeatmapOverlay();
-	
 	//TrafficSimEngine = new TrafficSimulation();
 	//TrafficSimEngine->Initialize();
 	InterpolationData.Empty();
@@ -459,22 +438,6 @@ void ASimulationManager::UpdateVehicleVisuals(float Alpha, bool bDidPhysicsStep)
 		{
 			VehicleISM->UpdateInstanceTransform(i, FTransform(FRotator::ZeroRotator, FVector::ZeroVector, FVector::ZeroVector), false, true, false);
 		}
-	}
-}
-
-void ASimulationManager::ShowHeatmapOverlay()
-{
-	if (!HeatmapOverlayClass)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("HeatmapOverlayClass is not assigned."));
-		return;
-	}
-
-	UUserWidget* HeatmapWidget = CreateWidget<UUserWidget>(GetWorld(), HeatmapOverlayClass);
-
-	if (HeatmapWidget)
-	{
-		HeatmapWidget->AddToViewport(100);
 	}
 }
 

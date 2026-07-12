@@ -47,12 +47,16 @@ def update_available_heatmaps(run_folder: Path, metric: str, output_path: Path) 
 
     heatmap_entry = {
         "metric": metric,
-        "path": str(output_path.relative_to(run_folder)),
+        "path": output_path.relative_to(run_folder).as_posix(),
     }
 
+    # Replace older string entries and previous entries for this metric.
     available_heatmaps = [
         item for item in available_heatmaps
-        if item.get("metric") != metric
+        if not (
+            item == metric
+            or (isinstance(item, dict) and item.get("metric") == metric)
+        )
     ]
 
     available_heatmaps.append(heatmap_entry)
@@ -81,7 +85,7 @@ def generate_selected_heatmap(run_id: str, metric: str, network_path: Path | Non
         raise FileNotFoundError(f"edge_metrics.csv not found for run: {run_folder}")
 
     if network_path is None:
-        network_path = telemetry_dir / "data" / "network" / "network_graph_waterford.csv"
+        network_path = run_folder / "network_graph.csv"
 
     if not network_path.exists():
         raise FileNotFoundError(f"Network graph not found: {network_path}")

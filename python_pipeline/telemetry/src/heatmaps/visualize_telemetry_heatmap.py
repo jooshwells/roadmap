@@ -24,7 +24,13 @@ import json
 import math
 
 import pandas as pd
+import matplotlib
+
+# Use a non-GUI backend because packaged telemetry only saves image files.
+matplotlib.use("Agg")
+
 import matplotlib.pyplot as plt
+import matplotlib.backends.backend_svg
 import matplotlib.colors as colors
 import matplotlib.patheffects as path_effects
 from matplotlib.collections import LineCollection
@@ -40,28 +46,28 @@ LABELED_HIGHWAY_TYPES = {"motorway", "trunk", "primary", "secondary", "tertiary"
 MAX_ROAD_LABELS = 45
 
 BACKGROUND_WIDTHS = {
-    "motorway": 1.30,
-    "trunk": 1.15,
-    "primary": 1.00,
-    "secondary": 0.85,
-    "tertiary": 0.65,
-    "residential": 0.35,
-    "service": 0.25,
+    "motorway": 1.70,
+    "trunk": 1.50,
+    "primary": 1.30,
+    "secondary": 1.10,
+    "tertiary": 0.85,
+    "residential": 0.50,
+    "service": 0.38,
 }
 
 HEAT_WIDTHS = {
-    "motorway": 3.20,
-    "trunk": 2.90,
-    "primary": 2.60,
-    "secondary": 2.30,
-    "tertiary": 1.85,
-    "residential": 1.35,
-    "service": 1.05,
+    "motorway": 3.85,
+    "trunk": 3.50,
+    "primary": 3.15,
+    "secondary": 2.75,
+    "tertiary": 2.25,
+    "residential": 1.65,
+    "service": 1.30,
 }
 
 
-BASE_BACKGROUND_WIDTH = 0.35
-BASE_HEAT_WIDTH = 1.35
+BASE_BACKGROUND_WIDTH = 0.50
+BASE_HEAT_WIDTH = 1.65
 
 
 # Load the road network and telemetry metrics CSV files.
@@ -332,8 +338,16 @@ def draw_road_labels(ax, network_df: pd.DataFrame):
     best_labels = sorted(best_by_label.values(), key=lambda item: item[1], reverse=True)
     best_labels = best_labels[:MAX_ROAD_LABELS]
 
+    vertical_labels_drawn = 0
+    labels_drawn = 0
     for label, _, segment, highway in best_labels:
         mid_x, mid_y, angle = point_and_angle_at_fraction(segment, 0.50)
+
+        # Keep only a few near-vertical names so they do not dominate the map.
+        if abs(angle) >= 65:
+            if vertical_labels_drawn >= 4:
+                continue
+            vertical_labels_drawn += 1
 
         if highway in {"motorway", "trunk"}:
             font_size = 10
@@ -360,11 +374,12 @@ def draw_road_labels(ax, network_df: pd.DataFrame):
         )
 
         text.set_path_effects([
-            path_effects.Stroke(linewidth=4.0, foreground="#000000"),
+            path_effects.Stroke(linewidth=3.0, foreground="#000000"),
             path_effects.Normal(),
         ])
+        labels_drawn += 1
 
-    print(f"Road labels drawn: {len(best_labels)}")
+    print(f"Road labels drawn: {labels_drawn}")
 
 
 
@@ -694,7 +709,7 @@ def add_stats_card(ax, metric, heat_values, background_count, heat_count, merged
         transform=ax.transAxes,
         ha="left",
         va="top",
-        fontsize=10.5,
+        fontsize=14,
         fontweight="bold",
         color="#F9FAFB",
         zorder=60,
@@ -707,7 +722,7 @@ def add_stats_card(ax, metric, heat_values, background_count, heat_count, merged
         transform=ax.transAxes,
         ha="left",
         va="top",
-        fontsize=8.2,
+        fontsize=11,
         color="#94A3B8",
         zorder=60,
     )
@@ -721,7 +736,7 @@ def add_stats_card(ax, metric, heat_values, background_count, heat_count, merged
             transform=ax.transAxes,
             ha="left",
             va="top",
-            fontsize=8.3,
+            fontsize=11,
             color="#CBD5E1",
             zorder=60,
         )
@@ -732,7 +747,7 @@ def add_stats_card(ax, metric, heat_values, background_count, heat_count, merged
             transform=ax.transAxes,
             ha="right",
             va="top",
-            fontsize=8.7,
+            fontsize=11.5,
             fontweight="bold",
             color="#FFFFFF",
             zorder=60,
@@ -952,7 +967,28 @@ def draw_geojson_polygons(ax, geojson_path, facecolor, edgecolor, alpha, zorder)
 
     print(f"Optional layer drawn: {geojson_path.name} polygons={drawn}")
 
-# Build the full heatmap figure and save both normal and transparent PNGs.
+# Save the text and legend values that Unreal draws around the vector map.
+def save_heatmap_display_info(output_path, metric, title, colorbar_label, vmin, vmax, rows):
+    ticks = [vmin + (vmax - vmin) * i / 4 for i in range(5)]
+    if metric == "avg_speed_mph":
+        colors_top_to_bottom = ["#1A9850", "#91CF60", "#FFFFBF", "#FC8D59", "#D73027"]
+    else:
+        colors_top_to_bottom = ["#D73027", "#FC8D59", "#FFFFBF", "#91CF60", "#1A9850"]
+
+    display_info = {
+        "metric": metric,
+        "title": title,
+        "legend_label": colorbar_label,
+        "legend_ticks_top_to_bottom": [compact_axis_number(tick) for tick in reversed(ticks)],
+        "legend_colors_top_to_bottom": colors_top_to_bottom,
+        "summary_rows": [{"label": label, "value": value} for label, value in rows],
+    }
+
+    with output_path.with_suffix(".json").open("w", encoding="utf-8") as file:
+        json.dump(display_info, file, indent=2)
+
+
+# Build the full PNG plus a map-only SVG for Unreal's hybrid viewer.
 def plot_heatmap(
     network_df: pd.DataFrame,
     metrics_df: pd.DataFrame,
@@ -980,8 +1016,9 @@ def plot_heatmap(
         labeled_network_df,
     ) = build_line_segments(network_df, metrics_df, metric)
 
-    fig, ax = plt.subplots(figsize=(20, 12), facecolor="#070B10")
-    ax.set_facecolor("#070B10")
+    fig, ax = plt.subplots(figsize=(20, 10.5), facecolor="none")
+    fig.patch.set_alpha(0.0)
+    ax.set_facecolor("none")
 
     # Optional context layers. These only draw if the file paths are passed in.
     draw_geojson_polygons(
@@ -1026,15 +1063,17 @@ def plot_heatmap(
 
         background = LineCollection(
             background_segments,
-            colors="#1C2228",
+            colors="#8290A3",
             linewidths=background_widths,
-            alpha=0.34,
+            alpha=0.66,
             capstyle="round",
             joinstyle="round",
             zorder=2,
         )
         ax.add_collection(background)
 
+    vmin, vmax = 0.0, 1.0
+    colorbar = None
     if heat_segments:
         values = pd.Series(heat_values)
         vmin, vmax = choose_visual_range(values, metric)
@@ -1048,7 +1087,7 @@ def plot_heatmap(
         heat_casing = LineCollection(
             heat_segments,
             colors="#080808",
-            linewidths=[width + 0.85 for width in heat_widths],
+            linewidths=[(width * 1.18) + 0.85 for width in heat_widths],
             alpha=0.90,
             capstyle="round",
             joinstyle="round",
@@ -1061,7 +1100,7 @@ def plot_heatmap(
             heat_segments,
             cmap=cmap_name,
             norm=norm,
-            linewidths=[width + 3.6 for width in heat_widths],
+            linewidths=[(width * 1.18) + 3.6 for width in heat_widths],
             alpha=0.15,
             capstyle="round",
             joinstyle="round",
@@ -1076,7 +1115,7 @@ def plot_heatmap(
             heat_segments,
             cmap=cmap_name,
             norm=norm,
-            linewidths=heat_widths,
+            linewidths=[width * 1.18 for width in heat_widths],
             capstyle="round",
             joinstyle="round",
             zorder=5,
@@ -1086,9 +1125,9 @@ def plot_heatmap(
         ax.add_collection(heat_lines)
 
         colorbar = fig.colorbar(heat_lines, ax=ax, fraction=0.035, pad=0.015)
-        colorbar.set_label(colorbar_label, color="white", fontsize=11)
+        colorbar.set_label(colorbar_label, color="white", fontsize=14)
         set_clean_colorbar_ticks(colorbar, vmin, vmax, tick_count=5)
-        colorbar.ax.tick_params(colors="white", labelsize=10)
+        colorbar.ax.tick_params(colors="white", labelsize=12)
         colorbar.outline.set_edgecolor("white")
         colorbar.outline.set_linewidth(1.2)
         plt.setp(colorbar.ax.get_yticklabels(), color="white")
@@ -1101,16 +1140,8 @@ def plot_heatmap(
     add_route_shields(ax, labeled_network_df)
     if show_markers:
         add_top_bottleneck_markers(ax, heat_segments, heat_values, metric)
-    add_stats_card(
-        ax,
-        metric,
-        heat_values,
-        background_count=len(background_segments),
-        heat_count=len(heat_segments),
-        merged_df=labeled_network_df,
-    )
 
-    set_tight_map_bounds(ax, background_segments, pad_ratio=0.025)
+    set_tight_map_bounds(ax, background_segments, pad_ratio=0.015)
     ax.set_aspect("equal", adjustable="box")
     ax.axis("off")
 
@@ -1122,6 +1153,35 @@ def plot_heatmap(
     }
 
     title = friendly_titles.get(metric, metric)
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # The SVG contains only supported vector map features. Unreal draws its text panels natively.
+    svg_output_path = output_path.with_suffix(".svg")
+    if colorbar is not None:
+        colorbar.ax.set_visible(False)
+    plt.savefig(svg_output_path, format="svg", transparent=True, bbox_inches="tight", pad_inches=0.02)
+    if colorbar is not None:
+        colorbar.ax.set_visible(True)
+
+    rows = summary_rows_for_metric(
+        metric,
+        heat_values,
+        background_count=len(background_segments),
+        heat_count=len(heat_segments),
+        merged_df=labeled_network_df,
+    )
+    save_heatmap_display_info(output_path, metric, title, colorbar_label, vmin, vmax, rows)
+
+    # Add the full title, summary, and colorbar to the PNG fallback/export image.
+    add_stats_card(
+        ax,
+        metric,
+        heat_values,
+        background_count=len(background_segments),
+        heat_count=len(heat_segments),
+        merged_df=labeled_network_df,
+    )
     ax.set_title(
         f"RoadMap\n{title}",
         fontsize=24,
@@ -1137,21 +1197,24 @@ def plot_heatmap(
         transform=ax.transAxes,
         ha="right",
         va="bottom",
-        fontsize=9,
+        fontsize=11,
         color="#888888",
         zorder=40,
     )
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    plt.tight_layout(pad=0.35)
-    plt.savefig(output_path, dpi=300, facecolor=fig.get_facecolor(), bbox_inches="tight", pad_inches=0.06)
+    # Remove the old duplicate filename when this metric is regenerated.
+    legacy_transparent_path = output_path.with_name(
+        output_path.stem + "_transparent" + output_path.suffix
+    )
+    legacy_transparent_path.unlink(missing_ok=True)
 
-    transparent_output_path = output_path.with_name(output_path.stem + "_transparent" + output_path.suffix)
-    plt.savefig(transparent_output_path, dpi=300, transparent=True, bbox_inches="tight", pad_inches=0.06)
+    plt.tight_layout(pad=0.35)
+    plt.savefig(output_path, dpi=180, transparent=True, bbox_inches="tight", pad_inches=0.06)
+
     plt.close()
 
     print(f"Saved heatmap to: {output_path}")
-    print(f"Saved transparent heatmap to: {transparent_output_path}")
+    print(f"Saved vector heatmap to: {svg_output_path}")
 
 # Old speed legend helper kept in case we want it later.
 def add_speed_legend(ax):
@@ -1221,25 +1284,29 @@ def add_route_shields(ax, network_df: pd.DataFrame):
             refs_to_draw[matched] = (x, y)
 
     for ref, (x, y) in refs_to_draw.items():
-        label = ref.replace("I ", "").replace("I-", "").replace("US ", "").replace("FL ", "").replace("SR ", "")
+        number = ref.replace("I ", "").replace("I-", "").replace("US ", "").replace("FL ", "").replace("SR ", "")
+        if ref.startswith("I"):
+            label = f"I-{number}"
+        elif ref.startswith("US"):
+            label = f"US {number}"
+        else:
+            label = f"SR {number}"
 
-        ax.text(
+        text = ax.text(
             x,
             y,
             label,
-            fontsize=8,
-            color="#111111",
+            fontsize=7.5,
+            color="#F5F5F5",
             ha="center",
             va="center",
-            fontweight="bold",
-            bbox=dict(
-                boxstyle="round,pad=0.22",
-                facecolor="white",
-                edgecolor="#333333",
-                linewidth=0.8,
-            ),
+            fontweight="normal",
             zorder=30,
         )
+        text.set_path_effects([
+            path_effects.Stroke(linewidth=2.5, foreground="#000000"),
+            path_effects.Normal(),
+        ])
         
 
 # Set up command-line options and run the heatmap generator.
