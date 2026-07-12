@@ -210,14 +210,18 @@ void ASimulationManager::Tick(float DeltaTime)
 		ShowHeatmapOverlay();
 	}
 
-	if (!TrafficSimEngine || !bSimulationRunning) return;
+	if (!TrafficSimEngine || !bSimulationRunning || bSimulationPaused) return;
 
 	DeltaTime = FMath::Min(DeltaTime, 0.25f);
 
-	Accumulator += DeltaTime;
+	Accumulator += DeltaTime * SimSpeedMultiplier;
 	int StepsThisFrame = 0;
 
-	while (Accumulator >= FixedDelta && StepsThisFrame < MaxStepsPerFrame)
+	// Fast-forward needs proportionally more steps per frame or the backlog
+	// drop below would cancel the speed-up; keep the plain cap at 1x and below.
+	const int32 StepCap = FMath::CeilToInt(MaxStepsPerFrame * FMath::Max(1.0f, SimSpeedMultiplier));
+
+	while (Accumulator >= FixedDelta && StepsThisFrame < StepCap)
 	{
 		TrafficSimEngine->Step(FixedDelta);
 		Accumulator -= FixedDelta;
@@ -253,6 +257,7 @@ void ASimulationManager::StartSimulation()
     }
 
     bSimulationRunning = true;
+    bSimulationPaused = false;
 
     // Road editing is pre-run only: kick the controller out of draw mode and
     // close the edit panel so the map turns view-only while cars are moving.
@@ -263,9 +268,20 @@ void ASimulationManager::StartSimulation()
 
     if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Green, TEXT("Simulation Started!"));
 }
+void ASimulationManager::SetSimulationPaused(bool bPaused)
+{
+	bSimulationPaused = bPaused;
+}
+
+void ASimulationManager::SetSimulationSpeed(float Multiplier)
+{
+	SimSpeedMultiplier = FMath::Clamp(Multiplier, 0.25f, 8.0f);
+}
+
 void ASimulationManager::StopSimulation()
 {
 	bSimulationRunning = false;
+	bSimulationPaused = false;
 	// Clear all vehicle visuals
 	if (VehicleISM)
 	{

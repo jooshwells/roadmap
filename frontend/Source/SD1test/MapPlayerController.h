@@ -52,6 +52,12 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UI")
 	bool bUseBuiltInRoadToolbar = true;
 
+	// Spawns the built-in C++ sim control bar (play / pause / stop + playback
+	// speed) top-center at BeginPlay. Turn off if your own UI drives
+	// ASimulationManager instead.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UI")
+	bool bUseBuiltInSimControlBar = true;
+
 	// Applies edited lanes / speed limit / turn lanes to the road everywhere:
 	// visual network, JSONL files, and the live simulation.
 	UFUNCTION(BlueprintCallable, Category = "Map Editor")
@@ -121,6 +127,10 @@ protected:
 	// The built-in road-drawing toolbar, when spawned.
 	UPROPERTY()
 	class URoadToolbarWidget* ActiveRoadToolbar = nullptr;
+
+	// The built-in sim control bar, when spawned.
+	UPROPERTY()
+	class USimControlBarWidget* ActiveSimControlBar = nullptr;
 
 	// Right-click while placing a road: abandon the armed start node.
 	void CancelRoadDrawing();

@@ -4,6 +4,7 @@
 #include "Blueprint/UserWidget.h"
 #include "RoadEditorWidget.h"
 #include "RoadToolbarWidget.h"
+#include "SimControlBarWidget.h"
 #include "VehicleStatsWidget.h"
 #include "RoadTurnLaneOptions.h"
 #include "SimulationManager.h"
@@ -27,6 +28,17 @@ void AMapPlayerController::BeginPlay()
 		if (ActiveRoadToolbar)
 		{
 			ActiveRoadToolbar->AddToViewport();
+		}
+	}
+
+	// Built-in C++ sim control bar: play / pause / stop and playback speed,
+	// anchored top-center like a video player. Needs no UMG asset.
+	if (bUseBuiltInSimControlBar)
+	{
+		ActiveSimControlBar = CreateWidget<USimControlBarWidget>(this);
+		if (ActiveSimControlBar)
+		{
+			ActiveSimControlBar->AddToViewport();
 		}
 	}
 }

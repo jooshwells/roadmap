@@ -18,111 +18,15 @@
 #include "Components/WidgetSwitcherSlot.h"
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "MenuPalette.h"
 #include "Styling/CoreStyle.h"
 #include "Styling/SlateTypes.h"
 
-// ---------------------------------------------------------------------------
-// Palette + style helpers. Dark asphalt UI with a road-marking amber accent.
-// ---------------------------------------------------------------------------
+// Palette + shared button styles live in MenuPalette.h so in-game HUD widgets
+// (e.g. the sim control bar) can match the menu; only the menu-specific
+// formatting helpers stay here.
 namespace MenuPalette
 {
-	FLinearColor Hex(const TCHAR* Code, float Alpha = 1.0f)
-	{
-		FLinearColor Color = FLinearColor::FromSRGBColor(FColor::FromHex(Code));
-		Color.A = Alpha;
-		return Color;
-	}
-
-	const FLinearColor Background     = Hex(TEXT("0B0F16"));
-	const FLinearColor GlowWarm       = Hex(TEXT("F5B93E"), 0.028f);
-	const FLinearColor GlowCool       = Hex(TEXT("3E7BF5"), 0.04f);
-	const FLinearColor CardFill       = Hex(TEXT("FFFFFF"), 0.03f);
-	const FLinearColor CardFillHover  = Hex(TEXT("FFFFFF"), 0.06f);
-	const FLinearColor Outline        = Hex(TEXT("273140"));
-	const FLinearColor OutlineHover   = Hex(TEXT("3A4658"));
-	const FLinearColor Accent         = Hex(TEXT("F5B93E"));
-	const FLinearColor AccentHover    = Hex(TEXT("FFCE5C"));
-	const FLinearColor AccentPressed  = Hex(TEXT("D99F27"));
-	const FLinearColor AccentFillSoft = Hex(TEXT("F5B93E"), 0.10f);
-	const FLinearColor InputFill      = Hex(TEXT("0D1219"));
-	const FLinearColor TextPrimary    = Hex(TEXT("EEF2F7"));
-	const FLinearColor TextSecondary  = Hex(TEXT("8A94A6"));
-	const FLinearColor TextFaint      = Hex(TEXT("4A5364"));
-	const FLinearColor TextOnAccent   = Hex(TEXT("17130A"));
-	const FLinearColor TextDisabled   = Hex(TEXT("566072"));
-	const FLinearColor ErrorColor     = Hex(TEXT("FF7A66"));
-
-	FSlateBrush RoundedBrush(const FLinearColor& Fill, float Radius,
-		const FLinearColor& OutlineColor = FLinearColor::Transparent, float OutlineWidth = 0.0f)
-	{
-		FSlateBrush Brush;
-		Brush.DrawAs = ESlateBrushDrawType::RoundedBox;
-		Brush.TintColor = Fill;
-		Brush.OutlineSettings = FSlateBrushOutlineSettings(FVector4(Radius, Radius, Radius, Radius), OutlineColor, OutlineWidth);
-		Brush.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
-		return Brush;
-	}
-
-	// Big menu buttons + footer action buttons. Primary = amber fill with dark
-	// text; secondary = translucent card that lights up amber on hover.
-	FButtonStyle ActionButtonStyle(bool bPrimary)
-	{
-		FButtonStyle Style;
-		if (bPrimary)
-		{
-			Style.SetNormal(RoundedBrush(Accent, 10.0f))
-				.SetHovered(RoundedBrush(AccentHover, 10.0f))
-				.SetPressed(RoundedBrush(AccentPressed, 10.0f))
-				.SetDisabled(RoundedBrush(CardFill, 10.0f, Outline, 1.0f))
-				.SetNormalForeground(TextOnAccent)
-				.SetHoveredForeground(TextOnAccent)
-				.SetPressedForeground(TextOnAccent)
-				.SetDisabledForeground(TextDisabled);
-		}
-		else
-		{
-			Style.SetNormal(RoundedBrush(CardFill, 10.0f, Outline, 1.0f))
-				.SetHovered(RoundedBrush(AccentFillSoft, 10.0f, Accent, 1.0f))
-				.SetPressed(RoundedBrush(AccentFillSoft, 10.0f, AccentPressed, 1.0f))
-				.SetDisabled(RoundedBrush(CardFill, 10.0f, Outline, 1.0f))
-				.SetNormalForeground(TextPrimary)
-				.SetHoveredForeground(AccentHover)
-				.SetPressedForeground(AccentPressed)
-				.SetDisabledForeground(TextDisabled);
-		}
-		Style.SetNormalPadding(FMargin(24.0f, 14.0f))
-			.SetPressedPadding(FMargin(24.0f, 15.0f, 24.0f, 13.0f));
-		return Style;
-	}
-
-	// Template / save list rows.
-	FButtonStyle ListRowStyle(bool bSelected)
-	{
-		FButtonStyle Style;
-		if (bSelected)
-		{
-			Style.SetNormal(RoundedBrush(AccentFillSoft, 8.0f, Accent, 1.5f))
-				.SetHovered(RoundedBrush(AccentFillSoft, 8.0f, AccentHover, 1.5f))
-				.SetPressed(RoundedBrush(AccentFillSoft, 8.0f, AccentPressed, 1.5f))
-				.SetNormalForeground(AccentHover)
-				.SetHoveredForeground(AccentHover)
-				.SetPressedForeground(AccentPressed);
-		}
-		else
-		{
-			Style.SetNormal(RoundedBrush(CardFill, 8.0f, Outline, 1.0f))
-				.SetHovered(RoundedBrush(CardFillHover, 8.0f, OutlineHover, 1.0f))
-				.SetPressed(RoundedBrush(CardFillHover, 8.0f, Accent, 1.0f))
-				.SetNormalForeground(TextPrimary)
-				.SetHoveredForeground(TextPrimary)
-				.SetPressedForeground(AccentHover);
-		}
-		Style.SetDisabled(Style.Normal);
-		Style.SetDisabledForeground(TextDisabled);
-		Style.SetNormalPadding(FMargin(16.0f, 12.0f)).SetPressedPadding(FMargin(16.0f, 12.0f));
-		return Style;
-	}
-
 	FString FormatSize(int64 Bytes)
 	{
 		if (Bytes >= 1024 * 1024)

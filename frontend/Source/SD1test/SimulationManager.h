@@ -77,11 +77,28 @@ public:
 	UPROPERTY(BlueprintReadWrite, Category = "Simulation")
 	bool bSimulationRunning = false;
 	//for the stop sim button
-	
+
 	UFUNCTION(BlueprintCallable, Category = "Simulation")
 		void StartSimulation();
 	UFUNCTION(BlueprintCallable, Category = "Simulation")
 		void StopSimulation();
+
+	// Transport state for the HUD sim control bar. Pause freezes stepping in
+	// place but keeps the engine and vehicles alive (unlike StopSimulation,
+	// which resets everything and kicks off the telemetry pipeline).
+	UPROPERTY(BlueprintReadOnly, Category = "Simulation")
+	bool bSimulationPaused = false;
+
+	// Playback rate: scales how much sim time accumulates per real second. The
+	// fixed step is unchanged, so physics behave identically at every speed.
+	UPROPERTY(BlueprintReadOnly, Category = "Simulation")
+	float SimSpeedMultiplier = 1.0f;
+
+	UFUNCTION(BlueprintCallable, Category = "Simulation")
+	void SetSimulationPaused(bool bPaused);
+
+	UFUNCTION(BlueprintCallable, Category = "Simulation")
+	void SetSimulationSpeed(float Multiplier);
 
 	UFUNCTION(BlueprintCallable, Category = "Heatmaps")
 	void ShowHeatmapOverlay();
