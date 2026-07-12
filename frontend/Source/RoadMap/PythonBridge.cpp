@@ -9,15 +9,15 @@
 bool PythonBridge::RunTelemetryAnalysis(
     const FString& PipelineExePath,
     const FString& SimulationCsvPath,
-    const FString& NetworkGraphCsvPath,
+    const FString& NodesJsonlPath,
     const FString& EdgesJsonlPath
 )
 {
-    // Positional args: simulation CSV, network-graph CSV, active edges JSONL.
+    // Positional args: simulation CSV, active nodes JSONL, active edges JSONL.
     FString Args = FString::Printf(
         TEXT("\"%s\" \"%s\" \"%s\""),
         *SimulationCsvPath,
-        *NetworkGraphCsvPath,
+        *NodesJsonlPath,
         *EdgesJsonlPath
     );
 

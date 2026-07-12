@@ -369,13 +369,12 @@ void ASimulationManager::StopSimulation()
 		UE_LOG(LogTemp, Warning, TEXT("TelemetryStatusClass is not assigned."));
 	}
 
-	// Run the Python telemetry pipeline after the simulation has finished.
-	// Hand it the sim-generated graph CSV and the active roadmap's edge JSONL so
-	// its heatmaps and road labels match the map that was actually simulated.
+	// Run telemetry from the active roadmap JSONL files. The shared active graph
+	// above remains available, while Python stores its own graph with this run.
 	PythonBridge::RunTelemetryAnalysis(
 		PipelineExePath,
 		SimulationCsvPath,
-		NetworkGraphCsvPath,
+		NodesPath,
 		EdgesPath
 	);
 
