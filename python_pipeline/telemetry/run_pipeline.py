@@ -2,9 +2,13 @@ from pathlib import Path
 import sys
 import json
 import pandas as pd
+import shutil
 
 from src.telemetry.telemetry_analysis import run_analysis
+from src.telemetry.run_manager import create_run_folder
 from src.heatmaps.visualize_telemetry_heatmap import load_files, plot_heatmap
+# Builds the heatmap-ready network graph from active roadmap JSONL files.
+from src.heatmaps.build_network_graph_with_geometry import build_network_graph
 
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
@@ -258,13 +262,21 @@ def write_pdf_report() -> None:
 
     print(f"PDF report written to: {pdf_path}")
 
-def generate_heatmaps(network_path: Path = DEFAULT_NETWORK_GRAPH_PATH) -> None:
+# Generates all heatmap PNGs for one specific saved run.
+# This is kept as a helper, but normal runs do not call it automatically anymore.
+def generate_heatmaps(run_folder: Path, network_path: Path) -> None:
+    # If the requested network graph is missing, fall back to the bundled default graph.
+    # This keeps development testing safe while the active-roadmap graph work is still being integrated.
     if not network_path.exists():
         print(f"Network graph not found ({network_path}); falling back to bundled default.")
         network_path = DEFAULT_NETWORK_GRAPH_PATH
 
-    edge_metrics_path = OUTPUT_DIR / "telemetry" / "edge_metrics.csv"
-    heatmap_dir = OUTPUT_DIR / "heatmaps"
+    # This run's edge metrics are saved inside the run folder.
+    edge_metrics_path = run_folder / "edge_metrics.csv"
+
+    # Save heatmaps inside this run so old runs keep their own images.
+    heatmap_dir = run_folder / "heatmaps"
+
     heatmap_dir.mkdir(parents=True, exist_ok=True)
 
     metrics = [
@@ -290,7 +302,465 @@ def generate_heatmaps(network_path: Path = DEFAULT_NETWORK_GRAPH_PATH) -> None:
 
     print("Finished generating all heatmaps.")
 
+# Creates a small JSON summary that Unreal can read for the dashboard.
+# This uses the real run summary from telemetry_analysis.py so totals are accurate.
+def write_dashboard_summary(run_folder: Path, run_summary: dict) -> None:
+    edge_metrics_path = run_folder / "edge_metrics.csv"
+    bottlenecks_path = run_folder / "bottleneck_edges.csv"
+    summary_path = run_folder / "telemetry_summary.json"
+
+    edge_metrics = pd.read_csv(edge_metrics_path)
+    bottlenecks = pd.read_csv(bottlenecks_path)
+
+    # Load road names and road types from the original edge JSONL when available.
+    # This gives the dashboard better labels than only showing EdgeID numbers.
+    metadata = load_edge_metadata()
+
+    if not metadata.empty:
+        bottlenecks = bottlenecks.merge(
+            metadata[["EdgeID", "road_label"]],
+            on="EdgeID",
+            how="left",
+        )
+    else:
+        bottlenecks["road_label"] = None
+
+    # Gives every bottleneck a readable label.
+    # If we do not have a real road name, we fall back to Road Segment <edge_id>.
+    def get_dashboard_road_label(row) -> str:
+        edge_id = int(row["EdgeID"])
+        road_label = row.get("road_label")
+
+        if pd.notna(road_label) and str(road_label).strip():
+            return str(road_label).strip()
+
+        return f"Road Segment {edge_id}"
+
+    worst_bottleneck = None
+    top_5_bottlenecks = []
+
+    if not bottlenecks.empty:
+        worst_row = bottlenecks.iloc[0]
+
+        worst_bottleneck = {
+            "edge_id": int(worst_row["EdgeID"]),
+            "road_label": get_dashboard_road_label(worst_row),
+            "bottleneck_score": float(worst_row["bottleneck_score"]),
+            "avg_speed_mph": float(worst_row["avg_speed_mph"]),
+            "total_wait_added_s": float(worst_row["total_wait_added_s"]),
+        }
+
+        for _, row in bottlenecks.head(5).iterrows():
+            edge_id = int(row["EdgeID"])
+
+            top_5_bottlenecks.append({
+                "edge_id": edge_id,
+                "road_label": get_dashboard_road_label(row),
+                "bottleneck_score": float(row["bottleneck_score"]),
+                "avg_speed_mph": float(row["avg_speed_mph"]),
+                "total_wait_added_s": float(row["total_wait_added_s"]),
+            })
+
+    summary = {
+        "total_vehicles": int(run_summary["vehicles"]),
+        "simulation_duration_s": float(run_summary["simulation_duration_s"]),
+        "edges_used": int(run_summary["edges_used"]),
+        "average_speed_mph": float(run_summary["average_speed_mph"]),
+        "total_wait_added_s": float(run_summary["total_wait_added_s"]),
+        "max_wait_time_s": float(run_summary["max_wait_time_s"]),
+        "worst_bottleneck": worst_bottleneck,
+        "top_5_bottleneck_roads": top_5_bottlenecks,
+    }
+
+    with open(summary_path, "w", encoding="utf-8") as file:
+        json.dump(summary, file, indent=4)
+
+    print(f"Wrote dashboard summary: {summary_path}")
+
+# Updates the run metadata after the analysis finishes.
+# This helps Unreal know that the run is ready and which files belong to it.
+def update_run_metadata(run_folder: Path, run_id: str) -> None:
+    metadata_path = run_folder / "run_metadata.json"
+
+    if metadata_path.exists():
+        with open(metadata_path, "r", encoding="utf-8") as file:
+            metadata = json.load(file)
+    else:
+        metadata = {
+            "run_id": run_id,
+        }
+
+    metadata["status"] = "analysis_complete"
+    metadata["summary_path"] = "telemetry_summary.json"
+    metadata["csv_path"] = "simulation_output.csv"
+    metadata["edge_metrics_path"] = "edge_metrics.csv"
+    metadata["bottleneck_edges_path"] = "bottleneck_edges.csv"
+    metadata["vehicle_metrics_path"] = "vehicle_metrics.csv"
+    metadata["od_metrics_path"] = "od_metrics.csv"
+    metadata["telemetry_flags_path"] = "telemetry_flags.csv"
+    metadata["heatmaps_folder"] = "heatmaps"
+    metadata["fdot_folder"] = "fdot"
+    metadata["available_heatmaps"] = []
+
+    with open(metadata_path, "w", encoding="utf-8") as file:
+        json.dump(metadata, file, indent=4)
+
+    print(f"Updated run metadata: {metadata_path}")
+
+
+# Returns the heatmap metrics that the Unreal telemetry panel can show.
+# These names must match the columns created by telemetry_analysis.py.
+def get_available_metrics() -> dict:
+    return {
+        "success": True,
+        "metric_count": 4,
+        "metrics": [
+            {
+                "metric": "bottleneck_score",
+                "display_name": "Bottleneck Score",
+            },
+            {
+                "metric": "estimated_flow_veh_per_hr",
+                "display_name": "Estimated Traffic Flow",
+            },
+            {
+                "metric": "avg_speed_mph",
+                "display_name": "Average Speed",
+            },
+            {
+                "metric": "total_wait_added_s",
+                "display_name": "Total Wait Added",
+            },
+        ],
+    }
+
+
+# Finds the folder where saved telemetry runs are stored.
+def get_runs_dir() -> Path:
+    return OUTPUT_DIR / "runs"
+
+
+# Safely loads JSON from a file. If the file is missing or broken, return an empty dict.
+def load_json_file(path: Path) -> dict:
+    if not path.exists():
+        return {}
+
+    try:
+        with path.open("r", encoding="utf-8") as file:
+            return json.load(file)
+    except Exception:
+        return {}
+
+
+# Lists saved run folders so Unreal can populate the telemetry panel.
+def list_saved_runs() -> dict:
+    runs_dir = get_runs_dir()
+
+    if not runs_dir.exists():
+        return {
+            "success": True,
+            "run_count": 0,
+            "runs": [],
+        }
+
+    runs = []
+
+    for run_folder in sorted(runs_dir.glob("run_*"), reverse=True):
+        if not run_folder.is_dir():
+            continue
+
+        metadata = load_json_file(run_folder / "run_metadata.json")
+        summary = load_json_file(run_folder / "telemetry_summary.json")
+
+        runs.append({
+            "run_id": metadata.get("run_id", run_folder.name),
+            "status": metadata.get("status", "unknown"),
+            "folder": str(run_folder),
+            "map_name": metadata.get("map_name"),
+            "created_at": metadata.get("created_at"),
+            "total_vehicles": summary.get("total_vehicles"),
+            "average_speed_mph": summary.get("average_speed_mph"),
+        })
+
+    return {
+        "success": True,
+        "run_count": len(runs),
+        "runs": runs,
+    }
+
+
+# Gets metadata and summary values for one saved run.
+def get_run_details(run_id: str) -> dict:
+    run_folder = get_runs_dir() / run_id
+
+    if not run_folder.exists():
+        return {
+            "success": False,
+            "error": "Run folder not found.",
+            "run_id": run_id,
+            "run_folder": str(run_folder),
+        }
+
+    metadata = load_json_file(run_folder / "run_metadata.json")
+    summary = load_json_file(run_folder / "telemetry_summary.json")
+
+    return {
+        "success": True,
+        "run_id": run_id,
+        "run_folder": str(run_folder),
+        "metadata": metadata,
+        "summary": summary,
+    }
+
+
+# Returns the expected heatmap PNG path for one run and metric.
+def get_heatmap_path(run_id: str, metric: str) -> dict:
+    run_folder = get_runs_dir() / run_id
+    heatmap_path = run_folder / "heatmaps" / f"heatmap_{metric}.png"
+
+    if not run_folder.exists():
+        return {
+            "success": False,
+            "error": "Run folder not found.",
+            "run_id": run_id,
+            "metric": metric,
+            "run_folder": str(run_folder),
+        }
+
+    if not heatmap_path.exists():
+        return {
+            "success": False,
+            "error": "Heatmap has not been generated for this metric yet.",
+            "run_id": run_id,
+            "metric": metric,
+            "run_folder": str(run_folder),
+            "expected_path": str(heatmap_path),
+        }
+
+    return {
+        "success": True,
+        "run_id": run_id,
+        "metric": metric,
+        "relative_path": f"heatmaps/heatmap_{metric}.png",
+        "full_path": str(heatmap_path),
+    }
+
+
+# Adds a generated heatmap path to run_metadata.json so Unreal knows where it is.
+def add_available_heatmap_to_metadata(run_folder: Path, metric: str, output_path: Path) -> None:
+    metadata_path = run_folder / "run_metadata.json"
+    metadata = load_json_file(metadata_path)
+
+    if not metadata:
+        metadata = {
+            "run_id": run_folder.name,
+        }
+
+    available_heatmaps = metadata.get("available_heatmaps", [])
+    heatmap_entry = {
+        "metric": metric,
+        "path": output_path.relative_to(run_folder).as_posix(),
+    }
+
+    # Replace older string entries and previous entries for this metric.
+    available_heatmaps = [
+        item for item in available_heatmaps
+        if not (
+            item == metric
+            or (isinstance(item, dict) and item.get("metric") == metric)
+        )
+    ]
+    available_heatmaps.append(heatmap_entry)
+
+    metadata["available_heatmaps"] = available_heatmaps
+    metadata["heatmaps_folder"] = "heatmaps"
+
+    with metadata_path.open("w", encoding="utf-8") as file:
+        json.dump(metadata, file, indent=4)
+
+
+# Generates one heatmap for one saved run instead of generating every metric automatically.
+def generate_single_heatmap(run_id: str, metric: str) -> dict:
+    run_folder = get_runs_dir() / run_id
+
+    if not run_folder.exists():
+        return {
+            "success": False,
+            "error": "Run folder not found.",
+            "run_id": run_id,
+            "metric": metric,
+            "run_folder": str(run_folder),
+        }
+
+    edge_metrics_path = run_folder / "edge_metrics.csv"
+    network_path = run_folder / "network_graph.csv"
+
+    if not edge_metrics_path.exists():
+        return {
+            "success": False,
+            "error": "edge_metrics.csv not found for this run.",
+            "run_id": run_id,
+            "metric": metric,
+            "edge_metrics_path": str(edge_metrics_path),
+        }
+
+    if not network_path.exists():
+        return {
+            "success": False,
+            "error": "network_graph.csv not found for this run.",
+            "run_id": run_id,
+            "metric": metric,
+            "network_path": str(network_path),
+        }
+
+    heatmap_dir = run_folder / "heatmaps"
+    heatmap_dir.mkdir(parents=True, exist_ok=True)
+
+    output_path = heatmap_dir / f"heatmap_{metric}.png"
+
+    network_df, metrics_df = load_files(network_path, edge_metrics_path)
+
+    plot_heatmap(
+        network_df,
+        metrics_df,
+        metric,
+        output_path,
+    )
+
+    add_available_heatmap_to_metadata(run_folder, metric, output_path)
+
+    return {
+        "success": True,
+        "run_id": run_id,
+        "metric": metric,
+        "heatmap_path": str(output_path),
+    }
+
+
+# Handles commands from the Unreal telemetry panel.
+# This must run before the normal simulation CSV path check.
+def handle_panel_command(argv: list[str]) -> int:
+    if "--panel-command" not in argv:
+        return -1
+
+    command_index = argv.index("--panel-command")
+
+    if command_index + 1 >= len(argv):
+        print(json.dumps({
+            "success": False,
+            "error": "Missing panel command.",
+        }))
+        return 1
+
+    command = argv[command_index + 1]
+    args = argv[command_index + 2:]
+
+    def get_arg_value(flag: str) -> str | None:
+        if flag not in args:
+            return None
+
+        flag_index = args.index(flag)
+
+        if flag_index + 1 >= len(args):
+            return None
+
+        return args[flag_index + 1]
+
+    try:
+        if command == "list-metrics":
+            result = get_available_metrics()
+
+        elif command == "list-runs":
+            result = list_saved_runs()
+
+        elif command == "get-run-details":
+            run_id = get_arg_value("--run-id")
+            if not run_id:
+                result = {
+                    "success": False,
+                    "error": "Missing --run-id.",
+                }
+            else:
+                result = get_run_details(run_id)
+
+        elif command == "get-heatmap-path":
+            run_id = get_arg_value("--run-id")
+            metric = get_arg_value("--metric")
+            if not run_id or not metric:
+                result = {
+                    "success": False,
+                    "error": "Missing --run-id or --metric.",
+                }
+            else:
+                result = get_heatmap_path(run_id, metric)
+
+        elif command == "generate-heatmap":
+            run_id = get_arg_value("--run-id")
+            metric = get_arg_value("--metric")
+            if not run_id or not metric:
+                result = {
+                    "success": False,
+                    "error": "Missing --run-id or --metric.",
+                }
+            else:
+                result = generate_single_heatmap(run_id, metric)
+
+        else:
+            result = {
+                "success": False,
+                "error": f"Unknown panel command: {command}",
+            }
+
+        print(json.dumps(result))
+        return 0 if result.get("success") else 1
+
+    except Exception as error:
+        print(json.dumps({
+            "success": False,
+            "error": str(error),
+            "command": command,
+        }))
+        return 1
+
+
+
+# Records the active map/network files that were saved with this run.
+# This keeps old telemetry runs self-contained even after the user loads or edits another map.
+def record_saved_run_inputs(
+    run_folder: Path,
+    network_graph_path: Path | None,
+    edges_jsonl_path: Path | None,
+    source_network_graph_path: Path,
+    source_edges_jsonl_path: Path,
+) -> None:
+    metadata_path = run_folder / "run_metadata.json"
+    metadata = load_json_file(metadata_path)
+
+    if not metadata:
+        metadata = {
+            "run_id": run_folder.name,
+        }
+
+    if network_graph_path is not None:
+        metadata["network_graph_path"] = network_graph_path.name
+        metadata["source_network_graph_path"] = str(source_network_graph_path)
+
+    if edges_jsonl_path is not None:
+        metadata["edges_jsonl_path"] = edges_jsonl_path.name
+        metadata["source_edges_jsonl_path"] = str(source_edges_jsonl_path)
+
+    with metadata_path.open("w", encoding="utf-8") as file:
+        json.dump(metadata, file, indent=4)
+
+
 def main() -> int:
+    # Panel commands are used by Unreal widgets for saved-run browsing and on-demand heatmaps.
+    # They do not use a simulation CSV, so handle them before the normal run mode.
+    panel_result = handle_panel_command(sys.argv[1:])
+
+    if panel_result != -1:
+        return panel_result
+
     if len(sys.argv) < 2:
         print("ERROR: Missing simulation CSV path.")
         return 1
@@ -302,14 +772,13 @@ def main() -> int:
         return 1
 
     # Optional positional args passed by the Unreal frontend:
-    #   argv[2] = network graph CSV generated by the sim for the active roadmap
-    #   argv[3] = edge JSONL of the active roadmap (used for road labels)
-    # Both fall back to the bundled Waterford defaults when omitted.
-    network_path = Path(sys.argv[2]) if len(sys.argv) > 2 else DEFAULT_NETWORK_GRAPH_PATH
+    #   argv[2] = active roadmap nodes JSONL
+    #   argv[3] = active roadmap edges JSONL
+    nodes_jsonl_path = Path(sys.argv[2]) if len(sys.argv) > 2 else None
     edge_jsonl_path = Path(sys.argv[3]) if len(sys.argv) > 3 else EDGE_JSONL_PATH
 
-    print(f"Network graph: {network_path}")
-    print(f"Edge metadata JSONL: {edge_jsonl_path}")
+    print(f"Active nodes JSONL: {nodes_jsonl_path}")
+    print(f"Active edges JSONL: {edge_jsonl_path}")
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     CSV_DIR.mkdir(parents=True, exist_ok=True)
@@ -320,12 +789,83 @@ def main() -> int:
     (OUTPUT_DIR / "telemetry").mkdir(parents=True, exist_ok=True)
     (OUTPUT_DIR / "heatmaps").mkdir(parents=True, exist_ok=True)
 
-    run_analysis(
-        input_file=simulation_csv,
-        output_dir=OUTPUT_DIR / "telemetry",
+    # Create a new folder for this simulation run.
+    # This keeps the current telemetry results separate from older runs.
+    run_id, run_folder = create_run_folder(OUTPUT_DIR)
+
+    print(f"Created telemetry run: {run_id}")
+    print(f"Run folder: {run_folder}")
+
+    # Save a copy of the raw simulation CSV inside this run folder.
+    # This lets us keep the original telemetry data that belongs to each run.
+    saved_simulation_csv = run_folder / "simulation_output.csv"
+    shutil.copy2(simulation_csv, saved_simulation_csv)
+
+    print(f"Saved simulation CSV: {saved_simulation_csv}")
+
+    # Build the heatmap-ready network graph directly from the same active
+    # node and edge JSONL files used by the C++ simulation.
+    saved_network_graph = None
+
+    if (
+        nodes_jsonl_path is not None
+        and nodes_jsonl_path.exists()
+        and edge_jsonl_path.exists()
+    ):
+        saved_network_graph = run_folder / "network_graph.csv"
+
+        build_network_graph(
+            nodes_path=nodes_jsonl_path,
+            edges_path=edge_jsonl_path,
+            output_path=saved_network_graph,
+        )
+
+        print(f"Built network_graph.csv: {saved_network_graph}")
+    else:
+        print("WARNING: Could not build network_graph.csv.")
+        print(f"Nodes JSONL: {nodes_jsonl_path}")
+        print(f"Edges JSONL: {edge_jsonl_path}")
+
+    # Save the active edge JSONL inside this run folder.
+    # The heatmap mainly uses network_graph.csv, but edges.jsonl preserves map/road context.
+    saved_edges_jsonl = None
+
+    if edge_jsonl_path.exists():
+        saved_edges_jsonl = run_folder / "edges.jsonl"
+        shutil.copy2(edge_jsonl_path, saved_edges_jsonl)
+        print(f"Saved edges.jsonl: {saved_edges_jsonl}")
+    else:
+        print(f"WARNING: Edge JSONL was not found and was not saved: {edge_jsonl_path}")
+
+    # Run the telemetry analysis and keep the returned results.
+    # We use the summary values from this result to build the dashboard JSON.
+    analysis_results = run_analysis(
+        input_file=saved_simulation_csv,
+        output_dir=run_folder,
     )
 
-    generate_heatmaps(network_path)
+    # Create the dashboard-friendly JSON summary for this run.
+    write_dashboard_summary(run_folder, analysis_results["summary"])
+
+    # Mark this run as finished and list the files Unreal can read later.
+    update_run_metadata(run_folder, run_id)
+
+    # Store the map/network files that belong to this specific run.
+    record_saved_run_inputs(
+        run_folder=run_folder,
+        network_graph_path=saved_network_graph,
+        edges_jsonl_path=saved_edges_jsonl,
+        source_network_graph_path=nodes_jsonl_path,
+        source_edges_jsonl_path=edge_jsonl_path,
+    )
+
+    # For now this uses the temporary Waterford network graph path.
+    # Later, Unreal or the active-roadmap pipeline can pass in the exact active network path.
+    active_network_path = TELEMETRY_DIR / "data" / "network" / "network_graph_waterford.csv"
+
+    # Heatmaps are now generated on demand from the telemetry panel.
+    # We intentionally do not call generate_heatmaps() here because every run should not create every heatmap automatically.
+    # generate_heatmaps(run_folder, active_network_path)
 
     # Then create the Unreal-friendly/user-friendly outputs.
     # create_simple_outputs(simulation_csv, edge_jsonl_path)
@@ -338,7 +878,7 @@ def main() -> int:
     print(f"Wrote done file: {done_file}")
 
     print("RoadMap Python pipeline finished successfully.")
-    
+
     return 0
 
 
