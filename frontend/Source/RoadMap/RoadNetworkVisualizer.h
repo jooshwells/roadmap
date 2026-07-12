@@ -36,7 +36,7 @@ struct FRoadEdgeInfo
 };
 
 UCLASS()
-class SD1TEST_API ARoadNetworkVisualizer : public AActor
+class ROADMAP_API ARoadNetworkVisualizer : public AActor
 {
     GENERATED_BODY()
 

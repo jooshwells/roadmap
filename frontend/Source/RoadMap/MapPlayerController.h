@@ -8,7 +8,7 @@
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnVehicleStatsClosed);
 
 UCLASS()
-class SD1TEST_API AMapPlayerController : public APlayerController
+class ROADMAP_API AMapPlayerController : public APlayerController
 {
 	GENERATED_BODY()
 

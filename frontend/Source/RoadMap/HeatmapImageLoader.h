@@ -6,7 +6,7 @@
 #include "HeatmapImageLoader.generated.h"
 
 UCLASS()
-class SD1TEST_API UHeatmapImageLoader : public UBlueprintFunctionLibrary
+class ROADMAP_API UHeatmapImageLoader : public UBlueprintFunctionLibrary
 {
     GENERATED_BODY()
 

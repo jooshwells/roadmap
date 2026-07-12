@@ -24,7 +24,7 @@ class UWidgetSwitcher;
 // picked before starting. The bar re-polls the manager every tick, so it stays
 // in sync no matter what else starts or stops the simulation.
 UCLASS()
-class SD1TEST_API USimControlBarWidget : public UUserWidget
+class ROADMAP_API USimControlBarWidget : public UUserWidget
 {
 	GENERATED_BODY()
 

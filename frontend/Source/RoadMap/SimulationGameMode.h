@@ -5,7 +5,7 @@
 #include "SimulationGameMode.generated.h"
 
 UCLASS()
-class SD1TEST_API ASimulationGameMode : public AGameModeBase
+class ROADMAP_API ASimulationGameMode : public AGameModeBase
 {
 	GENERATED_BODY()
 	

@@ -20,7 +20,7 @@ class UCanvasPanelSlot;
 // a one-shot snapshot. When the vehicle despawns (arrived, or the sim was
 // stopped) the live rows grey out and the header says so.
 UCLASS()
-class SD1TEST_API UVehicleStatsWidget : public UUserWidget
+class ROADMAP_API UVehicleStatsWidget : public UUserWidget
 {
     GENERATED_BODY()
 

@@ -24,7 +24,7 @@ class UWidget;
 // AMapPlayerController::SetDrawMode so mid-draw changes take effect on the
 // next placed segment.
 UCLASS()
-class SD1TEST_API URoadToolbarWidget : public UUserWidget
+class ROADMAP_API URoadToolbarWidget : public UUserWidget
 {
     GENERATED_BODY()
 

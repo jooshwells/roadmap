@@ -18,7 +18,7 @@ DECLARE_DELEGATE_OneParam(FOnMenuRowSelected, int32);
 // UButton::OnClicked carries no payload, so list rows use this thin subclass
 // that remembers its index and re-broadcasts clicks with it.
 UCLASS()
-class SD1TEST_API URoadmapRowButton : public UButton
+class ROADMAP_API URoadmapRowButton : public UButton
 {
 	GENERATED_BODY()
 
@@ -43,7 +43,7 @@ private:
  * is presentation + flow only.
  */
 UCLASS()
-class SD1TEST_API UMainMenuWidget : public UUserWidget
+class ROADMAP_API UMainMenuWidget : public UUserWidget
 {
 	GENERATED_BODY()
 
