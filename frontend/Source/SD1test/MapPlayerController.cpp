@@ -240,6 +240,12 @@ void AMapPlayerController::OpenVehicleStats(ASimulationManager* SimManager, cons
     ActiveVehicleStats = CreateWidget<UVehicleStatsWidget>(this);
     if (ActiveVehicleStats)
     {
+        // Relay the panel's X button to Blueprints so a follow-camera can
+        // unlock when the panel closes, not only on spacebar.
+        ActiveVehicleStats->OnClosed.AddWeakLambda(this, [this]()
+        {
+            OnVehicleStatsClosed.Broadcast();
+        });
         ActiveVehicleStats->InitWithStats(SimManager, Stats);
         ActiveVehicleStats->AddToViewport(10);
     }

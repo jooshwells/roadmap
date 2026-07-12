@@ -4,6 +4,9 @@
 #include "GameFramework/PlayerController.h"
 #include "SimulationManager.h"
 #include "MapPlayerController.generated.h"
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnVehicleStatsClosed);
+
 UCLASS()
 class SD1TEST_API AMapPlayerController : public APlayerController
 {
@@ -25,6 +28,12 @@ public:
 	// don't want the built-in C++ vehicle stats panel to open.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UI")
 	bool bUseCustomVehicleStatsUI = false;
+
+	// Fired when the built-in vehicle stats panel is closed with its X
+	// button. Bind in Blueprints (e.g. the camera pawn) to release a
+	// vehicle-follow camera lock alongside the spacebar shortcut.
+	UPROPERTY(BlueprintAssignable, Category = "UI")
+	FOnVehicleStatsClosed OnVehicleStatsClosed;
 
 	// Fired when a road is clicked outside draw mode, in case you want a
 	// custom Blueprint widget. The built-in C++ panel (RoadEditorWidget)

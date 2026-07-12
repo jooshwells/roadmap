@@ -340,6 +340,7 @@ void UVehicleStatsWidget::AddSectionHeader(UVerticalBox* Parent, const FText& La
 
 void UVehicleStatsWidget::HandleCloseClicked()
 {
+    OnClosed.Broadcast();
     RemoveFromParent();
 }
 

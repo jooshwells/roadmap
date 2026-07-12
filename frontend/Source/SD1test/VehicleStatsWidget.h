@@ -29,6 +29,11 @@ public:
     // when another vehicle is clicked.
     void InitWithStats(ASimulationManager* InSimManager, const FVehicleIDMStats& InStats);
 
+    // Fired when the user closes the panel with the X button.
+    // AMapPlayerController relays this to Blueprints (OnVehicleStatsClosed)
+    // so e.g. the camera pawn can drop its vehicle-follow lock.
+    FSimpleMulticastDelegate OnClosed;
+
 protected:
     virtual TSharedRef<SWidget> RebuildWidget() override;
     virtual void NativeConstruct() override;
