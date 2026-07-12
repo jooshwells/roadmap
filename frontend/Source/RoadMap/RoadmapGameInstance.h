@@ -27,7 +27,7 @@ struct FRoadmapEntry
  * written to; the road editor's exports append to the user's copy.
  */
 UCLASS()
-class SD1TEST_API URoadmapGameInstance : public UGameInstance
+class ROADMAP_API URoadmapGameInstance : public UGameInstance
 {
 	GENERATED_BODY()
 

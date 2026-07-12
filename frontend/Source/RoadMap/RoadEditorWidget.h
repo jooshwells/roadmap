@@ -23,7 +23,7 @@ class UWidget;
 // bar. Apply pushes the edit through AMapPlayerController::ApplyRoadEdit
 // (files + visuals + live sim).
 UCLASS()
-class SD1TEST_API URoadEditorWidget : public UUserWidget
+class ROADMAP_API URoadEditorWidget : public UUserWidget
 {
     GENERATED_BODY()
 

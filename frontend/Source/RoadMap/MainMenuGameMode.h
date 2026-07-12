@@ -13,7 +13,7 @@ class UUserWidget;
  * itself needs no game mode override.
  */
 UCLASS()
-class SD1TEST_API AMainMenuGameMode : public AGameModeBase
+class ROADMAP_API AMainMenuGameMode : public AGameModeBase
 {
 	GENERATED_BODY()
 

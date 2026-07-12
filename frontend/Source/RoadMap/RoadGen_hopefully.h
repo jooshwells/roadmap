@@ -7,7 +7,7 @@
 #include "RoadGen_hopefully.generated.h"
 
 UCLASS()
-class SD1TEST_API ARoadGen_hopefully : public AActor
+class ROADMAP_API ARoadGen_hopefully : public AActor
 {
 	GENERATED_BODY()
 	

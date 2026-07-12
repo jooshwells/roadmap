@@ -50,7 +50,7 @@ struct FVehicleIDMStats
 
 
 UCLASS()
-class SD1TEST_API ASimulationManager : public AActor
+class ROADMAP_API ASimulationManager : public AActor
 {
 	GENERATED_BODY()
 	
