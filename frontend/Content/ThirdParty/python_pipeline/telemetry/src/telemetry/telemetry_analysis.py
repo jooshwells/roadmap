@@ -542,6 +542,7 @@ def run_analysis(
 
     return {
         "raw": df,
+        "summary": summary,
         "edge_metrics": edge_metrics,
         "vehicle_metrics": vehicle_metrics,
         "od_metrics": od_metrics,
