@@ -210,14 +210,18 @@ void ASimulationManager::Tick(float DeltaTime)
 		ShowHeatmapOverlay();
 	}
 
-	if (!TrafficSimEngine || !bSimulationRunning) return;
+	if (!TrafficSimEngine || !bSimulationRunning || bSimulationPaused) return;
 
 	DeltaTime = FMath::Min(DeltaTime, 0.25f);
 
-	Accumulator += DeltaTime;
+	Accumulator += DeltaTime * SimSpeedMultiplier;
 	int StepsThisFrame = 0;
 
-	while (Accumulator >= FixedDelta && StepsThisFrame < MaxStepsPerFrame)
+	// Fast-forward needs proportionally more steps per frame or the backlog
+	// drop below would cancel the speed-up; keep the plain cap at 1x and below.
+	const int32 StepCap = FMath::CeilToInt(MaxStepsPerFrame * FMath::Max(1.0f, SimSpeedMultiplier));
+
+	while (Accumulator >= FixedDelta && StepsThisFrame < StepCap)
 	{
 		TrafficSimEngine->Step(FixedDelta);
 		Accumulator -= FixedDelta;
@@ -253,6 +257,7 @@ void ASimulationManager::StartSimulation()
     }
 
     bSimulationRunning = true;
+    bSimulationPaused = false;
 
     // Road editing is pre-run only: kick the controller out of draw mode and
     // close the edit panel so the map turns view-only while cars are moving.
@@ -263,9 +268,20 @@ void ASimulationManager::StartSimulation()
 
     if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Green, TEXT("Simulation Started!"));
 }
+void ASimulationManager::SetSimulationPaused(bool bPaused)
+{
+	bSimulationPaused = bPaused;
+}
+
+void ASimulationManager::SetSimulationSpeed(float Multiplier)
+{
+	SimSpeedMultiplier = FMath::Clamp(Multiplier, 0.25f, 8.0f);
+}
+
 void ASimulationManager::StopSimulation()
 {
 	bSimulationRunning = false;
+	bSimulationPaused = false;
 	// Clear all vehicle visuals
 	if (VehicleISM)
 	{
@@ -397,7 +413,10 @@ void ASimulationManager::UpdateVehicleVisuals(float Alpha, bool bDidPhysicsStep)
 		{
 			ActiveVehicleIDs.Add(State.id);
 			FVector UnrealPosition(State.x * 100.0f, State.y * 100.0f, State.z * 100.0f);
-			FRotator UnrealRotation(0.0f, FMath::RadiansToDegrees(State.yaw), 0.0f);
+			// Pitch follows the road grade so cars sit flush on bridge ramps
+			// instead of staying horizontal; positive pitch is nose-up, same
+			// convention as the sim's climbing-positive grade.
+			FRotator UnrealRotation(FMath::RadiansToDegrees(State.pitch), FMath::RadiansToDegrees(State.yaw), 0.0f);
 			FTransform NewTransform(UnrealRotation, UnrealPosition);
 
 			if (InterpolationData.Contains(State.id))
@@ -492,15 +511,20 @@ bool ASimulationManager::GetVehicleStatsFromInstance(int32 InstanceIndex, FVehic
 {
 	if (!TrafficSimEngine || !InstanceIndexToVehicleId.Contains(InstanceIndex)) return false;
 
-	int32 TargetVehId = InstanceIndexToVehicleId[InstanceIndex];
+	return GetVehicleStatsByID(InstanceIndexToVehicleId[InstanceIndex], OutStats);
+}
+
+bool ASimulationManager::GetVehicleStatsByID(int32 VehicleID, FVehicleIDMStats& OutStats)
+{
+	if (!TrafficSimEngine) return false;
 
 	// Find the vehicle in the backend
 	for (VehicleState* v : TrafficSimEngine->GetActiveVehicles())
 	{
 		if (!v) continue; // If the pointer is null, skip it!
-		if (v->getId() == TargetVehId)
+		if (v->getId() == VehicleID)
 		{
-			OutStats.VehicleID = TargetVehId;
+			OutStats.VehicleID = VehicleID;
 			OutStats.CurrentSpeed = v->getSpeed();
 			OutStats.DesiredSpeed = v->getDesiredSpeed();
 			OutStats.MaxAcceleration = v->getMaxAccel();
@@ -508,6 +532,17 @@ bool ASimulationManager::GetVehicleStatsFromInstance(int32 InstanceIndex, FVehic
 			OutStats.MinGap = v->getMinGap();
 			OutStats.SafeBrakePower = v->getSafeBrakePower();
 			OutStats.SafeTimeHeadway = v->getSafeTimeHeadway();
+
+			OutStats.CurrentAcceleration = v->getAcceleration();
+			OutStats.WaitTime = v->getWaitTime();
+			OutStats.Lane = v->getLane();
+			OutStats.Politeness = v->getPoliteness();
+			OutStats.RouteIndex = static_cast<int32>(v->currentRouteIndex);
+			OutStats.RouteLength = static_cast<int32>(v->currentRoute.size());
+			if (const Road* Edge = v->getCurrentEdge())
+			{
+				OutStats.RoadSpeedLimit = static_cast<float>(Edge->getSpeedLimit());
+			}
 			return true;
 		}
 	}

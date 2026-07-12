@@ -4,6 +4,8 @@
 #include "Blueprint/UserWidget.h"
 #include "RoadEditorWidget.h"
 #include "RoadToolbarWidget.h"
+#include "SimControlBarWidget.h"
+#include "VehicleStatsWidget.h"
 #include "RoadTurnLaneOptions.h"
 #include "SimulationManager.h"
 #include "DrawDebugHelpers.h"
@@ -26,6 +28,17 @@ void AMapPlayerController::BeginPlay()
 		if (ActiveRoadToolbar)
 		{
 			ActiveRoadToolbar->AddToViewport();
+		}
+	}
+
+	// Built-in C++ sim control bar: play / pause / stop and playback speed,
+	// anchored top-center like a video player. Needs no UMG asset.
+	if (bUseBuiltInSimControlBar)
+	{
+		ActiveSimControlBar = CreateWidget<USimControlBarWidget>(this);
+		if (ActiveSimControlBar)
+		{
+			ActiveSimControlBar->AddToViewport();
 		}
 	}
 }
@@ -180,8 +193,12 @@ void AMapPlayerController::UpdateRoadPreview(float DeltaTime)
 		PreviewChainPoints.Add(EndLoc);
 	}
 
-	// Draw the cached ghost every frame, floated slightly above the roads.
-	const FVector Lift(0.0f, 0.0f, 30.0f);
+	// Draw the cached ghost every frame, floated slightly above the roads --
+	// at deck height when an elevated layer is selected, so the preview shows
+	// where the bridge will run (underpasses keep the surface ghost visible).
+	const float LayerLiftCm = FMath::Max(0, CurrentDrawLayer)
+		* static_cast<float>(Network::DefaultLayerHeightM) * 100.0f;
+	const FVector Lift(0.0f, 0.0f, 30.0f + LayerLiftCm);
 	const FColor LineColor = FColor::Cyan;
 	for (int32 i = 0; i + 1 < PreviewChainPoints.Num(); i++)
 	{
@@ -223,6 +240,29 @@ void AMapPlayerController::OpenRoadEditor(const FRoadEdgeInfo& EdgeInfo)
     }
 }
 
+void AMapPlayerController::OpenVehicleStats(ASimulationManager* SimManager, const FVehicleIDMStats& Stats)
+{
+    // Retarget an already-open panel instead of stacking a second one.
+    if (ActiveVehicleStats && ActiveVehicleStats->IsInViewport())
+    {
+        ActiveVehicleStats->InitWithStats(SimManager, Stats);
+        return;
+    }
+
+    ActiveVehicleStats = CreateWidget<UVehicleStatsWidget>(this);
+    if (ActiveVehicleStats)
+    {
+        // Relay the panel's X button to Blueprints so a follow-camera can
+        // unlock when the panel closes, not only on spacebar.
+        ActiveVehicleStats->OnClosed.AddWeakLambda(this, [this]()
+        {
+            OnVehicleStatsClosed.Broadcast();
+        });
+        ActiveVehicleStats->InitWithStats(SimManager, Stats);
+        ActiveVehicleStats->AddToViewport(10);
+    }
+}
+
 bool AMapPlayerController::ApplyRoadEdit(const FRoadEdgeInfo& EditedInfo, bool bBothDirections)
 {
 	if (!IsRoadEditingAllowed())
@@ -236,7 +276,7 @@ bool AMapPlayerController::ApplyRoadEdit(const FRoadEdgeInfo& EditedInfo, bool b
 
 	// Visual network + JSONL + rebuild...
 	const bool bApplied = Visualizer->UpdateRoadProperties(
-		EditedInfo.NodeU, EditedInfo.NodeV, EditedInfo.Lanes, EditedInfo.SpeedLimitMps, EditedInfo.TurnLanes, bBothDirections);
+		EditedInfo.NodeU, EditedInfo.NodeV, EditedInfo.Lanes, EditedInfo.SpeedLimitMps, EditedInfo.TurnLanes, EditedInfo.Layer, bBothDirections);
 	if (!bApplied) return false;
 
 	// ...then the live sim, plus replans nearby so traffic reacts to the new
@@ -316,7 +356,7 @@ bool AMapPlayerController::GetMouseIntersectionOnZPlane(FVector& OutIntersection
 	return false;
 }
 
-void AMapPlayerController::SetDrawMode(bool bEnable, int32 InLanes, bool bTwoWay, float InSpeedLimit, FString InTurnLanes)
+void AMapPlayerController::SetDrawMode(bool bEnable, int32 InLanes, bool bTwoWay, float InSpeedLimit, FString InTurnLanes, int32 InLayer)
 {
 	if (bEnable && !IsRoadEditingAllowed())
 	{
@@ -329,6 +369,7 @@ void AMapPlayerController::SetDrawMode(bool bEnable, int32 InLanes, bool bTwoWay
     bIsTwoWayStreet = bTwoWay;
     CurrentDrawSpeedLimit = InSpeedLimit;
     CurrentDrawTurnLanes = InTurnLanes;
+    CurrentDrawLayer = InLayer;
     bHasStartNode = false;
     PreviewChainPoints.Reset();
     PreviewNewIntersections.Reset();
@@ -410,6 +451,13 @@ void AMapPlayerController::OnLeftMouseClick()
 
                         // Fire the event to open the Widget in Blueprints!
                         OnVehicleClickedUI(Stats);
+
+                        // Built-in live panel (speed / acceleration / driver
+                        // profile) unless the project uses its own widget.
+                        if (!bUseCustomVehicleStatsUI)
+                        {
+                            OpenVehicleStats(SimManager, Stats);
+                        }
                     }
                 }
                 return; // End execution since we found a vehicle
@@ -601,10 +649,10 @@ int64 AMapPlayerController::SplitEdgeEverywhere(int64 U, int64 V, FVector Point)
 
 int64 AMapPlayerController::CreateRoadPiece(ASimulationManager* SimManager, int64 FromId, FVector FromLoc, int64 ToId, FVector ToLoc)
 {
-    const float LengthMeters = FVector::Distance(FromLoc, ToLoc) / 100.0f;
+    const float LengthMeters = FVector::Dist2D(FromLoc, ToLoc) / 100.0f;
 
     // Forward direction (A -> B): files + visual network.
-    const int64 FinalToId = CachedVisualizer->ExportNewRoadSegment(FromId, ToId, ToLoc, CurrentDrawLanes, CurrentDrawSpeedLimit, CurrentDrawTurnLanes);
+    const int64 FinalToId = CachedVisualizer->ExportNewRoadSegment(FromId, ToId, ToLoc, CurrentDrawLanes, CurrentDrawSpeedLimit, CurrentDrawTurnLanes, CurrentDrawLayer);
 
     if (SimManager)
     {
@@ -616,7 +664,7 @@ int64 AMapPlayerController::CreateRoadPiece(ASimulationManager* SimManager, int6
     // string (lane order flipped, left/right swapped).
     if (bIsTwoWayStreet)
     {
-        CachedVisualizer->ExportNewRoadSegment(FinalToId, FromId, FromLoc, CurrentDrawLanes, CurrentDrawSpeedLimit, RoadTurnLaneOptions::MirrorTurnLanes(CurrentDrawTurnLanes));
+        CachedVisualizer->ExportNewRoadSegment(FinalToId, FromId, FromLoc, CurrentDrawLanes, CurrentDrawSpeedLimit, RoadTurnLaneOptions::MirrorTurnLanes(CurrentDrawTurnLanes), CurrentDrawLayer);
 
         if (SimManager)
         {

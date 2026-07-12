@@ -4,18 +4,36 @@
 #include "GameFramework/PlayerController.h"
 #include "SimulationManager.h"
 #include "MapPlayerController.generated.h"
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnVehicleStatsClosed);
+
 UCLASS()
 class SD1TEST_API AMapPlayerController : public APlayerController
 {
 	GENERATED_BODY()
 
 public:
-	// updated for turn lanes and speed limit
+	// updated for turn lanes, speed limit, and vertical layer (0 ground,
+	// +1 overpass, -1 underpass -- newly drawn roads become bridges/tunnels)
 	UFUNCTION(BlueprintCallable, Category = "Map Editor")
-    void SetDrawMode(bool bEnable, int32 InLanes, bool bTwoWay, float InSpeedLimit, FString InTurnLanes);
+    void SetDrawMode(bool bEnable, int32 InLanes, bool bTwoWay, float InSpeedLimit, FString InTurnLanes, int32 InLayer = 0);
 
+	// Fired when a vehicle is clicked, in case you want a custom Blueprint
+	// widget. The built-in C++ panel (VehicleStatsWidget) opens automatically
+	// either way unless bUseCustomVehicleStatsUI is set.
 	UFUNCTION(BlueprintImplementableEvent, Category = "UI")
 	void OnVehicleClickedUI(FVehicleIDMStats VehicleStats);
+
+	// Set true if you implement OnVehicleClickedUI with your own widget and
+	// don't want the built-in C++ vehicle stats panel to open.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UI")
+	bool bUseCustomVehicleStatsUI = false;
+
+	// Fired when the built-in vehicle stats panel is closed with its X
+	// button. Bind in Blueprints (e.g. the camera pawn) to release a
+	// vehicle-follow camera lock alongside the spacebar shortcut.
+	UPROPERTY(BlueprintAssignable, Category = "UI")
+	FOnVehicleStatsClosed OnVehicleStatsClosed;
 
 	// Fired when a road is clicked outside draw mode, in case you want a
 	// custom Blueprint widget. The built-in C++ panel (RoadEditorWidget)
@@ -33,6 +51,12 @@ public:
 	// widget drives SetDrawMode instead.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UI")
 	bool bUseBuiltInRoadToolbar = true;
+
+	// Spawns the built-in C++ sim control bar (play / pause / stop + playback
+	// speed) top-center at BeginPlay. Turn off if your own UI drives
+	// ASimulationManager instead.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UI")
+	bool bUseBuiltInSimControlBar = true;
 
 	// Applies edited lanes / speed limit / turn lanes to the road everywhere:
 	// visual network, JSONL files, and the live simulation.
@@ -88,13 +112,25 @@ protected:
 	// Opens (or retargets) the built-in C++ road editor panel.
 	void OpenRoadEditor(const FRoadEdgeInfo& EdgeInfo);
 
+	// Opens (or retargets) the built-in C++ vehicle stats panel; it re-polls
+	// SimManager while open so the readouts stay live.
+	void OpenVehicleStats(class ASimulationManager* SimManager, const FVehicleIDMStats& Stats);
+
 	// The built-in road editor panel, when open.
 	UPROPERTY()
 	class URoadEditorWidget* ActiveRoadEditor = nullptr;
 
+	// The built-in vehicle stats panel, when open.
+	UPROPERTY()
+	class UVehicleStatsWidget* ActiveVehicleStats = nullptr;
+
 	// The built-in road-drawing toolbar, when spawned.
 	UPROPERTY()
 	class URoadToolbarWidget* ActiveRoadToolbar = nullptr;
+
+	// The built-in sim control bar, when spawned.
+	UPROPERTY()
+	class USimControlBarWidget* ActiveSimControlBar = nullptr;
 
 	// Right-click while placing a road: abandon the armed start node.
 	void CancelRoadDrawing();
@@ -136,4 +172,5 @@ private:
 
 	float CurrentDrawSpeedLimit = 20.0f; // default around 45 mph
     FString CurrentDrawTurnLanes;   // string for turn lanes
+    int32 CurrentDrawLayer = 0;     // vertical layer for new roads (0 = ground)
 };

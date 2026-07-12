@@ -133,7 +133,7 @@ std::vector<VehicleRenderState> TrafficSimulation::GetVehicleRenderStates()
     const float LANE_WIDTH = RoadIntersectionUtil::LaneWidthMeters;
 
     // A rendered point on (or between) road edges, in raw map coordinates.
-    struct EdgePoint { double x, y, z; float yaw; };
+    struct EdgePoint { double x, y, z; float yaw; float pitch; };
 
     // Lane-offset point at 'dist' meters along the edge nA -> nB. Lane 0 is the
     // fast lane (closest to the median), matching the road HISM layout. Lane is
@@ -145,26 +145,49 @@ std::vector<VehicleRenderState> TrafficSimulation::GetVehicleRenderStates()
     {
         if (edgeLen <= 0.0) return false;
 
+        // Half-span (m) of the slope probe that pitches the car to the road
+        // surface: z is sampled this far behind and ahead so the car reads
+        // the average grade under its wheelbase instead of snapping at the
+        // knees of the vertical profile.
+        const double PITCH_PROBE_M = 2.0;
+
         double px, py, tx, ty;
-        if (!(edge && edge->samplePointAt(dist, px, py, tx, ty)))
+        double pz = 0.0;
+        double pitch = 0.0;
+        if (edge && edge->samplePointAt(dist, px, py, tx, ty, pz))
+        {
+            double qx, qy, qtx, qty;
+            double z0 = pz, z1 = pz;
+            const double d0 = std::max(0.0, dist - PITCH_PROBE_M);
+            const double d1 = std::min(edgeLen, dist + PITCH_PROBE_M);
+            if (d1 - d0 > 0.01 &&
+                edge->samplePointAt(d0, qx, qy, qtx, qty, z0) &&
+                edge->samplePointAt(d1, qx, qy, qtx, qty, z1))
+            {
+                pitch = std::atan2(z1 - z0, d1 - d0);
+            }
+        }
+        else
         {
             // Straight fallback: lerp node to node.
             double dx = b->getX() - a->getX();
             double dy = b->getY() - a->getY();
             double len = std::sqrt(dx * dx + dy * dy);
             if (len < 0.0001) return false;
-            double t = dist / edgeLen;
+            double t = std::clamp(dist / edgeLen, 0.0, 1.0);
             px = a->getX() + t * dx;
             py = a->getY() + t * dy;
+            pz = a->getZ() + t * (b->getZ() - a->getZ());
             tx = dx / len;
             ty = dy / len;
+            pitch = std::atan2(b->getZ() - a->getZ(), len);
         }
 
-        double t = std::clamp(dist / edgeLen, 0.0, 1.0);
         out.x = px;
         out.y = py;
-        out.z = a->getZ() + t * (b->getZ() - a->getZ());
+        out.z = pz;
         out.yaw = static_cast<float>(std::atan2(ty, tx));
+        out.pitch = static_cast<float>(pitch);
 
         double laneOffset = MEDIAN_GAP_METERS + (LANE_WIDTH / 2.0) + lane * LANE_WIDTH;
         out.x += (-ty) * laneOffset;
@@ -250,6 +273,7 @@ std::vector<VehicleRenderState> TrafficSimulation::GetVehicleRenderStates()
                     p.y = exitPt.y + s * (entryPt.y - exitPt.y);
                     p.z = exitPt.z + s * (entryPt.z - exitPt.z);
                     p.yaw = LerpAngle(exitPt.yaw, entryPt.yaw, s);
+                    p.pitch = exitPt.pitch + s * (entryPt.pitch - exitPt.pitch);
                     resolved = true;
                 }
             }
@@ -277,6 +301,7 @@ std::vector<VehicleRenderState> TrafficSimulation::GetVehicleRenderStates()
                     p.y = exitPt.y + s * (entryPt.y - exitPt.y);
                     p.z = exitPt.z + s * (entryPt.z - exitPt.z);
                     p.yaw = LerpAngle(exitPt.yaw, entryPt.yaw, s);
+                    p.pitch = exitPt.pitch + s * (entryPt.pitch - exitPt.pitch);
                     resolved = true;
                 }
             }
@@ -304,6 +329,7 @@ std::vector<VehicleRenderState> TrafficSimulation::GetVehicleRenderStates()
         state.y = static_cast<float>(p.y - originOffsetY);
         state.z = static_cast<float>(p.z);
         state.yaw = p.yaw;
+        state.pitch = p.pitch;
         state.id = v->getId();
 
         renderStates.push_back(state);

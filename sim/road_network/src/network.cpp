@@ -1,10 +1,14 @@
 #include "network.h"
+#include "IntersectionGeometry.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <iostream>
 #include <fstream>
 #include <limits>
+#include <unordered_map>
+#include <unordered_set>
 
 void Network::addNode(std::uint64_t id, double lat, double lon, double x, double y)
 {
@@ -49,11 +53,12 @@ Node* Network::getRandomNode(std::mt19937& rng)
 }
 
 void Network::addDirectedEdge(uint64_t fromId, uint64_t toId, double dist, double speedLimit, int lanes,
-                              std::vector<RoadGeomPoint> geometry)
+                              std::vector<RoadGeomPoint> geometry, int layer)
 {
     if (nodes.find(fromId) != nodes.end() && nodes.find(toId) != nodes.end())
     {
         Road& edge = nodes[fromId].outgoingEdges.emplace_back(nextEdgeId++, toId, dist, speedLimit, lanes);
+        edge.setLayer(layer);
 
         nodes[toId].incomingEdgeNodeIds.push_back(fromId);
 
@@ -158,6 +163,7 @@ bool Network::splitDirectedEdge(uint64_t fromId, uint64_t toId, uint64_t newNode
     const double lenB = edge->getLength() - lenA;
     const double speed = edge->getSpeedLimit();
     const int lanes = edge->getLanes();
+    const int layer = edge->getLayer();
 
     // Create the split node. Re-fetch everything afterwards per the header's
     // pointer-stability warning.
@@ -184,7 +190,7 @@ bool Network::splitDirectedEdge(uint64_t fromId, uint64_t toId, uint64_t newNode
     if (it != to->incomingEdgeNodeIds.end()) to->incomingEdgeNodeIds.erase(it);
 
     // Second half gets a fresh edge id and the remaining centerline.
-    addDirectedEdge(newNodeId, toId, lenB, speed, lanes, std::move(ptsB));
+    addDirectedEdge(newNodeId, toId, lenB, speed, lanes, std::move(ptsB), layer);
     return true;
 }
 
@@ -216,6 +222,93 @@ bool Network::removeNodeIfIsolated(uint64_t id)
     nodeIds.erase(std::remove(nodeIds.begin(), nodeIds.end(), id), nodeIds.end());
     if (numNodes > 0) numNodes--;
     return true;
+}
+
+void Network::applyVerticality(double layerHeightM, double rampLengthM, double medianGapM)
+{
+    // Node elevation = layer of the road that continues THROUGH the node,
+    // i.e. the layer with edges toward the most distinct neighbours (2+).
+    // That keeps a viaduct at deck height where an on/off-ramp joins it (the
+    // ramp climbs inside its own span) instead of the deck dipping to ground
+    // at every junction. Ties go to the layer nearest the ground. Nodes with
+    // no through layer -- a bridge that simply ends, or a lone dead end --
+    // fall back to the incident layer closest to ground, so ground roads
+    // passing a bridge endpoint stay flat and the deck ramps down in-span.
+    for (auto& [id, node] : nodes)
+    {
+        // Distinct neighbours per layer, over both edge directions.
+        std::unordered_map<int, std::unordered_set<uint64_t>> perLayer;
+        for (const Road& e : node.outgoingEdges)
+        {
+            perLayer[e.getLayer()].insert(e.getDest());
+        }
+        for (uint64_t inId : node.incomingEdgeNodeIds)
+        {
+            auto it = nodes.find(inId);
+            if (it == nodes.end()) continue;
+            for (const Road& e : it->second.outgoingEdges)
+            {
+                if (e.getDest() == id)
+                {
+                    perLayer[e.getLayer()].insert(inId);
+                    break;
+                }
+            }
+        }
+
+        bool haveAny = false;
+        int closest = 0;
+        bool haveThrough = false;
+        int throughLayer = 0;
+        size_t throughCount = 0;
+        for (const auto& [layer, nbrs] : perLayer)
+        {
+            if (!haveAny || std::abs(layer) < std::abs(closest))
+            {
+                closest = layer;
+                haveAny = true;
+            }
+            if (nbrs.size() >= 2 &&
+                (!haveThrough || nbrs.size() > throughCount ||
+                 (nbrs.size() == throughCount && std::abs(layer) < std::abs(throughLayer))))
+            {
+                throughLayer = layer;
+                throughCount = nbrs.size();
+                haveThrough = true;
+            }
+        }
+
+        node.setZ((haveThrough ? throughLayer : closest) * layerHeightM);
+    }
+
+    // Junction setback radius per node (the same trim the visualizer uses),
+    // computed once and reused as the flat zone of every incident edge.
+    std::unordered_map<uint64_t, double> setbacks;
+    setbacks.reserve(nodes.size());
+    for (auto& [id, node] : nodes)
+    {
+        setbacks[id] = RoadIntersectionUtil::GetNodeSetbackMeters(
+            this, node, static_cast<float>(medianGapM));
+    }
+
+    // Write each edge's vertical profile onto its centerline. Applied even
+    // when start/mid/end are all at ground level: a re-run after a layer edit
+    // must scrub the stale profile off a road that was just grounded.
+    for (auto& [id, node] : nodes)
+    {
+        for (Road& e : node.outgoingEdges)
+        {
+            auto it = nodes.find(e.getDest());
+            if (it == nodes.end()) continue;
+
+            const double zStart = node.getZ();
+            const double zEnd   = it->second.getZ();
+            const double zMid   = e.getLayer() * layerHeightM;
+
+            e.applyVerticalProfile(zStart, zMid, zEnd, rampLengthM,
+                                   setbacks[id], setbacks[e.getDest()]);
+        }
+    }
 }
 
 void Network::visualizeNetwork()

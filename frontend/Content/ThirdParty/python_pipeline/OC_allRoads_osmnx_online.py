@@ -97,6 +97,29 @@ def parse_lanes(val):
     return int(m.group())
 
 
+# Reads the OSM vertical layer of a way as a signed integer.
+# 0 = ground level, 1 = an overpass/bridge deck, -1 = an underpass/tunnel.
+# Values are usually "1" or "-1" but can be lists after merging or junk
+# like "1;2", so pull the first signed integer found.
+def parse_layer(val):
+    if val is None:
+        return None
+
+    if isinstance(val, list):
+        for item in val:
+            parsed = parse_layer(item)
+            if parsed is not None:
+                return parsed
+        return None
+
+    m = re.search(r"-?\d+", str(val))
+
+    if not m:
+        return None
+
+    return int(m.group())
+
+
 # JSON does not allow NaN values.
 # This turns NaN into None so json.dumps writes it as null.
 def clean_json_value(val):
@@ -180,6 +203,12 @@ extra_way_tags = [
     "turn:lanes:forward",
     "turn:lanes:backward",
     "lit",
+    # Verticality tags. bridge/tunnel are in OSMnx's defaults but "layer" is
+    # NOT, so without listing it here every exported layer value was null and
+    # overpasses rendered at ground level.
+    "bridge",
+    "tunnel",
+    "layer",
 ]
 
 # highway on nodes is where OSM stores things like traffic_signals and stop signs.
@@ -295,6 +324,11 @@ for node_id, data in G.nodes(data=True):
 H_geo = ox.simplification.simplify_graph(
     G,
     track_merged=True,
+    # Keep a node whenever the verticality tags change across it. This stops
+    # simplification from merging a bridge deck with its ground-level approach
+    # roads, which would smear bridge=yes over the whole merged edge and lose
+    # where the elevated span actually starts and ends.
+    edge_attrs_differ=["bridge", "tunnel", "layer"],
     edge_attr_aggs={
         "length": sum,
         "length_m": sum,
@@ -304,6 +338,9 @@ H_geo = ox.simplification.simplify_graph(
         "turn:lanes:forward": first_non_null,
         "turn:lanes:backward": first_non_null,
         "lit": first_non_null,
+        "bridge": first_non_null,
+        "tunnel": first_non_null,
+        "layer": first_non_null,
     },
 )
 
@@ -448,7 +485,8 @@ for (u, v, key), row in edges_gdf.iterrows():
         "ref": clean_json_value(row.get("ref")),
         "bridge": clean_json_value(row.get("bridge")),
         "tunnel": clean_json_value(row.get("tunnel")),
-        "layer": clean_json_value(row.get("layer")),
+        # Normalized to a signed int (or null): 1 = overpass, -1 = underpass.
+        "layer": parse_layer(clean_json_value(row.get("layer"))),
         "surface": clean_json_value(row.get("surface")),
         "access": clean_json_value(row.get("access")),
         "motor_vehicle": clean_json_value(row.get("motor_vehicle")),

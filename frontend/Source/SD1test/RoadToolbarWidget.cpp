@@ -19,6 +19,7 @@
 #include "Misc/DefaultValueHelper.h"
 #include "Styling/CoreStyle.h"
 #include "RoadTurnLaneOptions.h"
+#include "RoadLayerOptions.h"
 #include "RoadPanelStyle.h"
 
 TSharedRef<SWidget> URoadToolbarWidget::RebuildWidget()
@@ -111,6 +112,18 @@ TSharedRef<SWidget> URoadToolbarWidget::RebuildWidget()
         TwoWayCheck->SetIsChecked(true);
         AddRow(Box, NSLOCTEXT("RoadToolbar", "TwoWay", "Two-way street"), TwoWayCheck);
 
+        // Elevation: new roads become bridges/underpasses via the sim's
+        // vertical-layer pass (ramps, deck slabs, and pillars come free).
+        LayerCombo = WidgetTree->ConstructWidget<UComboBoxString>(UComboBoxString::StaticClass(), TEXT("LayerCombo"));
+        RoadPanelStyle::StyleTurnLaneCombo(LayerCombo);
+        LayerCombo->OnGenerateWidgetEvent.BindUFunction(this, FName("MakeTurnLaneEntry"));
+        for (const TCHAR* Option : RoadLayerOptions::Options)
+        {
+            LayerCombo->AddOption(Option);
+        }
+        LayerCombo->SetSelectedOption(RoadLayerOptions::LayerToOption(CurrentLayer));
+        AddRow(Box, NSLOCTEXT("RoadToolbar", "Elevation", "Elevation"), LayerCombo);
+
         // Turn lanes: one dropdown per lane.
         UTextBlock* TurnHeader = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("TurnHeader"));
         TurnHeader->SetText(NSLOCTEXT("RoadToolbar", "TurnHeader", "Turn lanes (left lane first)"));
@@ -135,6 +148,7 @@ void URoadToolbarWidget::NativeConstruct()
     if (LanesBox) LanesBox->OnTextCommitted.AddUniqueDynamic(this, &URoadToolbarWidget::HandleLanesCommitted);
     if (SpeedBox) SpeedBox->OnTextCommitted.AddUniqueDynamic(this, &URoadToolbarWidget::HandleSpeedCommitted);
     if (TwoWayCheck) TwoWayCheck->OnCheckStateChanged.AddUniqueDynamic(this, &URoadToolbarWidget::HandleTwoWayChanged);
+    if (LayerCombo) LayerCombo->OnSelectionChanged.AddUniqueDynamic(this, &URoadToolbarWidget::HandleLayerComboChanged);
 
     if (TitleBar)
     {
@@ -215,6 +229,14 @@ void URoadToolbarWidget::HandleTwoWayChanged(bool /*bIsChecked*/)
     if (bDrawing) PushDrawParams();
 }
 
+void URoadToolbarWidget::HandleLayerComboChanged(FString SelectedItem, ESelectInfo::Type SelectionType)
+{
+    if (SelectionType == ESelectInfo::Direct) return; // programmatic; avoids feedback loops
+
+    CurrentLayer = RoadLayerOptions::OptionToLayer(SelectedItem);
+    if (bDrawing) PushDrawParams();
+}
+
 void URoadToolbarWidget::HandleTurnLaneComboChanged(FString /*SelectedItem*/, ESelectInfo::Type SelectionType)
 {
     if (SelectionType == ESelectInfo::Direct) return; // programmatic; avoids feedback loops
@@ -280,7 +302,8 @@ void URoadToolbarWidget::PushDrawParams()
         CurrentLanes,
         TwoWayCheck->IsChecked(),
         static_cast<float>(CurrentSpeedMph) / MpsToMph,
-        CurrentTurnLanes);
+        CurrentTurnLanes,
+        CurrentLayer);
 }
 
 void URoadToolbarWidget::RebuildTurnLaneCombos()

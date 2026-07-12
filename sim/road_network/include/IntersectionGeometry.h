@@ -1,8 +1,9 @@
 #pragma once
 
-// Shared intersection geometry used by both the road visualizer (Unreal cm) and
-// the vehicle render-state builder (map meters). Pure C++ on purpose -- no
-// Unreal dependencies -- so TrafficSimulation stays engine-agnostic.
+// Shared intersection geometry used by the road visualizer (Unreal cm), the
+// vehicle render-state builder (map meters), and Network::applyVerticality
+// (which holds elevation ramps flat through the junction box). Pure C++ on
+// purpose -- no Unreal dependencies -- so the sim stays engine-agnostic.
 //
 // The model: an intersection is where 3+ distinct roadways meet. Each edge
 // entering it should stop short of the node center by a "setback" radius large
