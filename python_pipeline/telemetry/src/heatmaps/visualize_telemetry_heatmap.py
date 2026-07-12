@@ -602,8 +602,21 @@ def summary_rows_for_metric(metric, heat_values, background_count, heat_count, m
     """Build the lines shown in the summary card."""
     values = pd.Series(heat_values)
     unit = metric_value_unit(metric)
+
+    # A zero-only bottleneck run has no meaningful extreme road or hotspots.
+    if metric == "bottleneck_score" and (values.empty or values.abs().max() <= 1e-9):
+        return [
+            ("Road Segments", f"{background_count:,}"),
+            ("Analyzed Roads", f"{heat_count:,}"),
+            ("Result", "No significant bottlenecks detected"),
+        ]
+
     extreme_road, extreme_value = get_extreme_road_info(merged_df, metric)
-    top_count = int((values >= values.quantile(0.95)).sum()) if metric != "avg_speed_mph" else int((values <= values.quantile(0.05)).sum())
+    if metric == "avg_speed_mph":
+        top_count = int((values <= values.quantile(0.05)).sum())
+    else:
+        positive_values = values[values > 1e-9]
+        top_count = int((positive_values >= positive_values.quantile(0.95)).sum()) if not positive_values.empty else 0
 
     rows = [
         ("Road Segments", f"{background_count:,}"),
@@ -763,18 +776,22 @@ def add_value_weighted_glow(ax, heat_segments, heat_widths, values, cmap_name, n
 
     series = pd.Series(values)
 
+    # Zero wait/flow/bottleneck values should remain visible without looking active.
+    if metric != "avg_speed_mph" and series.abs().max() <= 1e-9:
+        return
+
     # For speed, slow roads should pop. For the other metrics, high values should pop.
     if metric == "avg_speed_mph":
         levels = [
-            (series.quantile(0.25), "below", 2.6, 0.08),
-            (series.quantile(0.15), "below", 4.6, 0.10),
-            (series.quantile(0.08), "below", 6.8, 0.13),
+            (series.quantile(0.25), "below", 1.3, 0.05),
+            (series.quantile(0.15), "below", 2.3, 0.06),
+            (series.quantile(0.08), "below", 3.4, 0.08),
         ]
     else:
         levels = [
-            (series.quantile(0.75), "above", 2.4, 0.08),
-            (series.quantile(0.90), "above", 4.6, 0.10),
-            (series.quantile(0.97), "above", 7.2, 0.13),
+            (series.quantile(0.75), "above", 1.2, 0.05),
+            (series.quantile(0.90), "above", 2.3, 0.06),
+            (series.quantile(0.97), "above", 3.6, 0.08),
         ]
 
     for threshold, direction, width_boost, alpha in levels:
@@ -786,7 +803,7 @@ def add_value_weighted_glow(ax, heat_segments, heat_widths, values, cmap_name, n
         selected_values = []
 
         for segment, width, value in zip(heat_segments, heat_widths, values):
-            if direction == "above" and value >= threshold:
+            if direction == "above" and value > 1e-9 and value >= threshold:
                 selected_segments.append(segment)
                 selected_widths.append(width + width_boost)
                 selected_values.append(value)
@@ -867,6 +884,13 @@ def choose_color_settings(metric: str):
     return make_roadmap_traffic_cmap(high_values_are_bad=True), metric, True
 
 
+# Use one stable key for a road shape even when its points run in reverse.
+def canonical_segment_key(segment, precision=3):
+    points = tuple((round(float(x), precision), round(float(y), precision)) for x, y in segment)
+    reversed_points = tuple(reversed(points))
+    return min(points, reversed_points)
+
+
 # Join network roads to telemetry metrics and prepare line segments for drawing.
 def build_line_segments(network_df: pd.DataFrame, metrics_df: pd.DataFrame, metric: str):
     network_df, metrics_df = normalize_id_columns(network_df, metrics_df)
@@ -876,9 +900,7 @@ def build_line_segments(network_df: pd.DataFrame, metrics_df: pd.DataFrame, metr
 
     background_segments = []
     background_widths = []
-    heat_segments = []
-    heat_widths = []
-    heat_values = []
+    heat_by_geometry = {}
     skipped_edges = 0
 
     for _, row in merged.iterrows():
@@ -894,9 +916,24 @@ def build_line_segments(network_df: pd.DataFrame, metrics_df: pd.DataFrame, metr
         background_widths.append(road_width(row, heat=False))
 
         if metric in merged.columns and not pd.isna(row.get(metric)):
-            heat_segments.append(segment)
-            heat_widths.append(road_width(row, heat=True))
-            heat_values.append(float(row[metric]))
+            key = canonical_segment_key(segment)
+            value = float(row[metric])
+            width = road_width(row, heat=True)
+            existing = heat_by_geometry.get(key)
+
+            # Shared two-way geometry is drawn once using the more important direction.
+            if existing is None:
+                heat_by_geometry[key] = (segment, width, value)
+            else:
+                old_segment, old_width, old_value = existing
+                use_new_value = value < old_value if metric == "avg_speed_mph" else value > old_value
+                selected_segment = segment if use_new_value else old_segment
+                selected_value = value if use_new_value else old_value
+                heat_by_geometry[key] = (selected_segment, max(old_width, width), selected_value)
+
+    heat_segments = [item[0] for item in heat_by_geometry.values()]
+    heat_widths = [item[1] for item in heat_by_geometry.values()]
+    heat_values = [item[2] for item in heat_by_geometry.values()]
 
     if skipped_edges > 0:
         print(f"Skipped {skipped_edges} edges because endpoint coordinates were missing.")
@@ -1087,7 +1124,7 @@ def plot_heatmap(
         heat_casing = LineCollection(
             heat_segments,
             colors="#080808",
-            linewidths=[(width * 1.18) + 0.85 for width in heat_widths],
+            linewidths=[width + 0.65 for width in heat_widths],
             alpha=0.90,
             capstyle="round",
             joinstyle="round",
@@ -1096,18 +1133,25 @@ def plot_heatmap(
         ax.add_collection(heat_casing)
 
         # Soft glow behind active roads.
-        heat_glow = LineCollection(
-            heat_segments,
-            cmap=cmap_name,
-            norm=norm,
-            linewidths=[(width * 1.18) + 3.6 for width in heat_widths],
-            alpha=0.15,
-            capstyle="round",
-            joinstyle="round",
-            zorder=3,
-        )
-        heat_glow.set_array(values.to_numpy())
-        ax.add_collection(heat_glow)
+        glow_items = [
+            (segment, width, value)
+            for segment, width, value in zip(heat_segments, heat_widths, values.to_numpy())
+            if metric == "avg_speed_mph" or abs(value) > 1e-9
+        ]
+        if glow_items:
+            glow_segments, glow_widths, glow_values = zip(*glow_items)
+            heat_glow = LineCollection(
+                glow_segments,
+                cmap=cmap_name,
+                norm=norm,
+                linewidths=[width + 1.8 for width in glow_widths],
+                alpha=0.08,
+                capstyle="round",
+                joinstyle="round",
+                zorder=3,
+            )
+            heat_glow.set_array(pd.Series(glow_values).to_numpy())
+            ax.add_collection(heat_glow)
 
         add_value_weighted_glow(ax, heat_segments, heat_widths, values.to_numpy(), cmap_name, norm, metric)
 
@@ -1115,7 +1159,7 @@ def plot_heatmap(
             heat_segments,
             cmap=cmap_name,
             norm=norm,
-            linewidths=[width * 1.18 for width in heat_widths],
+            linewidths=heat_widths,
             capstyle="round",
             joinstyle="round",
             zorder=5,

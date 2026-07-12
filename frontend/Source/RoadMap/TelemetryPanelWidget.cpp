@@ -20,6 +20,7 @@
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
+#include "Engine/Texture2D.h"
 #include "Misc/Paths.h"
 #include "Styling/CoreStyle.h"
 #include "Styling/SlateTypes.h"
@@ -515,11 +516,15 @@ void UTelemetryPanelWidget::BuildWidgetTree()
     LegendBarSizer->SetWidthOverride(34.0f);
     LegendBarSizer->SetHeightOverride(420.0f);
     LegendScale->AddChildToHorizontalBox(LegendBarSizer);
-    HeatmapLegendBar = WidgetTree->ConstructWidget<UVerticalBox>();
-    LegendBarSizer->SetContent(HeatmapLegendBar);
+    HeatmapLegendGradient = WidgetTree->ConstructWidget<UImage>();
+    LegendBarSizer->SetContent(HeatmapLegendGradient);
 
+    USizeBox* LegendTickSizer = WidgetTree->ConstructWidget<USizeBox>();
+    LegendTickSizer->SetHeightOverride(420.0f);
+    LegendTickSizer->SetWidthOverride(52.0f);
     HeatmapLegendTicks = WidgetTree->ConstructWidget<UVerticalBox>();
-    if (UHorizontalBoxSlot* TickSlot = LegendScale->AddChildToHorizontalBox(HeatmapLegendTicks))
+    LegendTickSizer->SetContent(HeatmapLegendTicks);
+    if (UHorizontalBoxSlot* TickSlot = LegendScale->AddChildToHorizontalBox(LegendTickSizer))
     {
         TickSlot->SetPadding(FMargin(9.0f, 0.0f, 0.0f, 0.0f));
     }
@@ -684,6 +689,45 @@ void UTelemetryPanelWidget::SetStatus(const FString& Message, bool bIsError)
     StatusText->SetColorAndOpacity(FSlateColor(bIsError ? ErrorColor : Success));
 }
 
+// Builds a small bilinear texture so the native legend changes color smoothly.
+void UTelemetryPanelWidget::UpdateHeatmapLegendGradient(const TArray<FString>& ColorsTopToBottom)
+{
+    if (!HeatmapLegendGradient || ColorsTopToBottom.Num() < 2)
+    {
+        return;
+    }
+
+    constexpr int32 TextureWidth = 1;
+    constexpr int32 TextureHeight = 256;
+    LoadedLegendTexture = UTexture2D::CreateTransient(TextureWidth, TextureHeight, PF_B8G8R8A8);
+    if (!LoadedLegendTexture || !LoadedLegendTexture->GetPlatformData())
+    {
+        return;
+    }
+
+    FTexture2DMipMap& Mip = LoadedLegendTexture->GetPlatformData()->Mips[0];
+    FColor* Pixels = static_cast<FColor*>(Mip.BulkData.Lock(LOCK_READ_WRITE));
+    for (int32 Y = 0; Y < TextureHeight; ++Y)
+    {
+        const float PalettePosition =
+            (static_cast<float>(Y) / static_cast<float>(TextureHeight - 1)) *
+            static_cast<float>(ColorsTopToBottom.Num() - 1);
+        const int32 FirstIndex = FMath::Min(FMath::FloorToInt(PalettePosition), ColorsTopToBottom.Num() - 2);
+        const float Blend = PalettePosition - static_cast<float>(FirstIndex);
+
+        const FLinearColor First = FLinearColor::FromSRGBColor(FColor::FromHex(ColorsTopToBottom[FirstIndex]));
+        const FLinearColor Second = FLinearColor::FromSRGBColor(FColor::FromHex(ColorsTopToBottom[FirstIndex + 1]));
+        Pixels[Y] = FMath::Lerp(First, Second, Blend).ToFColorSRGB();
+    }
+    Mip.BulkData.Unlock();
+
+    LoadedLegendTexture->NeverStream = true;
+    LoadedLegendTexture->Filter = TF_Bilinear;
+    LoadedLegendTexture->SRGB = true;
+    LoadedLegendTexture->UpdateResource();
+    HeatmapLegendGradient->SetBrushFromTexture(LoadedLegendTexture, true);
+}
+
 // Selects a saved run when its list row is clicked.
 void UTelemetryPanelWidget::HandleRunSelected(int32 RunIndex)
 {
@@ -810,7 +854,6 @@ void UTelemetryPanelWidget::HandleViewHeatmapClicked()
         HeatmapSummaryCard->SetVisibility(ESlateVisibility::Visible);
         HeatmapLegendCard->SetVisibility(ESlateVisibility::Visible);
         HeatmapSummaryBox->ClearChildren();
-        HeatmapLegendBar->ClearChildren();
         HeatmapLegendTicks->ClearChildren();
 
         HeatmapSummaryBox->AddChildToVerticalBox(
@@ -830,23 +873,28 @@ void UTelemetryPanelWidget::HandleViewHeatmapClicked()
         }
 
         HeatmapLegendLabel->SetText(FText::FromString(DisplayInfo.LegendLabel));
-        for (const FString& ColorCode : DisplayInfo.LegendColorsTopToBottom)
-        {
-            UBorder* ColorSegment = WidgetTree->ConstructWidget<UBorder>();
-            ColorSegment->SetBrush(FSlateColorBrush(Hex(*ColorCode)));
-            if (UVerticalBoxSlot* ColorSlot = HeatmapLegendBar->AddChildToVerticalBox(ColorSegment))
-            {
-                ColorSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
-            }
-        }
+        UpdateHeatmapLegendGradient(DisplayInfo.LegendColorsTopToBottom);
 
-        for (const FString& TickText : DisplayInfo.LegendTicksTopToBottom)
+        for (int32 TickIndex = 0; TickIndex < DisplayInfo.LegendTicksTopToBottom.Num(); ++TickIndex)
         {
-            UTextBlock* Tick = MakeText(TickText, 11, TextPrimary, FName("Medium"));
+            if (TickIndex > 0)
+            {
+                USpacer* TickSpacer = WidgetTree->ConstructWidget<USpacer>();
+                if (UVerticalBoxSlot* SpacerSlot = HeatmapLegendTicks->AddChildToVerticalBox(TickSpacer))
+                {
+                    SpacerSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+                }
+            }
+
+            UTextBlock* Tick = MakeText(
+                DisplayInfo.LegendTicksTopToBottom[TickIndex],
+                11,
+                TextPrimary,
+                FName("Medium")
+            );
             if (UVerticalBoxSlot* TickSlot = HeatmapLegendTicks->AddChildToVerticalBox(Tick))
             {
-                TickSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
-                TickSlot->SetVerticalAlignment(VAlign_Top);
+                TickSlot->SetSize(FSlateChildSize(ESlateSizeRule::Automatic));
             }
         }
     }

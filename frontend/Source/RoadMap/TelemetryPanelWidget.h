@@ -87,6 +87,9 @@ private:
     // Displays a normal or error status message at the bottom of the panel.
     void SetStatus(const FString& Message, bool bIsError = false);
 
+    // Builds a smooth native legend texture from the metric's ordered colors.
+    void UpdateHeatmapLegendGradient(const TArray<FString>& ColorsTopToBottom);
+
     // Selects a saved run when its list row is clicked.
     void HandleRunSelected(int32 RunIndex);
 
@@ -143,7 +146,7 @@ private:
     TObjectPtr<UVerticalBox> HeatmapSummaryBox;
 
     UPROPERTY()
-    TObjectPtr<UVerticalBox> HeatmapLegendBar;
+    TObjectPtr<UImage> HeatmapLegendGradient;
 
     UPROPERTY()
     TObjectPtr<UVerticalBox> HeatmapLegendTicks;
@@ -159,6 +162,9 @@ private:
 
     UPROPERTY()
     TObjectPtr<UTexture2D> LoadedHeatmapTexture;
+
+    UPROPERTY()
+    TObjectPtr<UTexture2D> LoadedLegendTexture;
 
     UPROPERTY()
     TArray<TObjectPtr<UTelemetryRunButton>> RunRows;
