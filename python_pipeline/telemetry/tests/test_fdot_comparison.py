@@ -104,6 +104,7 @@ def test_compare_writes_csv_and_json_summary(tmp_path):
 def test_selected_run_reports_missing_map_mapping(tmp_path, monkeypatch):
     run_folder = make_saved_run(tmp_path)
     monkeypatch.setattr(run_pipeline, "OUTPUT_DIR", tmp_path / "outputs")
+    monkeypatch.setattr(run_pipeline, "TELEMETRY_DIR", tmp_path / "telemetry")
 
     result = run_pipeline.compare_run_with_fdot(run_folder.name)
 
@@ -122,6 +123,7 @@ def test_legacy_flat_run_uses_unknown_map_id(tmp_path, monkeypatch):
     )
     sample_simulation_metrics().to_csv(run_folder / "edge_metrics.csv", index=False)
     monkeypatch.setattr(run_pipeline, "OUTPUT_DIR", tmp_path / "outputs")
+    monkeypatch.setattr(run_pipeline, "TELEMETRY_DIR", tmp_path / "telemetry")
 
     result = run_pipeline.compare_run_with_fdot(run_folder.name)
 
