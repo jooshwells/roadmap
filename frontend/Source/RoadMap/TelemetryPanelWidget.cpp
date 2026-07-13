@@ -1,5 +1,6 @@
 #include "TelemetryPanelWidget.h"
 
+#include "Async/Async.h"
 #include "Blueprint/WidgetTree.h"
 #include "Brushes/SlateColorBrush.h"
 #include "Brushes/SlateImageBrush.h"
@@ -496,16 +497,17 @@ void UTelemetryPanelWidget::BuildWidgetTree()
         FDOTHelpSlot->SetPadding(FMargin(0.0f, 7.0f, 0.0f, 18.0f));
     }
 
-    UButton* CompareFDOTButton = MakeActionButton(TEXT("Run FDOT Comparison"), true);
+    CompareFDOTButton = MakeActionButton(TEXT("Run FDOT Comparison"), true);
     CompareFDOTButton->OnClicked.AddDynamic(this, &UTelemetryPanelWidget::HandleCompareFDOTClicked);
     FDOTPanel->AddChildToVerticalBox(CompareFDOTButton);
 
-    UButton* ViewFDOTMapButton = MakeActionButton(TEXT("View Comparison Map"), false);
+    ViewFDOTMapButton = MakeActionButton(TEXT("View Comparison Map"), false);
     ViewFDOTMapButton->OnClicked.AddDynamic(this, &UTelemetryPanelWidget::HandleViewFDOTHeatmapClicked);
     if (UVerticalBoxSlot* ViewFDOTMapSlot = FDOTPanel->AddChildToVerticalBox(ViewFDOTMapButton))
     {
         ViewFDOTMapSlot->SetPadding(FMargin(0.0f, 10.0f, 0.0f, 0.0f));
     }
+    RefreshHeatmapActionState();
 
     FDOTValidationText = MakeText(
         TEXT("Select a saved run, then start the comparison. Technical measures will be explained alongside the result."),
@@ -980,10 +982,11 @@ void UTelemetryPanelWidget::RefreshHeatmapActionState()
 {
     const bool bHasSelectedRun = SavedRuns.IsValidIndex(SelectedRunIndex);
     const bool bHasExistingHeatmap = bHasSelectedRun && DoesSelectedHeatmapExist();
+    const bool bCanStartTask = bHasSelectedRun && !bTelemetryTaskRunning;
 
     if (PrimaryHeatmapButton)
     {
-        PrimaryHeatmapButton->SetIsEnabled(bHasSelectedRun);
+        PrimaryHeatmapButton->SetIsEnabled(bCanStartTask);
     }
     if (PrimaryHeatmapButtonText)
     {
@@ -993,15 +996,60 @@ void UTelemetryPanelWidget::RefreshHeatmapActionState()
     }
     if (RegenerateHeatmapButton)
     {
-        RegenerateHeatmapButton->SetIsEnabled(bHasSelectedRun);
+        RegenerateHeatmapButton->SetIsEnabled(bCanStartTask);
         RegenerateHeatmapButton->SetVisibility(
             bHasExistingHeatmap ? ESlateVisibility::Visible : ESlateVisibility::Collapsed
         );
+    }
+    if (CompareFDOTButton)
+    {
+        CompareFDOTButton->SetIsEnabled(bCanStartTask);
+    }
+    if (ViewFDOTMapButton)
+    {
+        ViewFDOTMapButton->SetIsEnabled(bCanStartTask);
+    }
+}
+
+// Keep task inputs fixed and prevent a second Python process from starting.
+void UTelemetryPanelWidget::SetTelemetryTaskRunning(bool bIsRunning)
+{
+    bTelemetryTaskRunning = bIsRunning;
+    RefreshHeatmapActionState();
+
+    if (MetricComboBox)
+    {
+        MetricComboBox->SetIsEnabled(!bIsRunning);
+    }
+    if (FocusComboBox)
+    {
+        FocusComboBox->SetIsEnabled(!bIsRunning);
+    }
+    if (CompareFDOTButton)
+    {
+        CompareFDOTButton->SetIsEnabled(!bIsRunning && SavedRuns.IsValidIndex(SelectedRunIndex));
+    }
+    if (ViewFDOTMapButton)
+    {
+        ViewFDOTMapButton->SetIsEnabled(!bIsRunning && SavedRuns.IsValidIndex(SelectedRunIndex));
+    }
+
+    for (UTelemetryRunButton* RunRow : RunRows)
+    {
+        if (RunRow)
+        {
+            RunRow->SetIsEnabled(!bIsRunning);
+        }
     }
 }
 
 void UTelemetryPanelWidget::HandleRunSelected(int32 RunIndex)
 {
+    if (bTelemetryTaskRunning)
+    {
+        return;
+    }
+
     if (!SavedRuns.IsValidIndex(RunIndex))
     {
         SetStatus(TEXT("The selected telemetry run is no longer available."), true);
@@ -1029,6 +1077,12 @@ void UTelemetryPanelWidget::HandleCloseClicked()
 
 void UTelemetryPanelWidget::HandleRefreshClicked()
 {
+    if (bTelemetryTaskRunning)
+    {
+        SetStatus(TEXT("Wait for the current telemetry task to finish before refreshing runs."));
+        return;
+    }
+
     RefreshRunList();
 }
 
@@ -1099,6 +1153,11 @@ void UTelemetryPanelWidget::HandlePrimaryHeatmapClicked()
 
 void UTelemetryPanelWidget::HandleGenerateHeatmapClicked()
 {
+    if (bTelemetryTaskRunning)
+    {
+        return;
+    }
+
     if (!SavedRuns.IsValidIndex(SelectedRunIndex))
     {
         SetStatus(TEXT("Select a saved run before generating a heatmap."), true);
@@ -1110,17 +1169,56 @@ void UTelemetryPanelWidget::HandleGenerateHeatmapClicked()
         SelectedMetric = TEXT("bottleneck_score");
     }
 
-    SetStatus(TEXT("Generating the selected heatmap. This may take several seconds..."));
+    const FString RunId = SavedRuns[SelectedRunIndex].RunId;
+    const FString Metric = SelectedMetric;
+    const FString Focus = SelectedFocus;
+    const TWeakObjectPtr<UTelemetryPanelWidget> WeakThis(this);
 
-    FString ResultJson;
-    if (!UTelemetryPanelBridge::GenerateSelectedHeatmap(
-            SavedRuns[SelectedRunIndex].RunId,
-            SelectedMetric,
-            SelectedFocus,
+    SetTelemetryTaskRunning(true);
+    SetStatus(TEXT("Generating the selected heatmap in the background..."));
+
+    Async(EAsyncExecution::ThreadPool, [WeakThis, RunId, Metric, Focus]()
+    {
+        FString ResultJson;
+        const bool bSucceeded = UTelemetryPanelBridge::GenerateSelectedHeatmap(
+            RunId,
+            Metric,
+            Focus,
             ResultJson
-        ))
+        );
+
+        AsyncTask(ENamedThreads::GameThread, [WeakThis, RunId, Metric, Focus, bSucceeded]()
+        {
+            if (WeakThis.IsValid())
+            {
+                WeakThis->FinishHeatmapGeneration(RunId, Metric, Focus, bSucceeded);
+            }
+        });
+    });
+}
+
+void UTelemetryPanelWidget::FinishHeatmapGeneration(
+    const FString& RunId,
+    const FString& Metric,
+    const FString& Focus,
+    bool bSucceeded
+)
+{
+    SetTelemetryTaskRunning(false);
+
+    if (!bSucceeded)
     {
         SetStatus(TEXT("Heatmap generation failed. Check the telemetry pipeline output."), true);
+        return;
+    }
+
+    const bool bSameSelection = SavedRuns.IsValidIndex(SelectedRunIndex) &&
+        SavedRuns[SelectedRunIndex].RunId == RunId &&
+        SelectedMetric == Metric &&
+        SelectedFocus == Focus;
+    if (!bSameSelection)
+    {
+        SetStatus(TEXT("Heatmap generation completed for the previously selected run."));
         return;
     }
 
@@ -1131,21 +1229,59 @@ void UTelemetryPanelWidget::HandleGenerateHeatmapClicked()
 // Runs and displays the map-specific FDOT validation for the selected run.
 void UTelemetryPanelWidget::HandleCompareFDOTClicked()
 {
+    if (bTelemetryTaskRunning)
+    {
+        return;
+    }
+
     if (!SavedRuns.IsValidIndex(SelectedRunIndex))
     {
         SetStatus(TEXT("Select a saved run before comparing with FDOT."), true);
         return;
     }
 
-    SetStatus(TEXT("Comparing the selected run with FDOT design-hour estimates..."));
+    const FString RunId = SavedRuns[SelectedRunIndex].RunId;
+    const TWeakObjectPtr<UTelemetryPanelWidget> WeakThis(this);
 
-    FTelemetryFDOTValidationSummary Summary;
-    FString ErrorMessage;
-    if (!UTelemetryPanelBridge::CompareSelectedRunWithFDOT(
-            SavedRuns[SelectedRunIndex].RunId,
+    SetTelemetryTaskRunning(true);
+    SetStatus(TEXT("Comparing with FDOT in the background..."));
+
+    Async(EAsyncExecution::ThreadPool, [WeakThis, RunId]()
+    {
+        FTelemetryFDOTValidationSummary Summary;
+        FString ErrorMessage;
+        const bool bSucceeded = UTelemetryPanelBridge::CompareSelectedRunWithFDOT(
+            RunId,
             Summary,
             ErrorMessage
-        ))
+        );
+
+        AsyncTask(ENamedThreads::GameThread, [
+            WeakThis,
+            RunId,
+            bSucceeded,
+            Summary = MoveTemp(Summary),
+            ErrorMessage = MoveTemp(ErrorMessage)
+        ]()
+        {
+            if (WeakThis.IsValid())
+            {
+                WeakThis->FinishFDOTComparison(RunId, bSucceeded, Summary, ErrorMessage);
+            }
+        });
+    });
+}
+
+void UTelemetryPanelWidget::FinishFDOTComparison(
+    const FString& RunId,
+    bool bSucceeded,
+    const FTelemetryFDOTValidationSummary& Summary,
+    const FString& ErrorMessage
+)
+{
+    SetTelemetryTaskRunning(false);
+
+    if (!bSucceeded)
     {
         if (FDOTValidationText)
         {
@@ -1153,6 +1289,12 @@ void UTelemetryPanelWidget::HandleCompareFDOTClicked()
             FDOTValidationText->SetColorAndOpacity(FSlateColor(ErrorColor));
         }
         SetStatus(ErrorMessage, true);
+        return;
+    }
+
+    if (!SavedRuns.IsValidIndex(SelectedRunIndex) || SavedRuns[SelectedRunIndex].RunId != RunId)
+    {
+        SetStatus(TEXT("FDOT comparison completed for the previously selected run."));
         return;
     }
 

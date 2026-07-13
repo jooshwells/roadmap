@@ -91,6 +91,19 @@ private:
     void RefreshWorkspaceTabStyles();
     void RefreshHeatmapActionState();
     bool DoesSelectedHeatmapExist() const;
+    void SetTelemetryTaskRunning(bool bIsRunning);
+    void FinishHeatmapGeneration(
+        const FString& RunId,
+        const FString& Metric,
+        const FString& Focus,
+        bool bSucceeded
+    );
+    void FinishFDOTComparison(
+        const FString& RunId,
+        bool bSucceeded,
+        const FTelemetryFDOTValidationSummary& Summary,
+        const FString& ErrorMessage
+    );
 
     // Widget event handlers.
     void HandleRunSelected(int32 RunIndex);
@@ -140,6 +153,7 @@ private:
     FString SelectedFocus = TEXT("all");
     FString ActiveMapName;
     int32 ActiveWorkspaceTab = 0;
+    bool bTelemetryTaskRunning = false;
 
     UPROPERTY()
     TObjectPtr<UVerticalBox> RunListBox;
@@ -182,6 +196,12 @@ private:
 
     UPROPERTY()
     TObjectPtr<UButton> RegenerateHeatmapButton;
+
+    UPROPERTY()
+    TObjectPtr<UButton> CompareFDOTButton;
+
+    UPROPERTY()
+    TObjectPtr<UButton> ViewFDOTMapButton;
 
     UPROPERTY()
     TObjectPtr<UOverlay> HeatmapViewer;
