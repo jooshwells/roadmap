@@ -13,8 +13,12 @@ dist
 # Simulation input (changes every run)
 data/simulation/
 
-# FDOT source data (large reference files)
-data/fdot/
+# FDOT source data stays local, but generated per-map edge mappings are small
+# runtime inputs that need to be shared with the project.
+data/fdot/*
+!data/fdot/*/
+data/fdot/*/*
+!data/fdot/*/fdot_edge_mapping.csv
 
 # VS Code
 .vscode/

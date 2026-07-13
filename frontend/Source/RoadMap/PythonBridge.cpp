@@ -9,16 +9,18 @@
 bool PythonBridge::RunTelemetryAnalysis(
     const FString& PipelineExePath,
     const FString& SimulationCsvPath,
-    const FString& NetworkGraphCsvPath,
-    const FString& EdgesJsonlPath
+    const FString& NodesJsonlPath,
+    const FString& EdgesJsonlPath,
+    const FString& MapName
 )
 {
-    // Positional args: simulation CSV, network-graph CSV, active edges JSONL.
+    // Positional args: simulation CSV, active nodes/edges JSONL, active roadmap name.
     FString Args = FString::Printf(
-        TEXT("\"%s\" \"%s\" \"%s\""),
+        TEXT("\"%s\" \"%s\" \"%s\" \"%s\""),
         *SimulationCsvPath,
-        *NetworkGraphCsvPath,
-        *EdgesJsonlPath
+        *NodesJsonlPath,
+        *EdgesJsonlPath,
+        *MapName.ReplaceCharWithEscapedChar()
     );
 
     UE_LOG(LogTemp, Warning, TEXT("Starting telemetry executable in background..."));

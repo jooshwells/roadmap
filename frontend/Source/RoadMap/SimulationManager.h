@@ -100,9 +100,6 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Simulation")
 	void SetSimulationSpeed(float Multiplier);
 
-	UFUNCTION(BlueprintCallable, Category = "Heatmaps")
-	void ShowHeatmapOverlay();
-
 	// Creates a button in the Unreal Editor to generate the map
 	UFUNCTION(CallInEditor, Category = "Simulation Setup")
 
@@ -163,16 +160,6 @@ protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
-
-	// Widget to display telemetry heatmaps.
-	UPROPERTY(EditAnywhere, Category = "Heatmaps")
-	TSubclassOf<UUserWidget> HeatmapOverlayClass;
-
-	UPROPERTY(EditAnywhere, Category = "Heatmaps")
-	TSubclassOf<UUserWidget> TelemetryStatusClass;
-
-	UPROPERTY()
-	UUserWidget* TelemetryStatusWidget;
 
 	bool bWaitingForTelemetry = false;
 
