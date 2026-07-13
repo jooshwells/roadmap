@@ -14,6 +14,11 @@
 struct IntersectionState {
     std::queue<VehicleState*> waitQueue;
     VehicleState* currentOccupant = nullptr;
+    // Watchdog: seconds the current occupant has held the intersection.
+    // Released past a generous ceiling so a wedged occupant (downstream
+    // spillback, stale queue entry) degrades to a slow intersection instead
+    // of freezing every approach forever.
+    float occupantHeldTime = 0.0f;
     float lightTimer = 0.0f;
     
     // default to phase 2 N/S straight 
@@ -29,6 +34,9 @@ class PhysicsProcessor
     public:
         inline void setNetwork(Network* net) { network = net; } // physics can read nodes now
         std::string getUpcomingTurnDirection(VehicleState* vhcl); // testing turn lanes
+        // Turn made at route node 'nodeIndex' (between the edges into and out
+        // of it); getUpcomingTurnDirection is this at the current edge's end.
+        std::string getTurnDirectionAt(VehicleState* vhcl, size_t nodeIndex);
 
         void update(float dt);
         float IDM(VehicleState* vhcl, VehicleState* leader, bool mobil); // now takes leader for MOBIL to use
@@ -73,7 +81,20 @@ class PhysicsProcessor
         std::map<std::pair<Road*, int>, VehicleState*> ghostVehicles; // ghost vehicles for each lane in intersection
         
         bool canVehicleEnter(VehicleState* vhcl, Node* destNode);
+        // Sets the frame's desired speed: the next road's speed limit while
+        // crossing a junction box (scaled down for turning movements, so a
+        // turn onto a fast arterial sweeps faster than one into a side
+        // street), the current road's limit everywhere else.
+        void applyJunctionTargetSpeed(VehicleState* vhcl);
+        // True when vhcl is at destNode's stop line with no same-lane car
+        // between it and the line -- the only state from which a granted car
+        // can actually enter the junction box.
+        bool isAtStopLine(VehicleState* vhcl, Node* destNode);
         void updateIntersections(float dt);
+        // Groups a light's incoming edges into the two signal axes; called for
+        // every TRAFFIC_LIGHT node at construction and lazily for nodes added
+        // at runtime.
+        void initializeLightAxes(Node* node, IntersectionState& state);
         bool hasSafeGap(VehicleState* yieldingCar, Node* destNode, float criticalGapSeconds);
 };
 

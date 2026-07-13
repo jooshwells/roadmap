@@ -4,13 +4,79 @@
 #include "vehicle_state.h"
 #include "node.h"
 #include "road.h"
+#include "intersection_geometry.h"
 #include <vector>
 #include <math.h>
-#include <limits> 
+#include <limits>
 #include <iostream>
 #include <algorithm>
 
-PhysicsProcessor::PhysicsProcessor(Network* mapNetwork, VehicleSpatialHash* spatialObj) : network(mapNetwork), spatialHash(spatialObj), vehicleList(), vehicleUpdates() {}
+// Stop line for an edge entering a controlled node: the junction-box boundary
+// where the pavement ends and the sign/signal is planted, not the node center
+// at getLength(). Cars braking for getLength() halt in the middle of the
+// rendered intersection.
+static float stopLineArcPos(Network* network, const Road* road, const Node* destNode)
+{
+    return RoadIntersectionUtil::GetStopLineArcPos(
+        network, *road, *destNode, RoadIntersectionUtil::MedianGapMeters);
+}
+
+PhysicsProcessor::PhysicsProcessor(Network* mapNetwork, VehicleSpatialHash* spatialObj) : network(mapNetwork), spatialHash(spatialObj), vehicleList(), vehicleUpdates()
+{
+    // Create every traffic light's state up front so axis groupings are valid
+    // the first time a car queries the light (no one-frame "red fallback"),
+    // and so the frontend can render every fixture before traffic reaches it.
+    if (network != nullptr) {
+        for (const auto& pair : network->getNodes()) {
+            if (pair.second.type != Node::TRAFFIC_LIGHT) continue;
+            Node* node = network->getNode(pair.first);
+            if (node) initializeLightAxes(node, intersections[pair.first]);
+        }
+    }
+}
+
+// Group a traffic light's incoming edges into two opposing axes by compass
+// angle. Axis 0 holds the first edge and anything roughly opposite it; axis 1
+// gets the cross streets.
+void PhysicsProcessor::initializeLightAxes(Node* node, IntersectionState& state)
+{
+    state.isInitialized = true;
+
+    std::vector<std::pair<Road*, double>> edgeAngles;
+
+    for (uint64_t predNodeId : node->incomingEdgeNodeIds) {
+        Node* predNode = network->getNode(predNodeId);
+        if (!predNode) continue;
+        for (Road& edge : predNode->outgoingEdges) {
+            if (edge.getDest() == node->getId()) {
+                // Calculate incoming compass angle using atan2
+                double dx = node->getX() - predNode->getX();
+                double dy = node->getY() - predNode->getY();
+                double angle = atan2(dy, dx) * 180.0 / M_PI;
+                if (angle < 0) angle += 360.0;
+
+                edgeAngles.push_back({&edge, angle});
+            }
+        }
+    }
+
+    // Group roads into Axis 0 (Main Street) and Axis 1 (Cross Streets / T-Stems)
+    if (!edgeAngles.empty()) {
+        double baselineAngle = edgeAngles[0].second;
+        state.axisEdges[0].push_back(edgeAngles[0].first);
+
+        for (size_t i = 1; i < edgeAngles.size(); i++) {
+            double diff = std::abs(baselineAngle - edgeAngles[i].second);
+            if (diff > 180.0) diff = 360.0 - diff;
+
+            if (diff > 135.0) {
+                state.axisEdges[0].push_back(edgeAngles[i].first); // Opposite direction
+            } else {
+                state.axisEdges[1].push_back(edgeAngles[i].first); // Cross street
+            }
+        }
+    }
+}
 
 float PhysicsProcessor::getRouteSegmentLength(VehicleState* vhcl, int routeIndex) {
     // Safety bounds check (Fixed to prevent unsigned underflow)
@@ -136,35 +202,63 @@ void PhysicsProcessor::update(float dt)
             upcomingTurn = getUpcomingTurnDirection(vhcl);
         }
 
+        // Lane guidance from the edge's turn map: aim for the nearest lane
+        // that permits the upcoming movement (this also walks through-cars
+        // out of dedicated turn lanes). Edges without a map -- runtime roads
+        // before inference re-runs -- fall back to the old edge-of-road
+        // heuristic. Guidance firms up as the intersection nears.
+        uint8_t neededMovement = 0;
+        int guidedLane = currentLane;
+        bool haveGuidance = false;
+        if (distanceToIntersection < 150.0f) {
+            neededMovement = (upcomingTurn == "left")  ? TurnLane::Left
+                           : (upcomingTurn == "right") ? TurnLane::Right
+                                                       : TurnLane::Through;
+            int allowedLane = currentEdge->nearestLaneAllowing(currentLane, neededMovement);
+            if (allowedLane >= 0) {
+                guidedLane = allowedLane;
+                haveGuidance = true;
+            } else if (upcomingTurn == "left") {
+                guidedLane = 0;
+                haveGuidance = true;
+            } else if (upcomingTurn == "right") {
+                guidedLane = totalLanes - 1;
+                haveGuidance = true;
+            }
+        }
+        float urgency = 100.0f + std::max(0.0f, 150.0f - distanceToIntersection);
+
+        // Bias a candidate lane change toward the guided lane; when already
+        // in a valid lane, penalize drifting into one the movement can't be
+        // made from. Skips crash-vetoed (-999) candidates.
+        auto applyGuidance = [&](float incentive, int candidateLane) -> float {
+            if (!haveGuidance || incentive <= -500.0f) return incentive;
+            if (guidedLane == currentLane) {
+                if (!currentEdge->laneAllows(candidateLane, neededMovement)) incentive -= urgency;
+            } else if ((guidedLane < currentLane) == (candidateLane < currentLane)) {
+                incentive += urgency; // toward the required lane
+            } else {
+                incentive -= urgency; // away from it
+            }
+            return incentive;
+        };
+
         int bestLane = currentLane;
-        float threshold = 0.1f; 
+        float threshold = 0.1f;
         float bestIncentive = threshold;
 
         //check left
         if (currentLane > 0) {
-            float leftIncentive = MOBIL(vhcl, currentLane - 1);
-
-            // bias lane changing if needed and wont cause crash, might need to adjust -500 crash bias
-            if (leftIncentive > -500.0f) {
-                if (upcomingTurn == "left") leftIncentive += 100.0f;  // need to turn left
-                if (upcomingTurn == "right") leftIncentive -= 100.0f; // right turn, dont go left
-            }
+            float leftIncentive = applyGuidance(MOBIL(vhcl, currentLane - 1), currentLane - 1);
             if (leftIncentive > bestIncentive) {
                bestLane = currentLane - 1;
                bestIncentive = leftIncentive;
            }
        }
-    
+
        //check right
        if (currentLane < totalLanes - 1) {
-            float rightIncentive = MOBIL(vhcl, currentLane + 1);
-
-            // bias lane changing if needed and wont cause crash, might need to adjust -500 crash bias
-            if (rightIncentive > -500.0f) {
-                if (upcomingTurn == "left") rightIncentive -= 100.0f;  // left turn, dont go right
-                if (upcomingTurn == "right") rightIncentive += 100.0f; // need to turn right
-            }
-
+            float rightIncentive = applyGuidance(MOBIL(vhcl, currentLane + 1), currentLane + 1);
             if (rightIncentive > bestIncentive) {
                bestLane = currentLane + 1;
                bestIncentive = rightIncentive;
@@ -197,6 +291,8 @@ void PhysicsProcessor::update(float dt)
             vhcl->updateWaitTime(dt);
             continue; 
         }
+
+        applyJunctionTargetSpeed(vhcl);
 
         vhcl->setLeader(getLeader(vhcl, vhcl->getLane()));
         float acceleration = IDM(vhcl, vhcl->getLeader(), false);
@@ -321,8 +417,19 @@ void PhysicsProcessor::update(float dt)
                                 
                                 vhcl->setCurrentEdge(&edge);
 
-                                if (vhcl->getLane() >= edge.getLanes()) {
-                                    vhcl->setLane(edge.getLanes() - 1); 
+                                // Land in the lane the movement arrives in:
+                                // right turns enter the rightmost lane, left
+                                // turns the leftmost, through keeps its lane
+                                // (clamped to the new road's width). The
+                                // renderer picks the same lane for its blend
+                                // target, so the sweep and the physics agree.
+                                std::string turnMade = getTurnDirectionAt(vhcl, vhcl->currentRouteIndex);
+                                if (turnMade == "right") {
+                                    vhcl->setLane(edge.getLanes() - 1);
+                                } else if (turnMade == "left") {
+                                    vhcl->setLane(0);
+                                } else if (vhcl->getLane() >= edge.getLanes()) {
+                                    vhcl->setLane(edge.getLanes() - 1);
                                 }
 
                                 break;
@@ -445,6 +552,14 @@ float PhysicsProcessor::IDM(VehicleState* vhcl, VehicleState* leader, bool mobil
 
     float finalAccel = vhcl->getMaxAccel() * (1.0f - freeRoadRatio - interactionTerm);
 
+    // Standing-start kick: amplify drive acceleration (only positive accel,
+    // never braking) while the car is pulling away from a full stop, fading
+    // out as it gets up to speed. Mimics how real drivers launch from lights
+    // and stop signs rather than easing away at the free-road ramp.
+    if (finalAccel > 0.0f) {
+        finalAccel *= vhcl->getLaunchBoost();
+    }
+
     // Apply a realistic physical limit for a hard emergency stop.
     // Tires lose grip around -9.8 m/s^2. Clamping it here prevents math explosions
     // while still simulating heavy emergency braking telemetry.
@@ -562,22 +677,31 @@ VehicleState* PhysicsProcessor::getLeader(VehicleState* vhcl, int targetLane)
 
             // If the vehicle cannot enter the intersection...
             if (destNode != nullptr && !canVehicleEnter(vhcl, destNode)) {
-    
-                float distanceToStopLine = currentRoad->getLength() - vhcl->getPos();
-                
+
+                float stopLinePos = stopLineArcPos(network, currentRoad, destNode);
+                float distanceToStopLine = stopLinePos - vhcl->getPos();
+
                 // If the stop line is closer than the physical leader, yield to the stop line
                 if (distanceToStopLine > 0.0f && distanceToStopLine < physicalDistance) {
-                    
+
                     std::pair<Road*, int> laneKey = std::make_pair(currentRoad, vhcl->getLane());
-                    
+
                     if (ghostVehicles.find(laneKey) == ghostVehicles.end()) {
                         IDMParameters dummyParams = {1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 0.0f};
-                        ghostVehicles[laneKey] = new VehicleState(0, 0, 0.0f, (float)currentRoad->getLength(), vhcl->getLane(), dummyParams);
+                        VehicleState* ghost = new VehicleState(0, 0, 0.0f, stopLinePos, vhcl->getLane(), dummyParams);
+                        // calculateTrueGap locates a leader by its edge pointer;
+                        // without an edge the ghost reads as "not on the route"
+                        // and the gap comes back 9999, so nothing brakes for it.
+                        ghost->setCurrentEdge(currentRoad);
+                        ghostVehicles[laneKey] = ghost;
                     }
-                
+
                     VehicleState* ghost = ghostVehicles[laneKey];
+                    // Runtime road edits can change lane counts at the node and
+                    // move the junction-box edge, so refresh a cached ghost.
+                    ghost->setPos(stopLinePos);
                     ghost->currentRouteIndex = vhcl->currentRouteIndex;
-                    
+
                     return ghost;
                 }
             }
@@ -636,75 +760,62 @@ void PhysicsProcessor::updateIntersections(float dt)
         }
         // check if there is a car already in the intersection
         if (state.currentOccupant != nullptr) {
-            
+            state.occupantHeldTime += dt;
+
             // deletion check
             if (state.currentOccupant->isMarkedForDeletion) {
-                state.currentOccupant = nullptr; 
-            } 
+                state.currentOccupant = nullptr;
+            }
             // check if car cleared intersection
             else {
                 Road* currentEdge = state.currentOccupant->getCurrentEdge();
                 if (currentEdge) {
                     if (currentEdge->getDest() != nodeId || state.currentOccupant->getPos() > currentEdge->getLength() + 5.0f) {
                         if (state.currentOccupant->getPos() > 5.0f) {
-                            state.currentOccupant = nullptr; 
+                            state.currentOccupant = nullptr;
                         }
                     }
+                }
+
+                // Watchdog: a normal grant-to-clear traversal takes a few
+                // seconds even for a truck from a standstill. Anything held
+                // far longer is wedged (blocked exit edge, car that slipped
+                // through without clearing) -- release it so the rest of the
+                // intersection keeps flowing. The released car simply
+                // re-queues from the stop line if it still needs to cross.
+                if (state.currentOccupant != nullptr && state.occupantHeldTime > 12.0f) {
+                    state.currentOccupant = nullptr;
                 }
             }
         }
 
-        // check queue for deleted cars
-        while (!state.waitQueue.empty() && state.waitQueue.front()->isMarkedForDeletion) {
-            state.waitQueue.pop(); 
-        }
-        // pop queue
-        if (state.currentOccupant == nullptr && !state.waitQueue.empty()) {
-            state.currentOccupant = state.waitQueue.front();
-            state.waitQueue.pop();
+        // pop queue: grant only to a car actually waiting at its stop line
+        // with a clear path into the box. Entries that queued and then got
+        // boxed in behind a non-occupant (lane change, follower queueing
+        // before its leader) or already drove through are discarded; they
+        // re-queue once they are genuinely first at the line.
+        if (state.currentOccupant == nullptr) {
+            while (!state.waitQueue.empty()) {
+                VehicleState* candidate = state.waitQueue.front();
+                state.waitQueue.pop();
+
+                if (candidate->isMarkedForDeletion) continue;
+                if (!isAtStopLine(candidate, node)) continue;
+
+                state.currentOccupant = candidate;
+                state.occupantHeldTime = 0.0f;
+                break;
+            }
         }
     }
         
         // traffic light logic, working on multi directional phases
         else if (node->type == Node::TRAFFIC_LIGHT) {
-            
+
+            // Lights are initialized in the constructor; this covers nodes
+            // created after startup (e.g. runtime road edits).
             if (!state.isInitialized) {
-                state.isInitialized = true;
-                
-                std::vector<std::pair<Road*, double>> edgeAngles;
-                
-                for (uint64_t predNodeId : node->incomingEdgeNodeIds) {
-                    Node* predNode = network->getNode(predNodeId);
-                    if (!predNode) continue;
-                    for (Road& edge : predNode->outgoingEdges) {
-                        if (edge.getDest() == nodeId) {
-                            // Calculate incoming compass angle using atan2
-                            double dx = node->getX() - predNode->getX();
-                            double dy = node->getY() - predNode->getY();
-                            double angle = atan2(dy, dx) * 180.0 / M_PI; 
-                            if (angle < 0) angle += 360.0;
-                            
-                            edgeAngles.push_back({&edge, angle});
-                        }
-                    }
-                }
-                
-                // Group roads into Axis 0 (Main Street) and Axis 1 (Cross Streets / T-Stems)
-                if (!edgeAngles.empty()) {
-                    double baselineAngle = edgeAngles[0].second;
-                    state.axisEdges[0].push_back(edgeAngles[0].first);
-                    
-                    for (size_t i = 1; i < edgeAngles.size(); i++) {
-                        double diff = std::abs(baselineAngle - edgeAngles[i].second);
-                        if (diff > 180.0) diff = 360.0 - diff;
-                        
-                        if (diff > 135.0) {
-                            state.axisEdges[0].push_back(edgeAngles[i].first); // Opposite direction
-                        } else {
-                            state.axisEdges[1].push_back(edgeAngles[i].first); // Cross street
-                        }
-                    }
-                }
+                initializeLightAxes(node, state);
             }
 
             // new 10 phase traffic lights
@@ -759,6 +870,62 @@ void PhysicsProcessor::updateIntersections(float dt)
         }
     }
 }
+// The junction-box crossing is rendered at the car's physical speed, so the
+// pace a turn "plays" at is whatever speed target the car carries through the
+// box. Derive that target from the road being turned onto: through movements
+// adopt the next road's limit outright, turns take a fraction of it -- which
+// makes a right onto a fast arterial sweep visibly quicker than one into a
+// residential street. Outside any box the target is simply the current road's
+// limit (previously that reset only happened at edge transitions).
+void PhysicsProcessor::applyJunctionTargetSpeed(VehicleState* vhcl)
+{
+    if (network == nullptr) return;
+
+    Road* currentEdge = vhcl->getCurrentEdge();
+    const size_t i = vhcl->currentRouteIndex;
+    if (!currentEdge || vhcl->currentRoute.empty() || i + 1 >= vhcl->currentRoute.size()) return;
+
+    auto turnTarget = [](const std::string& turn, double limit) -> float {
+        const float lim = static_cast<float>(limit);
+        if (turn == "left")  return std::clamp(lim * 0.55f, 3.5f, lim);
+        if (turn == "right") return std::clamp(lim * 0.45f, 3.5f, lim);
+        return lim;
+    };
+
+    // Crossing the box at the far end of this edge: target the next road.
+    Node* destNode = network->getNode(currentEdge->getDest());
+    if (destNode && i + 2 < vhcl->currentRoute.size() &&
+        vhcl->getPos() > stopLineArcPos(network, currentEdge, destNode))
+    {
+        for (Road& next : destNode->outgoingEdges) {
+            if (next.getDest() == vhcl->currentRoute[i + 2]) {
+                vhcl->setDesiredSpeed(turnTarget(getTurnDirectionAt(vhcl, i + 1), next.getSpeedLimit()));
+                return;
+            }
+        }
+    }
+
+    // Just crossed a node: still inside the entry half of that box.
+    Node* originNode = network->getNode(currentEdge->getOriginId());
+    if (originNode && destNode && i > 0)
+    {
+        float sbStart = RoadIntersectionUtil::GetNodeSetbackMeters(
+            network, *originNode, RoadIntersectionUtil::MedianGapMeters);
+        float sbEnd = RoadIntersectionUtil::GetNodeSetbackMeters(
+            network, *destNode, RoadIntersectionUtil::MedianGapMeters);
+        RoadIntersectionUtil::ClampSetbacksToLength(
+            static_cast<float>(currentEdge->getLength()), sbStart, sbEnd);
+
+        if (vhcl->getPos() < sbStart) {
+            vhcl->setDesiredSpeed(turnTarget(getTurnDirectionAt(vhcl, i), currentEdge->getSpeedLimit()));
+            return;
+        }
+    }
+
+    // Normal driving: track the current road's limit.
+    vhcl->setDesiredSpeed(static_cast<float>(currentEdge->getSpeedLimit()));
+}
+
 bool PhysicsProcessor::canVehicleEnter(VehicleState* vhcl, Node* destNode)
 {   
     // destNode represents intersection at end of a road
@@ -784,7 +951,14 @@ bool PhysicsProcessor::canVehicleEnter(VehicleState* vhcl, Node* destNode)
         }
 
         if (!inQueue) {
-            state.waitQueue.push(vhcl);
+            // Only claim a spot after a full stop at the front of the lane.
+            // Joining while rolling anywhere within the approach let a
+            // follower enter the FIFO before the car ahead of it; granting
+            // that follower occupancy deadlocks the whole intersection (it
+            // can never reach the box, so it never clears).
+            if (vhcl->getSpeed() < 0.5f && isAtStopLine(vhcl, destNode)) {
+                state.waitQueue.push(vhcl);
+            }
         }
         return false; // car cannot enter
     }
@@ -820,11 +994,31 @@ bool PhysicsProcessor::canVehicleEnter(VehicleState* vhcl, Node* destNode)
             }
         }
 
+        // YELLOW: dilemma-zone handling. Without this, the instant a green
+        // flips to yellow every approaching car -- even one a few meters from
+        // the line at full speed -- gets a zero-speed ghost at the stop line
+        // and slams into the -10 m/s^2 clamp. If the car cannot stop with
+        // firm-but-comfortable braking, let it carry the permissions of the
+        // green phase this yellow follows; otherwise it stops like a red.
+        bool isNSYellow = (state.currentPhase == 1 || state.currentPhase == 3);
+        bool isEWYellow = (state.currentPhase == 6 || state.currentPhase == 8);
+        if ((myAxis == 0 && isNSYellow) || (myAxis == 1 && isEWYellow)) {
+            float distToLine = myRoad ? stopLineArcPos(network, myRoad, destNode) - vhcl->getPos() : -1.0f;
+            float comfortableBrake = vhcl->getSafeBrakePower() * 2.0f;
+            float speed = vhcl->getSpeed();
+            if (distToLine > 0.0f && speed * speed > 2.0f * comfortableBrake * distToLine) {
+                bool protectedLeftYellow = (state.currentPhase == 1 || state.currentPhase == 6);
+                if (protectedLeftYellow) return (turn == "left");
+                if (turn == "left") return hasSafeGap(vhcl, destNode, 5.0f);
+                return true;
+            }
+        }
+
         // RED LIGHT FALLBACK: Check for Right-on-Red
         if (turn == "right" && vhcl->getSpeed() < 1.0f) {
             return hasSafeGap(vhcl, destNode, 4.5f);
         }
-        
+
         return false; // Wait for green
     }
     // yield stops, uses major and minor road classification
@@ -852,37 +1046,56 @@ bool PhysicsProcessor::canVehicleEnter(VehicleState* vhcl, Node* destNode)
     return true;
 }
 
-// looking into using cross product for determining when to turn
-std::string PhysicsProcessor::getUpcomingTurnDirection(VehicleState* vhcl) 
+// A car counts as "at the stop line" when it is on an edge into destNode,
+// within a short reach of the line (cars rest ~minGap behind it, up to ~4m
+// for trucks), and nothing in its lane sits between it and the line. This is
+// the only state from which a granted car can actually enter the junction,
+// so it gates both queue admission and the occupancy grant itself.
+bool PhysicsProcessor::isAtStopLine(VehicleState* vhcl, Node* destNode)
 {
-    // end of route, no turns (Safely preventing unsigned underflow)
-    if (vhcl->currentRouteIndex + 2 >= vhcl->currentRoute.size()) return "through";
+    Road* edge = vhcl->getCurrentEdge();
+    if (edge == nullptr || destNode == nullptr || edge->getDest() != destNode->getId()) return false;
 
-    uint64_t prevNodeId = vhcl->currentRoute[vhcl->currentRouteIndex];
-    uint64_t currNodeId = vhcl->currentRoute[vhcl->currentRouteIndex + 1];
-    uint64_t nextNodeId = vhcl->currentRoute[vhcl->currentRouteIndex + 2];
+    float distToLine = stopLineArcPos(network, edge, destNode) - vhcl->getPos();
+    if (distToLine > 6.0f) return false;
 
-    Node* prev = network->getNode(prevNodeId);
-    Node* curr = network->getNode(currNodeId);
-    Node* next = network->getNode(nextNodeId);
+    // Front-of-lane check: any same-lane car ahead on this edge (queued,
+    // creeping, or still crossing the box) means this car cannot move yet.
+    for (VehicleState* other : spatialHash->getVehiclesOnRoad(edge)) {
+        if (other == nullptr || other == vhcl || other->isMarkedForDeletion) continue;
+        if (other->getLane() != vhcl->getLane()) continue;
+        if (other->getPos() > vhcl->getPos()) return false;
+    }
+    return true;
+}
+
+// Turn direction at an arbitrary route node: the movement from the edge
+// entering route[nodeIndex] to the edge leaving it. Shared classifier from
+// intersection_geometry.h so lane inference, lane guidance, and rendering
+// all agree on what counts as a turn.
+std::string PhysicsProcessor::getTurnDirectionAt(VehicleState* vhcl, size_t nodeIndex)
+{
+    if (nodeIndex == 0 || nodeIndex + 1 >= vhcl->currentRoute.size()) return "through";
+
+    Node* prev = network->getNode(vhcl->currentRoute[nodeIndex - 1]);
+    Node* curr = network->getNode(vhcl->currentRoute[nodeIndex]);
+    Node* next = network->getNode(vhcl->currentRoute[nodeIndex + 1]);
 
     if (!prev || !curr || !next) return "through";
 
-    // current road
-    double v1x = curr->getX() - prev->getX();
-    double v1y = curr->getY() - prev->getY();
+    switch (RoadIntersectionUtil::ClassifyTurn(
+        curr->getX() - prev->getX(), curr->getY() - prev->getY(),
+        next->getX() - curr->getX(), next->getY() - curr->getY()))
+    {
+        case RoadIntersectionUtil::TurnDir::Left:  return "left";
+        case RoadIntersectionUtil::TurnDir::Right: return "right";
+        default:                                   return "through";
+    }
+}
 
-    // road after intersection
-    double v2x = next->getX() - curr->getX();
-    double v2y = next->getY() - curr->getY();
-
-    double crossProduct = (v1x * v2y) - (v1y * v2x);
-
-    // use product to dtermine left or right
-    if (crossProduct > 10.0) return "left";
-    if (crossProduct < -10.0) return "right";
-    
-    return "through"; // default to go straight
+std::string PhysicsProcessor::getUpcomingTurnDirection(VehicleState* vhcl)
+{
+    return getTurnDirectionAt(vhcl, vhcl->currentRouteIndex + 1);
 }
 
 // updated with spatial hash
@@ -947,7 +1160,7 @@ bool PhysicsProcessor::checkLeftTurnDemand(Node* node) {
         std::vector<VehicleState*> cars = spatialHash->getVehiclesOnRoad(incomingRoad);
         
         for (VehicleState* car : cars) {
-            float distToStopLine = incomingRoad->getLength() - car->getPos();
+            float distToStopLine = stopLineArcPos(network, incomingRoad, node) - car->getPos();
             
             // check if car is close to intersection and stopped
             if (distToStopLine > 0.0f && distToStopLine < 40.0f && car->getSpeed() < 1.0f) {

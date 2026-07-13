@@ -1,7 +1,7 @@
 #include "RoadNetworkVisualizer.h"
 #include "road.h"
 #include "node.h"
-#include "IntersectionGeometry.h"
+#include "intersection_geometry.h"
 #include "ProceduralMeshComponent.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "UObject/ConstructorHelpers.h"

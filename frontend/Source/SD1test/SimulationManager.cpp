@@ -164,6 +164,20 @@ void ASimulationManager::GenerateRoadsInEditor()
 		if (NetworkVisualizer)
 		{
 			NetworkVisualizer->BuildVisualNetwork(MyRoadNetwork, NodesPath, EdgesPath);
+
+			// 5. Place traffic lights / stop signs at controlled nodes, in the
+			// same Unreal space the road visualizer just set up.
+			UClass* ControlClass = TrafficControlVisualizerClass
+				? *TrafficControlVisualizerClass
+				: ATrafficControlVisualizer::StaticClass();
+			TrafficControlVisualizer = GetWorld()->SpawnActor<ATrafficControlVisualizer>(
+				ControlClass, FVector::ZeroVector, FRotator::ZeroRotator, SpawnParams);
+			if (TrafficControlVisualizer)
+			{
+				TrafficControlVisualizer->BuildTrafficControls(MyRoadNetwork,
+					NetworkVisualizer->OriginOffsetX, NetworkVisualizer->OriginOffsetY);
+			}
+
 			if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Green, TEXT("Roads Generated Successfully!"));
 		}
 	}
@@ -175,11 +189,17 @@ void ASimulationManager::GenerateRoadsInEditor()
 
 void ASimulationManager::ClearRoadsInEditor()
 {
-	// Destroy the visualizer actor if it exists
+	// Destroy the visualizer actors if they exist
 	if (NetworkVisualizer)
 	{
 		NetworkVisualizer->Destroy();
 		NetworkVisualizer = nullptr;
+	}
+
+	if (TrafficControlVisualizer)
+	{
+		TrafficControlVisualizer->Destroy();
+		TrafficControlVisualizer = nullptr;
 	}
 
 	// Free the C++ memory
@@ -232,6 +252,13 @@ void ASimulationManager::Tick(float DeltaTime)
 
 	float Alpha = Accumulator / FixedDelta;
 	UpdateVehicleVisuals(Alpha, StepsThisFrame > 0);
+
+	// Sync signal lamp colors with the sim's light phases. Only frames that
+	// actually stepped physics can have changed a phase.
+	if (StepsThisFrame > 0 && TrafficControlVisualizer)
+	{
+		TrafficControlVisualizer->UpdateLightStates(TrafficSimEngine->GetTrafficLightRenderStates());
+	}
 
 	// Debug
 	if (GEngine)

@@ -4,7 +4,7 @@
 #include "physics_processor.h"
 #include "traffic_manager.h"
 #include "dstarlite.h"
-#include "IntersectionGeometry.h"
+#include "intersection_geometry.h"
 #include "Misc/Paths.h"
 #include "HAL/FileManager.h"
 
@@ -106,8 +106,54 @@ void TrafficSimulation::Step(float dt)
     currentTime += dt;
 }
 
+std::vector<TrafficLightRenderState> TrafficSimulation::GetTrafficLightRenderStates()
+{
+    std::vector<TrafficLightRenderState> states;
+    if (!controller || !orlandoMap) return states;
+
+    for (const auto& pair : controller->getIntersections())
+    {
+        Node* node = orlandoMap->getNode(pair.first);
+        if (!node || node->type != Node::TRAFFIC_LIGHT) continue;
+
+        const IntersectionState& st = pair.second;
+
+        TrafficLightRenderState s;
+        s.nodeId = pair.first;
+
+        // Phase semantics live in PhysicsProcessor::updateIntersections:
+        // axis 0 runs on phases 0-3 (protected left, then straight), axis 1
+        // on phases 5-8; 4 and 9 are all-red clearance.
+        const int phase = st.currentPhase;
+        auto axisColor = [phase](int axis) -> uint8_t
+        {
+            const int greenA = (axis == 0) ? 0 : 5; // protected left green
+            const int greenB = (axis == 0) ? 2 : 7; // straight/right green
+            const int yellowA = (axis == 0) ? 1 : 6;
+            const int yellowB = (axis == 0) ? 3 : 8;
+            if (phase == greenA || phase == greenB) return TrafficLightRenderState::GREEN;
+            if (phase == yellowA || phase == yellowB) return TrafficLightRenderState::YELLOW;
+            return TrafficLightRenderState::RED;
+        };
+
+        for (int axis = 0; axis < 2; axis++)
+        {
+            s.axisColor[axis] = axisColor(axis);
+            s.axisOrigins[axis].reserve(st.axisEdges[axis].size());
+            for (Road* edge : st.axisEdges[axis])
+            {
+                if (edge) s.axisOrigins[axis].push_back(edge->getOriginId());
+            }
+        }
+
+        states.push_back(std::move(s));
+    }
+
+    return states;
+}
+
 // Example getter implementation:
-const std::vector<VehicleState*>& TrafficSimulation::GetActiveVehicles() const 
+const std::vector<VehicleState*>& TrafficSimulation::GetActiveVehicles() const
 {
     if (!controller)
     {
@@ -124,7 +170,7 @@ std::vector<VehicleRenderState> TrafficSimulation::GetVehicleRenderStates()
 
     if (!controller || !orlandoMap) return renderStates;
 
-    const float MEDIAN_GAP_METERS = 1.0f;
+    const float MEDIAN_GAP_METERS = RoadIntersectionUtil::MedianGapMeters;
     const float LANE_WIDTH = RoadIntersectionUtil::LaneWidthMeters;
 
     // A rendered point on (or between) road edges, in raw map coordinates.
@@ -181,6 +227,28 @@ std::vector<VehicleRenderState> TrafficSimulation::GetVehicleRenderStates()
         return a + d * s;
     };
 
+    // Lane a movement through node 'via' lands in on edge 'onto': right turns
+    // enter the rightmost lane, left turns the leftmost, through keeps the
+    // car's lane. Must match the physics snap at edge transition (PASS 2 in
+    // PhysicsProcessor::update) or the blend endpoint pops sideways the frame
+    // the car changes edges.
+    auto MovementLane = [&](Node* from, Node* via, Node* to, const Road* onto, float throughLane) -> float
+    {
+        switch (RoadIntersectionUtil::ClassifyTurn(
+            via->getX() - from->getX(), via->getY() - from->getY(),
+            to->getX() - via->getX(), to->getY() - via->getY()))
+        {
+            case RoadIntersectionUtil::TurnDir::Right:
+                return static_cast<float>(onto->getLanes() - 1);
+            case RoadIntersectionUtil::TurnDir::Left:
+                return 0.0f;
+            default:
+                break;
+        }
+        float maxLane = static_cast<float>(std::max(0, onto->getLanes() - 1));
+        return std::clamp(throughLane, 0.0f, maxLane);
+    };
+
     for (VehicleState* v : controller->getActiveVehicles())
     {
         if (!v) continue;
@@ -233,7 +301,7 @@ std::vector<VehicleRenderState> TrafficSimulation::GetVehicleRenderStates()
                 float sbNextEnd   = RoadIntersectionUtil::GetNodeSetbackMeters(orlandoMap, *nC, MEDIAN_GAP_METERS);
                 RoadIntersectionUtil::ClampSetbacksToLength(static_cast<float>(next->getLength()), sbNextStart, sbNextEnd);
 
-                float nextLane = ClampLaneToEdge(lane, next);
+                float nextLane = MovementLane(nA, nB, nC, next, lane);
                 EdgePoint exitPt, entryPt;
                 float denom = sbEnd + sbNextStart;
                 if (denom > 0.001f &&
@@ -260,7 +328,10 @@ std::vector<VehicleRenderState> TrafficSimulation::GetVehicleRenderStates()
                 float sbPrevEnd   = RoadIntersectionUtil::GetNodeSetbackMeters(orlandoMap, *nA, MEDIAN_GAP_METERS);
                 RoadIntersectionUtil::ClampSetbacksToLength(static_cast<float>(prev->getLength()), sbPrevStart, sbPrevEnd);
 
-                float prevLane = ClampLaneToEdge(lane, prev);
+                // Same movement rule as the physics snap: a turning car left
+                // the previous edge from the lane its turn departs from
+                // (rightmost for rights, leftmost for lefts).
+                float prevLane = MovementLane(nP, nA, nB, prev, lane);
                 EdgePoint exitPt, entryPt;
                 float denom = sbPrevEnd + sbStart;
                 if (denom > 0.001f &&
@@ -309,11 +380,15 @@ std::vector<VehicleRenderState> TrafficSimulation::GetVehicleRenderStates()
 void TrafficSimulation::AddRuntimeRoad(uint64_t startNodeId, uint64_t endNodeId, double destX, double destY, double lengthMeters, int lanes) {
     if (!orlandoMap) return;
 
-    // add new node from road editing
+    // add new node from road editing; "none" = uncontrolled (PASS_THROUGH)
     if (!orlandoMap->getNode(endNodeId)) {
-        orlandoMap->addNode(endNodeId, 0.0, 0.0, destX, destY);
+        orlandoMap->addNode(endNodeId, 0.0, 0.0, destX, destY, "none");
     }
 
     // add directed edge, adjust speed limit later
     orlandoMap->addDirectedEdge(startNodeId, endNodeId, lengthMeters, 15.646, lanes);
+
+    // A new edge changes which movements exist at both endpoints, so refresh
+    // the inferred per-lane turn maps (OSM-tagged edges are untouched).
+    orlandoMap->assignInferredTurnLanes();
 }

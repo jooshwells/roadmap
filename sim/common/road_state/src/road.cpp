@@ -58,6 +58,36 @@ bool Road::samplePointAt(double dist, double& outX, double& outY,
     return true;
 }
 
+void Road::setLaneTurns(std::vector<uint8_t> turns, bool fromOsm)
+{
+    if (static_cast<int>(turns.size()) != lanes) return; // reject desynced maps
+    laneTurns = std::move(turns);
+    laneTurnsFromOsm = fromOsm;
+}
+
+bool Road::laneAllows(int lane, uint8_t movement) const
+{
+    if (laneTurns.empty()) return true; // no data: fail open
+    if (lane < 0 || lane >= static_cast<int>(laneTurns.size())) return true;
+    return (laneTurns[lane] & movement) != 0;
+}
+
+int Road::nearestLaneAllowing(int fromLane, uint8_t movement) const
+{
+    if (laneTurns.empty()) return -1;
+    const int n = static_cast<int>(laneTurns.size());
+    fromLane = std::max(0, std::min(fromLane, n - 1));
+    if (laneTurns[fromLane] & movement) return fromLane;
+
+    for (int d = 1; d < n; d++) {
+        const int left = fromLane - d;
+        if (left >= 0 && (laneTurns[left] & movement)) return left;
+        const int right = fromLane + d;
+        if (right < n && (laneTurns[right] & movement)) return right;
+    }
+    return -1;
+}
+
 double Road::getDynamicCost() const {
     // Capacity roughly equals physical space: length / 7 meters per car * lanes.
     // We enforce a minimum capacity of 1.0 to prevent division by zero on tiny edge segments.

@@ -58,6 +58,12 @@ class VehicleState {
         inline float getSafeTimeHeadway() const   { return safeTimeHeadway; }
         inline VehicleState* getLeader() const    { return leader; }
         inline float getMaxAccel() const          { return maxAccel; }
+        // Standing-start multiplier for drive acceleration (never braking):
+        // drivers push notably harder pulling away from a full stop -- red
+        // light, stop sign -- than plain IDM's gentle free-road ramp. Arms
+        // after a genuine stop, pays out LaunchBoostFactor at standstill, and
+        // fades to 1x by LaunchBoostEndSpeed.
+        float getLaunchBoost() const;
         inline float getLength() const            { return m_length;}
         inline float getPoliteness() const        { return politeness; }
 
@@ -98,6 +104,17 @@ class VehicleState {
         float m_laneChangeElapsed = 0.0f;
         float m_laneChangeDuration = 0.0f;
         float m_laneChangeCooldown = 0.0f;
+
+        // Launch boost state (see getLaunchBoost). Arming uses a wider speed
+        // band than the wait-time threshold because a car held at a stop
+        // line creeps against its ghost leader (oscillating ~0-0.8 m/s)
+        // rather than resting at exactly zero -- that creep is still a stop.
+        static constexpr float LaunchBoostFactor   = 2.0f;
+        static constexpr float LaunchBoostEndSpeed = 9.0f;  // m/s, ~20 mph
+        static constexpr float LaunchArmSpeed      = 1.0f;  // m/s, counts as stopped
+        static constexpr float LaunchArmStopTime   = 0.5f;  // s below that to arm
+        float m_stopDuration = 0.0f;
+        bool  m_launchBoostArmed = false;
 
         // NEW: Telemetry state variables
         float m_acceleration = 0.0f;

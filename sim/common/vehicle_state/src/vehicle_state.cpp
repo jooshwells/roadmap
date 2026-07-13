@@ -1,4 +1,5 @@
 #include "vehicle_state.h"
+#include <algorithm>
 #include <iostream>
 
 void VehicleState::accelerate(float amount) 
@@ -33,12 +34,33 @@ void VehicleState::setAcceleration(float accel)
 }
 
 // NEW: Accumulate wait time if moving below the threshold (e.g., 0.5 m/s)
-void VehicleState::updateWaitTime(float dt, float speedThreshold) 
+// Also drives the launch-boost state machine: a sustained full stop arms the
+// boost, and it stays live until the car has accelerated past the boost's
+// fade-out speed. Slowing down again without fully stopping does not re-arm.
+void VehicleState::updateWaitTime(float dt, float speedThreshold)
 {
-    if (m_speed < speedThreshold) 
+    if (m_speed < speedThreshold)
     {
         m_waitTime += dt;
     }
+
+    if (m_speed < LaunchArmSpeed)
+    {
+        m_stopDuration += dt;
+        if (m_stopDuration >= LaunchArmStopTime) m_launchBoostArmed = true;
+    }
+    else
+    {
+        m_stopDuration = 0.0f;
+        if (m_speed >= LaunchBoostEndSpeed) m_launchBoostArmed = false;
+    }
+}
+
+float VehicleState::getLaunchBoost() const
+{
+    if (!m_launchBoostArmed || m_speed >= LaunchBoostEndSpeed) return 1.0f;
+    const float t = std::max(0.0f, m_speed) / LaunchBoostEndSpeed;
+    return LaunchBoostFactor - (LaunchBoostFactor - 1.0f) * t;
 }
 
 // NEW: Safely get the current road's ID

@@ -33,10 +33,21 @@ class Network {
         // 'geometry' is the optional OSM centerline polyline (map meters, y
         // sign-flipped to match Node coords). It may arrive in either point
         // order; it is oriented from->to and endpoint-snapped before storage.
+        // 'laneTurns' is the optional per-lane turn map parsed from OSM
+        // turn:lanes (TurnLane flags, one entry per lane, left to right);
+        // pass empty when the tag is null and assignInferredTurnLanes will
+        // fill the gap.
         void addDirectedEdge(uint64_t fromId, uint64_t toId, double dist, double speedLimit, int lanes,
-                             std::vector<RoadGeomPoint> geometry = {});
+                             std::vector<RoadGeomPoint> geometry = {},
+                             std::vector<uint8_t> laneTurns = {});
         void visualizeNetwork();
+        void applyDefaultTrafficControls();
         void calculateIntersectionPriorities();
+        // Fill in per-lane turn permissions for every edge that has no OSM
+        // turn:lanes data, from the movements geometrically available at the
+        // edge's destination node. Idempotent; re-run after runtime road
+        // edits so inferred maps track the current network shape.
+        void assignInferredTurnLanes();
         void resetPathfindingState();
 
         const std::unordered_map<uint64_t, Node>& getNodes() const { return nodes; }

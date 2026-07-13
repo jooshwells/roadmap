@@ -12,6 +12,8 @@ THIRD_PARTY_INCLUDES_START
 #include "RoadNetworkVisualizer.h"
 THIRD_PARTY_INCLUDES_END
 
+#include "TrafficControlVisualizer.h"
+
 #include "TrafficSimulation.h"
 #include "Blueprint/UserWidget.h"
 
@@ -50,6 +52,11 @@ public:
 	// This allows you to select your Blueprint in the Unreal Editor
 	UPROPERTY(EditAnywhere, Category = "Simulation Setup")
 	TSubclassOf<class ARoadNetworkVisualizer> VisualizerBlueprint;
+
+	// Optional Blueprint override for the traffic light / stop sign actor.
+	// Left unset, the base C++ class is spawned with its built-in shapes.
+	UPROPERTY(EditAnywhere, Category = "Simulation Setup")
+	TSubclassOf<class ATrafficControlVisualizer> TrafficControlVisualizerClass;
 	
 	UFUNCTION(BlueprintCallable, Category = "Simulation")
 	bool GetVehicleStatsFromInstance(int32 InstanceIndex, FVehicleIDMStats& OutStats);
@@ -104,6 +111,7 @@ private:
 	void UpdateVehicleVisuals(float Alpha, bool bDidPhysicsStep);
 	Network* MyRoadNetwork;
     ARoadNetworkVisualizer* NetworkVisualizer;
+	ATrafficControlVisualizer* TrafficControlVisualizer = nullptr;
 	TMap<int32, FVehicleTransformState> InterpolationData;
 	TMap<int32, int32> InstanceIndexToVehicleId;
 
