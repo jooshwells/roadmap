@@ -1,0 +1,1470 @@
+EdgeID,u,v,name,ref,highway,length_m,fdot_aadt,fdot_roadway,fdot_from,fdot_to,fdot_year,fdot_aadt_flag,fdot_k_factor_percent,fdot_k_factor_flag,fdot_d_factor_percent,fdot_d_factor_flag,match_distance_m,match_angle_difference_deg
+1,1,2,,,motorway_link,488.515,14000,75008176,SR 408 EB,ALAFAYA TRL,2025,S,8.0,F,99.9,W,0.0,0.5182721091969897
+2,1,3,East-West Expressway,FL 408 Toll,motorway,483.025,75000,75008160,Bridge No-750360,Bridge No-750362,2025,C,9.0,F,53.5,F,1.3058862158203812,4.504825720786368
+3,2,14,,,motorway_link,25.356,,,,,,,,,,,,
+4,2,528,North Alafaya Trail,,secondary,55.176,60500,75518000,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,18.533498546724708,9.266845937630649
+5,3,7,East-West Expressway,FL 408 Toll,motorway,47.209,75000,75008160,Bridge No-750360,Bridge No-750362,2025,C,9.0,F,53.5,F,7.39013196075146,5.1115167429341195
+6,4,5,,,secondary_link,20.302,15500,75008175,ALAFAYA TR,WB SR 408,2025,S,8.0,F,99.9,W,27.43570468920052,2.0501084209895453
+7,4,6,North Alafaya Trail,,secondary,249.628,60500,75518000,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,0.8229328798867064,19.76679848598745
+8,5,526,North Alafaya Trail,,secondary,6.333,60500,75518000,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,18.05394239418543,9.979937750714328
+9,5,527,,,motorway_link,61.242,15500,75008175,ALAFAYA TR,WB SR 408,2025,S,8.0,F,99.9,W,0.21081672344450353,3.182701996088241
+10,6,635,North Alafaya Trail,,secondary,14.845,60500,75518000,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,1.340513815557719,22.495879927510487
+11,7,8,East-West Expressway,FL 408 Toll,motorway,1383.438,43500,75008160,Bridge No-750362,75008177 WB ON,2025,S,9.0,F,53.5,F,0.0,22.217265102136047
+12,9,10,East-West Expressway,FL 408 Toll,motorway,237.289,103000,75008160,DEAN RD,Bridge No-750360,2025,S,9.0,F,53.5,F,0.7719156591857796,0.31637686232713236
+13,10,461,East-West Expressway,FL 408 Toll,motorway,642.185,103000,75008160,DEAN RD,Bridge No-750360,2025,S,9.0,F,53.5,F,0.0,0.10815770608365938
+14,10,461,,,motorway_link,644.922,103000,75008160,DEAN RD,Bridge No-750360,2025,S,9.0,F,53.5,F,0.7719156591857796,0.10815770608365938
+15,11,12,Dean Road,,tertiary,18.488,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,9.517614354327574,2.306143341500885
+16,11,13,,,motorway_link,34.076,1800,75008168,DEAN RD,SR 408 EB,2025,F,8.0,F,99.9,W,0.0,22.35681978466735
+17,12,554,Dean Road,,secondary,5.085,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,9.422366235627349,1.7107853997231928
+18,13,9,,,motorway_link,348.738,1800,75008168,DEAN RD,SR 408 EB,2025,F,8.0,F,99.9,W,0.0,1.6456673641141943
+19,14,15,North Alafaya Trail,,secondary,209.718,60500,75518000,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,0.7878299093608414,0.19521147366440061
+20,15,4,North Alafaya Trail,,secondary,11.315,60500,75518000,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,1.8245804023322085,11.041515268002868
+21,16,17,Murdock Boulevard,,residential,77.595,,,,,,,,,,,,
+22,16,18,Murdock Boulevard,,residential,100.117,,,,,,,,,,,,
+23,16,19,Sawyer Street,,residential,360.858,,,,,,,,,,,,
+24,17,16,Murdock Boulevard,,residential,77.595,,,,,,,,,,,,
+25,17,204,Sawyer Street,,residential,285.911,,,,,,,,,,,,
+26,17,277,Murdock Boulevard,,residential,248.081,,,,,,,,,,,,
+27,18,201,Judge Avenue,,residential,288.167,,,,,,,,,,,,
+28,18,16,Murdock Boulevard,,residential,100.117,,,,,,,,,,,,
+29,18,199,Judge Avenue,,residential,342.304,,,,,,,,,,,,
+30,18,202,Murdock Boulevard,,residential,281.989,,,,,,,,,,,,
+31,19,199,Vincent Road,,residential,160.62,,,,,,,,,,,,
+32,19,247,Vincent Road,,residential,256.089,,,,,,,,,,,,
+33,19,16,Sawyer Street,,residential,360.858,,,,,,,,,,,,
+34,20,21,Valencia College Lane,,tertiary,15.549,13100,75000240,CHICKASAW TRL,ECONLOCKHATCHEE TRL,2025,T,9.0,F,53.5,F,6.548375997466681,0.9582364160974066
+35,20,22,Econlockhatchee Trail,,tertiary,258.228,18200,75000227,CURRY FORD RD,N/A,2025,T,9.0,F,53.5,F,8.52949408484333,4.082199278928016
+36,21,671,Econlockhatchee Trail,,tertiary,15.106,18200,75000227,CURRY FORD RD,N/A,2025,T,9.0,F,53.5,F,6.494591002483502,4.232457444734777
+37,21,435,Valencia College Lane,,tertiary,356.816,13100,75000240,CHICKASAW TRL,ECONLOCKHATCHEE TRL,2025,T,9.0,F,53.5,F,5.95678699334312,2.206286321421137
+38,22,431,Valencia Gardens Drive,,residential,14.036,,,,,,,,,,,,
+39,22,589,Econlockhatchee Trail,,tertiary,192.855,18200,75000227,CURRY FORD RD,N/A,2025,T,9.0,F,53.5,F,8.853590059987653,4.287252062557656
+40,23,24,Waterford Lakes Parkway,,tertiary,369.36,,,,,,,,,,,,
+41,24,149,Victoria Place Circle,,residential,13.197,,,,,,,,,,,,
+42,24,150,Waterford Lakes Parkway,,tertiary,169.743,,,,,,,,,,,,
+43,25,26,Rouse Road,,tertiary,14.595,20700,75000030,LAKE UNDERHILL RD,SR 434,2025,S,9.0,F,53.5,F,0.0,28.189869395784925
+44,25,27,Lake Underhill Road,,tertiary,778.855,22500,75000304,DEAN RD,AVALON PARK BLVD,2025,S,9.0,F,53.5,F,0.0,12.31238339272694
+45,26,532,Rouse Road,,tertiary,200.391,,,,,,,,,,,,
+46,27,534,Kehoe Boulevard,,residential,17.998,,,,,,,,,,,,
+47,27,335,Lake Underhill Road,,tertiary,329.182,22500,75000304,DEAN RD,AVALON PARK BLVD,2025,S,9.0,F,53.5,F,0.0,7.026165703264297
+48,28,29,Dean Road,,secondary,40.496,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,7.331966156293151,2.999004024820678
+49,28,30,,,motorway_link,10.386,,,,,,,,,,,,
+50,29,345,Dean Road,,secondary,143.027,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,0.36308782902791836,6.095242949219937
+51,30,660,,,motorway_link,19.473,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,0.0,25.790917226897676
+52,30,661,,,motorway_link,12.517,,,,,,,,,,,,
+53,31,32,Somerset Oaks Street,,residential,238.029,,,,,,,,,,,,
+54,31,32,Lexington Summit Street,,residential,429.603,,,,,,,,,,,,
+55,31,33,Lexington Summit Street,,residential,37.535,,,,,,,,,,,,
+56,32,31,Somerset Oaks Street,,residential,238.029,,,,,,,,,,,,
+57,32,31,Lexington Summit Street,,residential,429.603,,,,,,,,,,,,
+58,32,396,Lexington Summit Street,,residential,280.922,,,,,,,,,,,,
+59,33,395,Coquina Rock Street,,residential,4.393,,,,,,,,,,,,
+60,33,31,Lexington Summit Street,,residential,37.535,,,,,,,,,,,,
+61,33,396,Coquina Rock Street,,residential,61.664,,,,,,,,,,,,
+62,34,35,Murdock Boulevard,,residential,85.341,,,,,,,,,,,,
+63,34,36,Narcissus Lane,,residential,308.532,,,,,,,,,,,,
+64,34,37,Fernando Street; Murdock Boulevard,,residential,273.709,,,,,,,,,,,,
+65,35,34,Murdock Boulevard,,residential,85.341,,,,,,,,,,,,
+66,35,243,Murdock Boulevard,,residential,176.258,,,,,,,,,,,,
+67,35,38,Crocus Street; Delphinium Drive,,residential,470.321,,,,,,,,,,,,
+68,36,38,Fernando Street,,residential,84.659,,,,,,,,,,,,
+69,36,37,Fernando Street,,residential,36.817,,,,,,,,,,,,
+70,36,34,Narcissus Lane,,residential,308.532,,,,,,,,,,,,
+71,37,274,Murdock Boulevard,,residential,32.989,,,,,,,,,,,,
+72,37,36,Fernando Street,,residential,36.817,,,,,,,,,,,,
+73,37,34,Murdock Boulevard; Fernando Street,,residential,273.709,,,,,,,,,,,,
+74,38,36,Fernando Street,,residential,84.659,,,,,,,,,,,,
+75,38,320,Fernando Street,,residential,88.514,,,,,,,,,,,,
+76,38,35,Crocus Street; Delphinium Drive,,residential,470.321,,,,,,,,,,,,
+77,39,40,Sausalito Drive,,residential,164.007,,,,,,,,,,,,
+78,40,39,Sausalito Drive,,residential,164.007,,,,,,,,,,,,
+79,40,41,DuBois Boulevard,,residential,70.593,,,,,,,,,,,,
+80,40,42,DuBois Boulevard,,residential,260.802,,,,,,,,,,,,
+81,41,219,Chandon Drive,,residential,170.577,,,,,,,,,,,,
+82,41,220,Chandon Drive,,residential,95.106,,,,,,,,,,,,
+83,41,221,DuBois Boulevard,,residential,70.822,,,,,,,,,,,,
+84,41,40,DuBois Boulevard,,residential,70.593,,,,,,,,,,,,
+85,42,40,DuBois Boulevard,,residential,260.802,,,,,,,,,,,,
+86,43,44,Lake Downey Drive,,residential,399.058,,,,,,,,,,,,
+87,44,43,Lake Downey Drive,,residential,399.058,,,,,,,,,,,,
+88,44,45,Flowers Avenue,,tertiary,206.237,,,,,,,,,,,,
+89,44,46,Flowers Avenue,,tertiary,462.889,,,,,,,,,,,,
+90,45,126,Flowers Avenue,,tertiary,155.483,,,,,,,,,,,,
+91,45,44,Flowers Avenue,,tertiary,206.237,,,,,,,,,,,,
+92,45,127,Martinsville Court,,residential,322.759,,,,,,,,,,,,
+93,46,44,Flowers Avenue,,tertiary,462.889,,,,,,,,,,,,
+94,46,124,Dean Road,,secondary,285.32,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,0.4118930932547511,0.1887813032295611
+95,46,125,Dean Road,,secondary,268.07,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,0.3699181371435249,0.7385065634917254
+96,47,48,Huntridge Road,,residential,327.813,,,,,,,,,,,,
+97,47,49,Bloomfield Drive,,residential,477.717,,,,,,,,,,,,
+98,47,50,Bloomfield Drive,,tertiary,681.053,,,,,,,,,,,,
+99,47,51,Bloomfield Drive,,tertiary,371.879,,,,,,,,,,,,
+100,48,47,Huntridge Road,,residential,327.813,,,,,,,,,,,,
+101,49,47,Bloomfield Drive,,residential,477.717,,,,,,,,,,,,
+102,50,416,Cypress Tree Court,,residential,311.087,,,,,,,,,,,,
+103,50,348,Bloomfield Drive,,tertiary,70.417,,,,,,,,,,,,
+104,50,47,Bloomfield Drive,,tertiary,681.053,,,,,,,,,,,,
+105,51,311,Fox Terrier Drive,,residential,48.631,,,,,,,,,,,,
+106,51,191,Fox Terrier Drive,,residential,57.22,,,,,,,,,,,,
+107,51,47,Bloomfield Drive,,tertiary,371.879,,,,,,,,,,,,
+108,51,192,Bloomfield Drive,,tertiary,292.63,,,,,,,,,,,,
+109,52,53,Boland Drive,,residential,294.961,,,,,,,,,,,,
+110,52,54,Murdock Boulevard,,tertiary,153.289,,,,,,,,,,,,
+111,52,55,Murdock Boulevard,,tertiary,153.786,,,,,,,,,,,,
+112,53,56,Grayson Drive,,residential,152.22,,,,,,,,,,,,
+113,53,52,Boland Drive,,residential,294.961,,,,,,,,,,,,
+114,53,57,Grayson Drive,,residential,155.731,,,,,,,,,,,,
+115,54,57,Mary Lou Drive,,residential,297.232,,,,,,,,,,,,
+116,54,79,Mary Lou Drive,,residential,62.638,,,,,,,,,,,,
+117,54,83,Murdock Boulevard,,tertiary,127.929,,,,,,,,,,,,
+118,54,52,Murdock Boulevard,,tertiary,153.289,,,,,,,,,,,,
+119,55,131,Murdock Boulevard,,tertiary,77.762,,,,,,,,,,,,
+120,55,56,Nadia Avenue,,residential,293.441,,,,,,,,,,,,
+121,55,52,Murdock Boulevard,,tertiary,153.786,,,,,,,,,,,,
+122,56,53,Grayson Drive,,residential,152.22,,,,,,,,,,,,
+123,56,55,Nadia Avenue,,residential,293.441,,,,,,,,,,,,
+124,56,276,Grayson Drive,,residential,171.113,,,,,,,,,,,,
+125,57,54,Mary Lou Drive,,residential,297.232,,,,,,,,,,,,
+126,57,84,Grayson Drive,,residential,82.906,,,,,,,,,,,,
+127,57,53,Grayson Drive,,residential,155.731,,,,,,,,,,,,
+128,58,59,Alafaya Trail,,secondary,14.301,60500,75518000,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,0.7123167121033473,8.943187179012298
+129,58,60,Lake Underhill Road,,tertiary,149.352,22500,75000304,DEAN RD,AVALON PARK BLVD,2025,S,9.0,F,53.5,F,0.0,6.272561030889014
+130,59,574,Lake Underhill Road,,tertiary,10.241,22500,75000304,DEAN RD,AVALON PARK BLVD,2025,S,9.0,F,53.5,F,14.077044064789783,5.3674810297309
+131,59,14,North Alafaya Trail,,secondary,272.308,60500,75518000,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,0.7123167121033473,9.69656570152003
+132,60,640,,,unclassified,13.177,,,,,,,,,,,,
+133,60,643,Lake Underhill Road,,tertiary,628.287,,,,,,,,,,,,
+134,61,58,Alafaya Trail,,secondary,152.642,37000,75000231,N/A,LAKE UNDERHILL RD,2025,F,9.0,F,53.5,F,0.8510011728921804,13.817527737977429
+135,62,63,Kamler Avenue,,residential,410.647,,,,,,,,,,,,
+136,63,62,Kamler Avenue,,residential,410.647,,,,,,,,,,,,
+137,63,617,East Colonial Drive,SR 50,trunk,127.628,52000,75060000,N/A,SR-434/ALAFAYA TRL,2025,C,9.0,F,53.5,F,10.21706964089571,0.06034241634367277
+138,64,65,Meadowvale Drive,,residential,114.421,,,,,,,,,,,,
+139,64,66,Meadowvale Drive,,residential,87.248,,,,,,,,,,,,
+140,64,67,Ellenwood Way,,residential,226.113,,,,,,,,,,,,
+141,65,214,Meadowvale Drive,,residential,41.663,,,,,,,,,,,,
+142,65,64,Meadowvale Drive,,residential,114.421,,,,,,,,,,,,
+143,65,67,Jane Eyre Drive,,residential,153.475,,,,,,,,,,,,
+144,66,64,Meadowvale Drive,,residential,87.248,,,,,,,,,,,,
+145,66,210,Meadowvale Drive,,residential,87.695,,,,,,,,,,,,
+146,66,68,Cedarhurst Avenue,,residential,364.631,,,,,,,,,,,,
+147,67,68,Jane Eyre Drive,,residential,86.353,,,,,,,,,,,,
+148,67,65,Jane Eyre Drive,,residential,153.475,,,,,,,,,,,,
+149,67,64,Ellenwood Way,,residential,226.113,,,,,,,,,,,,
+150,68,253,Jane Eyre Drive,,residential,87.652,,,,,,,,,,,,
+151,68,67,Jane Eyre Drive,,residential,86.353,,,,,,,,,,,,
+152,68,66,Cedarhurst Avenue,,residential,364.631,,,,,,,,,,,,
+153,69,70,Jepson Street,,residential,88.414,,,,,,,,,,,,
+154,69,71,Crestridge Court,,residential,114.131,,,,,,,,,,,,
+155,69,72,Jepson Street,,residential,204.008,,,,,,,,,,,,
+156,69,73,Brownwood Avenue,,residential,214.591,,,,,,,,,,,,
+157,70,257,Jepson Street,,residential,88.19,,,,,,,,,,,,
+158,70,69,Jepson Street,,residential,88.414,,,,,,,,,,,,
+159,70,235,Bridlewood Avenue,,residential,602.42,,,,,,,,,,,,
+160,70,212,Bridlewood Avenue,,residential,75.498,,,,,,,,,,,,
+161,71,69,Crestridge Court,,residential,114.131,,,,,,,,,,,,
+162,72,235,Mozart Drive,,residential,115.686,,,,,,,,,,,,
+163,72,196,Jepson Street,,residential,87.398,,,,,,,,,,,,
+164,72,69,Jepson Street,,residential,204.008,,,,,,,,,,,,
+165,73,211,Arning Drive,,residential,87.288,,,,,,,,,,,,
+166,73,230,Brownwood Avenue,,residential,206.741,,,,,,,,,,,,
+167,73,69,Brownwood Avenue,,residential,214.591,,,,,,,,,,,,
+168,74,75,Scandia Lane,,residential,221.81,,,,,,,,,,,,
+169,75,76,Fernando Street,,residential,89.207,,,,,,,,,,,,
+170,75,77,Fernando Street,,residential,80.932,,,,,,,,,,,,
+171,75,74,Scandia Lane,,residential,221.81,,,,,,,,,,,,
+172,76,417,Sonata Lane,,residential,224.471,,,,,,,,,,,,
+173,76,75,Fernando Street,,residential,89.207,,,,,,,,,,,,
+174,76,92,Fernando Street,,residential,89.712,,,,,,,,,,,,
+175,77,266,Fernando Street,,residential,54.083,,,,,,,,,,,,
+176,77,245,Park Manor Drive,,residential,322.547,,,,,,,,,,,,
+177,77,75,Fernando Street,,residential,80.932,,,,,,,,,,,,
+178,77,90,Park Manor Drive,,residential,226.354,,,,,,,,,,,,
+179,78,79,Mary Lou Drive,,residential,45.521,,,,,,,,,,,,
+180,78,80,Monteburg Drive,,residential,325.826,,,,,,,,,,,,
+181,78,81,Mary Lou Drive; Culver Road,,residential,461.365,,,,,,,,,,,,
+182,79,78,Mary Lou Drive,,residential,45.521,,,,,,,,,,,,
+183,79,82,Floral Park Boulevard,,residential,134.807,,,,,,,,,,,,
+184,79,54,Mary Lou Drive,,residential,62.638,,,,,,,,,,,,
+185,80,78,Monteburg Drive,,residential,325.826,,,,,,,,,,,,
+186,81,78,Mary Lou Drive; Culver Road,,residential,461.365,,,,,,,,,,,,
+187,81,692,East Colonial Drive,SR 50,trunk,105.815,40500,75060000,N/A,N/A,2025,S,9.0,F,53.5,F,10.696914833931721,0.5682618612827071
+188,82,79,Floral Park Boulevard,,residential,134.807,,,,,,,,,,,,
+189,82,83,East Colonial Drive,SR 50,trunk,57.946,40500,75060000,N/A,N/A,2025,S,9.0,F,53.5,F,9.917466511164532,4.452527788042829
+190,83,277,Murdock Boulevard,,tertiary,21.095,,,,,,,,,,,,
+191,83,54,Murdock Boulevard,,tertiary,127.929,,,,,,,,,,,,
+192,83,561,East Colonial Drive,SR 50,trunk,275.869,40500,75060000,N/A,N/A,2025,S,9.0,F,53.5,F,9.917466511164532,6.310243327760617
+193,84,57,Grayson Drive,,residential,82.906,,,,,,,,,,,,
+194,84,696,East Colonial Drive,SR 50,trunk,188.102,40500,75060000,N/A,N/A,2025,S,9.0,F,53.5,F,11.062615486223699,6.186994924428944
+195,85,86,Roberta Avenue,,residential,84.955,,,,,,,,,,,,
+196,85,87,Dominico Street,,residential,205.886,,,,,,,,,,,,
+197,85,88,Roberta Avenue; Genevieve Street,,residential,291.619,,,,,,,,,,,,
+198,86,85,Roberta Avenue,,residential,84.955,,,,,,,,,,,,
+199,86,266,Roberta Avenue,,residential,215.95,,,,,,,,,,,,
+200,86,90,Exuma Street,,residential,163.775,,,,,,,,,,,,
+201,87,89,Dominico Street,,residential,94.442,,,,,,,,,,,,
+202,87,90,Park Manor Drive,,residential,94.169,,,,,,,,,,,,
+203,87,85,Dominico Street,,residential,205.886,,,,,,,,,,,,
+204,87,88,Park Manor Drive,,residential,101.861,,,,,,,,,,,,
+205,88,91,Park Manor Drive,,residential,127.374,,,,,,,,,,,,
+206,88,85,Genevieve Street; Roberta Avenue,,residential,291.619,,,,,,,,,,,,
+207,88,87,Park Manor Drive,,residential,101.861,,,,,,,,,,,,
+208,89,87,Dominico Street,,residential,94.442,,,,,,,,,,,,
+209,89,91,Barbados Avenue; Abigail Street,,residential,360.735,,,,,,,,,,,,
+210,89,92,Barbados Avenue,,residential,261.266,,,,,,,,,,,,
+211,90,87,Park Manor Drive,,residential,94.169,,,,,,,,,,,,
+212,90,86,Exuma Street,,residential,163.775,,,,,,,,,,,,
+213,90,77,Park Manor Drive,,residential,226.354,,,,,,,,,,,,
+214,91,283,Park Manor Drive,,residential,117.301,,,,,,,,,,,,
+215,91,88,Park Manor Drive,,residential,127.374,,,,,,,,,,,,
+216,91,89,Abigail Street; Barbados Avenue,,residential,360.735,,,,,,,,,,,,
+217,92,245,Barbados Avenue; Tangora Street,,residential,569.344,,,,,,,,,,,,
+218,92,89,Barbados Avenue,,residential,261.266,,,,,,,,,,,,
+219,92,76,Fernando Street,,residential,89.712,,,,,,,,,,,,
+220,93,94,River Pines Court,,residential,308.67,,,,,,,,,,,,
+221,94,93,River Pines Court,,residential,308.67,,,,,,,,,,,,
+222,94,374,Dean Road,,secondary,204.924,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,0.0,0.028829295797734744
+223,94,118,Dean Road,,secondary,138.174,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,0.00973439062048701,0.1135377754985285
+224,95,96,Willowemac Court,,residential,167.512,,,,,,,,,,,,
+225,95,97,River Park Boulevard,,residential,100.201,,,,,,,,,,,,
+226,95,98,River Park Boulevard,,residential,78.886,,,,,,,,,,,,
+227,96,95,Willowemac Court,,residential,167.512,,,,,,,,,,,,
+228,97,249,River Park Boulevard,,residential,373.141,,,,,,,,,,,,
+229,97,475,River Park Boulevard,,residential,484.981,,,,,,,,,,,,
+230,97,95,River Park Boulevard,,residential,100.201,,,,,,,,,,,,
+231,98,420,Schoharie Court,,residential,178.609,,,,,,,,,,,,
+232,98,95,River Park Boulevard,,residential,78.886,,,,,,,,,,,,
+233,98,421,River Park Boulevard,,residential,257.63,,,,,,,,,,,,
+234,99,100,Parkbury Drive,,residential,59.913,,,,,,,,,,,,
+235,100,101,Parkbury Drive,,residential,31.53,,,,,,,,,,,,
+236,100,99,Parkbury Drive,,residential,59.913,,,,,,,,,,,,
+237,100,102,Parkbury Drive,,residential,366.202,,,,,,,,,,,,
+238,101,100,Parkbury Drive,,residential,31.53,,,,,,,,,,,,
+239,102,100,Parkbury Drive,,residential,366.202,,,,,,,,,,,,
+240,102,103,Woodbury Road,,tertiary,206.138,20000,75000305,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,0.0,0.6653116720001435
+241,102,104,Woodbury Road,,tertiary,164.34,20000,75000305,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,0.19697665103726344,0.2625813824236616
+242,103,492,,,unclassified,192.029,,,,,,,,,,,,
+243,103,493,Woodbury Road,,tertiary,389.872,20000,75000305,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,0.0,1.398152745665783
+244,103,102,Woodbury Road,,tertiary,206.138,20000,75000305,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,0.0,0.6653116720001577
+245,104,389,Woodbury Glen Drive,,residential,146.283,,,,,,,,,,,,
+246,104,468,Woodbury Cove Drive,,residential,15.466,,,,,,,,,,,,
+247,104,102,Woodbury Road,,tertiary,164.34,20000,75000305,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,0.19697665103726344,0.2625813824236616
+248,104,386,Woodbury Road,,tertiary,461.373,20000,75000305,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,0.0,0.5692689617989259
+249,105,106,Isadore Drive,,residential,215.999,,,,,,,,,,,,
+250,105,107,Einbender Road,,residential,52.005,,,,,,,,,,,,
+251,105,108,Einbender Road,,residential,71.456,,,,,,,,,,,,
+252,106,105,Isadore Drive,,residential,215.999,,,,,,,,,,,,
+253,107,105,Einbender Road,,residential,52.005,,,,,,,,,,,,
+254,108,105,Einbender Road,,residential,71.456,,,,,,,,,,,,
+255,108,379,Shoshanna Drive,,residential,125.685,,,,,,,,,,,,
+256,108,371,Einbender Road,,residential,119.272,,,,,,,,,,,,
+257,108,380,Shoshanna Drive,,residential,262.688,,,,,,,,,,,,
+258,109,110,Maribou Circle,,residential,259.731,,,,,,,,,,,,
+259,109,111,Maribou Circle,,residential,59.645,,,,,,,,,,,,
+260,109,112,Maribou Circle,,residential,239.747,,,,,,,,,,,,
+261,109,113,Pied Court,,residential,114.898,,,,,,,,,,,,
+262,110,112,Maribou Circle,,residential,395.191,,,,,,,,,,,,
+263,110,112,Battler Street,,residential,242.58,,,,,,,,,,,,
+264,110,109,Maribou Circle,,residential,259.731,,,,,,,,,,,,
+265,111,109,Maribou Circle,,residential,59.645,,,,,,,,,,,,
+266,111,640,Lake Underhill Road,,tertiary,425.273,,,,,,,,,,,,
+267,112,109,Maribou Circle,,residential,239.747,,,,,,,,,,,,
+268,112,110,Maribou Circle,,residential,395.191,,,,,,,,,,,,
+269,112,110,Battler Street,,residential,242.58,,,,,,,,,,,,
+270,113,109,Pied Court,,residential,114.898,,,,,,,,,,,,
+271,114,115,Spring Vale Drive,,residential,280.207,,,,,,,,,,,,
+272,115,228,Spring Vale Drive,,residential,71.023,,,,,,,,,,,,
+273,115,226,Bent Tree Drive,,residential,145.979,,,,,,,,,,,,
+274,115,114,Spring Vale Drive,,residential,280.207,,,,,,,,,,,,
+275,116,117,Dean Chase Boulevard,,residential,275.179,,,,,,,,,,,,
+276,116,118,Dean Road,,secondary,159.093,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,0.1219033971709172,0.06517096650590304
+277,116,119,Dean Road,,secondary,93.369,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,0.0,1.918414459682566
+278,117,116,Dean Chase Boulevard,,residential,275.179,,,,,,,,,,,,
+279,118,307,Gronau Court,,residential,122.792,,,,,,,,,,,,
+280,118,116,Dean Road,,secondary,159.093,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,0.1219033971709172,0.06517096650590304
+281,118,94,Dean Road,,secondary,138.174,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,0.00973439062048701,0.11353777549854271
+282,119,466,Richardson Court,,residential,298.854,,,,,,,,,,,,
+283,119,116,Dean Road,,secondary,93.369,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,0.0,1.9184144596825803
+284,119,183,Dean Road,,secondary,201.851,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,0.4123410876760177,2.7912625040209065
+285,120,121,Water Hickory Court,,residential,48.167,,,,,,,,,,,,
+286,120,122,Cypress Leaf Drive,,residential,208.67,,,,,,,,,,,,
+287,120,123,Cypress Leaf Drive,,residential,381.179,,,,,,,,,,,,
+288,121,120,Water Hickory Court,,residential,48.167,,,,,,,,,,,,
+289,122,465,Cypress Leaf Drive,,residential,74.162,,,,,,,,,,,,
+290,122,265,Cypress Leaf Drive,,residential,233.383,,,,,,,,,,,,
+291,122,120,Cypress Leaf Drive,,residential,208.67,,,,,,,,,,,,
+292,123,465,Hackberry Drive,,residential,308.508,,,,,,,,,,,,
+293,123,465,Cypress Leaf Drive,,residential,234.332,,,,,,,,,,,,
+294,123,120,Cypress Leaf Drive,,residential,381.179,,,,,,,,,,,,
+295,124,46,Dean Road,,secondary,285.32,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,0.4118930932547511,0.18878130322957531
+296,124,292,Dean Road,,secondary,212.56,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,2.2629612195653235,1.7348742021585224
+297,125,456,River Crest Court,,residential,324.16,,,,,,,,,,,,
+298,125,362,Portale Avenue,,residential,143.984,,,,,,,,,,,,
+299,125,142,Dean Road,,secondary,85.505,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,0.8077254567374967,0.28436469799689235
+300,125,46,Dean Road,,secondary,268.07,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,0.3699181371435249,0.7385065634917254
+301,126,45,Flowers Avenue,,tertiary,155.483,,,,,,,,,,,,
+302,126,128,Culver Road,,residential,396.312,,,,,,,,,,,,
+303,126,129,Flowers Avenue,,tertiary,254.591,,,,,,,,,,,,
+304,127,45,Martinsville Court,,residential,322.759,,,,,,,,,,,,
+305,128,614,Coconut Grove Lane,,residential,255.279,,,,,,,,,,,,
+306,128,126,Culver Road,,residential,396.312,,,,,,,,,,,,
+307,128,159,Culver Road,,residential,194.454,,,,,,,,,,,,
+308,129,130,Flowers Pointe Lane,,residential,156.143,,,,,,,,,,,,
+309,129,131,Flowers Avenue,,tertiary,156.618,,,,,,,,,,,,
+310,129,126,Flowers Avenue,,tertiary,254.591,,,,,,,,,,,,
+311,130,329,Sepal Court,,residential,45.453,,,,,,,,,,,,
+312,130,330,Flowers Pointe Lane,,residential,144.888,,,,,,,,,,,,
+313,130,129,Flowers Pointe Lane,,residential,156.143,,,,,,,,,,,,
+314,131,55,Murdock Boulevard,,tertiary,77.762,,,,,,,,,,,,
+315,131,132,Murdock Boulevard,,residential,97.628,,,,,,,,,,,,
+316,131,129,Flowers Avenue,,tertiary,156.618,,,,,,,,,,,,
+317,132,276,Allisheim Avenue,,residential,291.52,,,,,,,,,,,,
+318,132,131,Murdock Boulevard,,residential,97.628,,,,,,,,,,,,
+319,132,275,Murdock Boulevard,,residential,201.547,,,,,,,,,,,,
+320,133,134,Kearin Lane,,residential,423.306,,,,,,,,,,,,
+321,134,133,Kearin Lane,,residential,423.306,,,,,,,,,,,,
+322,134,135,Iroquois Trail,,residential,198.309,,,,,,,,,,,,
+323,134,136,Iroquois Trail,,residential,199.062,,,,,,,,,,,,
+324,135,334,O'Berry Hoover Road,,residential,234.371,,,,,,,,,,,,
+325,135,331,O'Berry Hoover Road,,residential,1000.428,,,,,,,,,,,,
+326,135,134,Iroquois Trail,,residential,198.309,,,,,,,,,,,,
+327,136,169,Iroquois Trail,,residential,148.293,,,,,,,,,,,,
+328,136,168,Armone Street,,residential,214.135,,,,,,,,,,,,
+329,136,134,Iroquois Trail,,residential,199.062,,,,,,,,,,,,
+330,136,170,Armone Street,,residential,281.656,,,,,,,,,,,,
+331,137,138,Rosewalk Court,,residential,12.395,,,,,,,,,,,,
+332,137,139,Econlockhatchee Trail,,tertiary,216.307,18200,75000227,CURRY FORD RD,N/A,2025,T,9.0,F,53.5,F,4.559806097265288,4.665646651695454
+333,138,137,Rosewalk Court,,residential,12.395,,,,,,,,,,,,
+334,138,471,Econlockhatchee Trail,,tertiary,84.553,18200,75000227,CURRY FORD RD,N/A,2025,T,9.0,F,53.5,F,5.867904138720915,4.298087271961563
+335,138,629,Rosewalk Court,,residential,142.573,,,,,,,,,,,,
+336,139,634,,,tertiary_link,67.716,18200,75000227,CURRY FORD RD,N/A,2025,T,9.0,F,53.5,F,0.0,17.728816748785576
+337,139,284,Econlockhatchee Trail,,tertiary,241.263,18200,75000227,CURRY FORD RD,N/A,2025,T,9.0,F,53.5,F,0.0,5.121796015645685
+338,140,141,Dean Road,,secondary,44.78,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,0.6199001146026428,0.1582558033821897
+339,140,142,Dean Road,,secondary,60.413,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,0.6199001146026428,0.09517817497992098
+340,140,143,Massey Street,,residential,272.128,,,,,,,,,,,,
+341,141,140,Dean Road,,secondary,44.78,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,0.6199001146026428,0.1582558033821897
+342,141,144,Dean Cove Lane,,residential,302.418,,,,,,,,,,,,
+343,141,411,Dean Road,,secondary,92.77,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,0.3225719178386023,0.11161450629622038
+344,142,140,Dean Road,,secondary,60.413,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,0.6199001146026428,0.09517817497993519
+345,142,352,Vista Cove Lane,,residential,367.328,,,,,,,,,,,,
+346,142,125,Dean Road,,secondary,85.505,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,0.8077254567374967,0.28436469799690656
+347,143,140,Massey Street,,residential,272.128,,,,,,,,,,,,
+348,144,141,Dean Cove Lane,,residential,302.418,,,,,,,,,,,,
+349,145,146,Park Manor Drive,,residential,93.637,,,,,,,,,,,,
+350,145,147,Kain Court,,residential,115.194,,,,,,,,,,,,
+351,145,148,Park Manor Drive,,residential,91.66,,,,,,,,,,,,
+352,146,145,Park Manor Drive,,residential,93.637,,,,,,,,,,,,
+353,146,327,Park Manor Drive,,residential,87.626,,,,,,,,,,,,
+354,146,242,Eastview Drive,,residential,212.514,,,,,,,,,,,,
+355,147,145,Kain Court,,residential,115.194,,,,,,,,,,,,
+356,148,188,Bresslyn Boulevard,,residential,82.316,,,,,,,,,,,,
+357,148,245,Park Manor Drive,,residential,204.557,,,,,,,,,,,,
+358,148,145,Park Manor Drive,,residential,91.66,,,,,,,,,,,,
+359,149,24,Victoria Place Circle,,residential,13.197,,,,,,,,,,,,
+360,149,667,Waterford Lakes Parkway,,tertiary,293.574,,,,,,,,,,,,
+361,150,385,Coquina Rock Street,,residential,13.436,,,,,,,,,,,,
+362,150,384,Waterford Lakes Parkway,,tertiary,185.567,,,,,,,,,,,,
+363,151,152,Challenger Parkway,,secondary,18.661,6100,75000349,ALAFAYA TRL,470' N OF 75000817,2025,S,9.0,F,53.5,F,0.0,16.40776479468167
+364,151,153,Alafaya Trail,FL 434,primary,252.832,47500,75037000,SR-50/E COLONIAL DR,UNIVERSITY BLVD,2025,C,9.0,F,53.5,F,17.142337369527834,0.22637499035468522
+365,152,499,Alafaya Trail,FL 434,primary,18.025,47500,75037000,SR-50/E COLONIAL DR,UNIVERSITY BLVD,2025,C,9.0,F,53.5,F,1.2876056725981548,0.37426558912584085
+366,152,154,Challenger Parkway,,secondary,311.073,6100,75000349,ALAFAYA TRL,470' N OF 75000817,2025,S,9.0,F,53.5,F,0.0,17.609361815234934
+367,153,549,Alafaya Trail,FL 434,primary,25.22,47500,75037000,SR-50/E COLONIAL DR,UNIVERSITY BLVD,2025,C,9.0,F,53.5,F,16.854975087377678,0.33439161088341507
+368,153,548,,,primary_link,33.532,,,,,,,,,,,,
+369,154,155,,,unclassified,22.362,,,,,,,,,,,,
+370,154,156,Challenger Parkway,,secondary,269.398,6100,75000349,ALAFAYA TRL,470' N OF 75000817,2025,S,9.0,F,53.5,F,0.0,13.0157177399729
+371,155,154,,,unclassified,22.362,,,,,,,,,,,,
+372,155,499,Challenger Parkway,,secondary,316.794,6100,75000349,ALAFAYA TRL,470' N OF 75000817,2025,S,9.0,F,53.5,F,17.82762388672036,18.305996693372037
+373,156,573,Challenger Tech Court,,unclassified,25.464,,,,,,,,,,,,
+374,156,157,Challenger Parkway,,secondary,427.137,,,,,,,,,,,,
+375,157,158,Challenger Parkway,,secondary,15.481,6100,75000349,ALAFAYA TRL,470' N OF 75000817,2025,S,9.0,F,53.5,F,0.5967232250912126,27.111172964812027
+376,158,495,Ingenuity Drive,,unclassified,26.142,,,,,,,,,,,,
+377,158,487,Challenger Parkway,,secondary,176.296,6100,75000349,ALAFAYA TRL,470' N OF 75000817,2025,S,9.0,F,53.5,F,0.0,25.13333116958873
+378,159,160,Lehman Road; Fowler Road,,residential,418.944,,,,,,,,,,,,
+379,159,128,Culver Road,,residential,194.454,,,,,,,,,,,,
+380,159,161,Lehman Road; Hardwick Avenue,,residential,780.533,,,,,,,,,,,,
+381,160,159,Lehman Road; Fowler Road,,residential,418.944,,,,,,,,,,,,
+382,161,403,Hardwick Court,,residential,113.452,,,,,,,,,,,,
+383,161,404,Jepson Street,,residential,91.011,,,,,,,,,,,,
+384,161,256,Jepson Street,,residential,99.438,,,,,,,,,,,,
+385,161,159,Lehman Road; Hardwick Avenue,,residential,780.533,,,,,,,,,,,,
+386,162,163,Cherrystone Lane,,residential,207.188,,,,,,,,,,,,
+387,162,163,Oak Manor Circle,,residential,297.838,,,,,,,,,,,,
+388,162,164,Oak Manor Circle,,residential,81.061,,,,,,,,,,,,
+389,163,165,Oak Manor Circle,,residential,76.398,,,,,,,,,,,,
+390,163,162,Cherrystone Lane,,residential,207.188,,,,,,,,,,,,
+391,163,162,Oak Manor Circle,,residential,297.838,,,,,,,,,,,,
+392,164,433,Valencia Gardens Drive,,residential,101.144,,,,,,,,,,,,
+393,164,162,Oak Manor Circle,,residential,81.061,,,,,,,,,,,,
+394,164,165,Valencia Gardens Drive,,residential,224.364,,,,,,,,,,,,
+395,165,163,Oak Manor Circle,,residential,76.398,,,,,,,,,,,,
+396,165,431,Valencia Gardens Drive,,residential,47.499,,,,,,,,,,,,
+397,165,432,Oak Manor Circle,,residential,225.229,,,,,,,,,,,,
+398,165,164,Valencia Gardens Drive,,residential,224.364,,,,,,,,,,,,
+399,166,167,Armone Street,,residential,86.38,,,,,,,,,,,,
+400,167,168,Armone Street,,residential,79.834,,,,,,,,,,,,
+401,167,168,,,residential,370.822,,,,,,,,,,,,
+402,167,166,Armone Street,,residential,86.38,,,,,,,,,,,,
+403,168,167,Armone Street,,residential,79.834,,,,,,,,,,,,
+404,168,167,,,residential,370.822,,,,,,,,,,,,
+405,168,136,Armone Street,,residential,214.135,,,,,,,,,,,,
+406,169,136,Iroquois Trail,,residential,148.293,,,,,,,,,,,,
+407,169,375,Iroquois Trail,,residential,254.255,,,,,,,,,,,,
+408,169,668,Jackie,,residential,195.854,,,,,,,,,,,,
+409,170,136,Armone Street,,residential,281.656,,,,,,,,,,,,
+410,170,700,East Colonial Drive,SR 50,trunk,196.965,52000,75060000,N/A,SR-434/ALAFAYA TRL,2025,C,9.0,F,53.5,F,10.59118619630224,0.09392449365981292
+411,171,172,Terrace Cove Way,,residential,431.346,,,,,,,,,,,,
+412,171,173,Waterscape Way,,residential,38.833,,,,,,,,,,,,
+413,171,174,Waterscape Way,,residential,509.097,,,,,,,,,,,,
+414,172,171,Terrace Cove Way,,residential,431.346,,,,,,,,,,,,
+415,173,171,Waterscape Way,,residential,38.833,,,,,,,,,,,,
+416,174,171,Waterscape Way,,residential,509.097,,,,,,,,,,,,
+417,175,176,Blackgum Court,,residential,161.214,,,,,,,,,,,,
+418,175,177,Sylvan Pond Circle,,residential,91.288,,,,,,,,,,,,
+419,175,178,Sylvan Pond Circle,,residential,172.193,,,,,,,,,,,,
+420,176,175,Blackgum Court,,residential,161.214,,,,,,,,,,,,
+421,177,370,Sand Live Oak Drive,,residential,47.851,,,,,,,,,,,,
+422,177,372,Sylvan Pond Circle,,residential,249.255,,,,,,,,,,,,
+423,177,175,Sylvan Pond Circle,,residential,91.288,,,,,,,,,,,,
+424,178,175,Sylvan Pond Circle,,residential,172.193,,,,,,,,,,,,
+425,178,452,Sylvan Pond Circle,,residential,97.344,,,,,,,,,,,,
+426,178,455,Pond Cypress Court,,residential,98.046,,,,,,,,,,,,
+427,179,180,Dean Acre Court,,residential,38.902,,,,,,,,,,,,
+428,179,181,Dean Acre Drive,,residential,247.74,,,,,,,,,,,,
+429,179,181,Flynt Circle,,residential,420.89,,,,,,,,,,,,
+430,180,179,Dean Acre Court,,residential,38.902,,,,,,,,,,,,
+431,181,179,Dean Acre Drive,,residential,247.74,,,,,,,,,,,,
+432,181,179,Flynt Circle,,residential,420.89,,,,,,,,,,,,
+433,181,411,Dean Acre Drive,,residential,66.523,,,,,,,,,,,,
+434,182,183,Dean Oaks Court,,residential,261.014,,,,,,,,,,,,
+435,183,184,Ratcliff Court,,residential,154.536,,,,,,,,,,,,
+436,183,182,Dean Oaks Court,,residential,261.014,,,,,,,,,,,,
+437,183,119,Dean Road,,secondary,201.851,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,0.4123410876760177,2.7912625040209065
+438,183,185,Dean Road,,secondary,117.042,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,0.17675034783375843,3.253557601361649
+439,184,183,Ratcliff Court,,residential,154.536,,,,,,,,,,,,
+440,185,627,Twin Oaks Lane,,residential,250.662,,,,,,,,,,,,
+441,185,183,Dean Road,,secondary,117.042,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,0.17675034783375843,3.2535576013616634
+442,185,345,Dean Road,,secondary,49.806,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,0.17675034783375843,3.5844630439476504
+443,186,187,Udell Court,,residential,45.874,,,,,,,,,,,,
+444,187,186,Udell Court,,residential,45.874,,,,,,,,,,,,
+445,187,188,Bresslyn Boulevard,,residential,104.639,,,,,,,,,,,,
+446,187,189,Bresslyn Boulevard,,residential,65.244,,,,,,,,,,,,
+447,188,148,Bresslyn Boulevard,,residential,82.316,,,,,,,,,,,,
+448,188,187,Bresslyn Boulevard,,residential,104.639,,,,,,,,,,,,
+449,188,244,Grayson Drive,,residential,183.493,,,,,,,,,,,,
+450,189,242,Tomes Court,,residential,116.428,,,,,,,,,,,,
+451,189,187,Bresslyn Boulevard,,residential,65.244,,,,,,,,,,,,
+452,189,243,Bresslyn Boulevard,,residential,85.21,,,,,,,,,,,,
+453,190,191,Briar Bay Circle,,residential,269.67,,,,,,,,,,,,
+454,190,191,Briar Bay Circle,,residential,440.713,,,,,,,,,,,,
+455,190,192,Briar Bay Circle,,residential,122.286,,,,,,,,,,,,
+456,191,51,Fox Terrier Drive,,residential,57.22,,,,,,,,,,,,
+457,191,190,Briar Bay Circle,,residential,440.713,,,,,,,,,,,,
+458,191,190,Briar Bay Circle,,residential,269.67,,,,,,,,,,,,
+459,192,193,Bloomfield Drive,,tertiary,265.961,,,,,,,,,,,,
+460,192,194,Green Spruce Lane,,residential,73.611,,,,,,,,,,,,
+461,192,190,Briar Bay Circle,,residential,122.286,,,,,,,,,,,,
+462,192,51,Bloomfield Drive,,tertiary,292.63,,,,,,,,,,,,
+463,193,192,Bloomfield Drive,,tertiary,265.961,,,,,,,,,,,,
+464,193,345,Bloomfield Drive,,tertiary,322.93,,,,,,,,,,,,
+465,193,393,Pointe Allyson Way,,residential,44.475,,,,,,,,,,,,
+466,193,472,Dean Point Place,,residential,275.902,,,,,,,,,,,,
+467,194,428,Crystal Point Drive,,residential,110.651,,,,,,,,,,,,
+468,194,192,Green Spruce Lane,,residential,73.611,,,,,,,,,,,,
+469,194,429,Crystal Point Drive,,residential,66.054,,,,,,,,,,,,
+470,195,196,Drepsen Hook Drive,,residential,256.526,,,,,,,,,,,,
+471,195,197,Wages Way,,residential,65.53,,,,,,,,,,,,
+472,195,198,Wages Way,,residential,306.021,,,,,,,,,,,,
+473,196,72,Jepson Street,,residential,87.398,,,,,,,,,,,,
+474,196,195,Drepsen Hook Drive,,residential,256.526,,,,,,,,,,,,
+475,196,197,Jepson Street,,residential,173.316,,,,,,,,,,,,
+476,197,196,Jepson Street,,residential,173.316,,,,,,,,,,,,
+477,197,237,Jepson Street; Meller Way,,residential,221.055,,,,,,,,,,,,
+478,197,230,Wages Way,,residential,150.687,,,,,,,,,,,,
+479,197,195,Wages Way,,residential,65.53,,,,,,,,,,,,
+480,198,235,Mozart Drive,,residential,100.553,,,,,,,,,,,,
+481,198,195,Wages Way,,residential,306.021,,,,,,,,,,,,
+482,198,236,Mozart Drive; Meller Way,,residential,459.723,,,,,,,,,,,,
+483,199,200,Vincent Road,,residential,30.116,,,,,,,,,,,,
+484,199,18,Judge Avenue,,residential,342.304,,,,,,,,,,,,
+485,199,19,Vincent Road,,residential,160.62,,,,,,,,,,,,
+486,200,199,Vincent Road,,residential,30.116,,,,,,,,,,,,
+487,200,248,Vincent Road,,residential,201.209,,,,,,,,,,,,
+488,200,249,Esopus Street,,residential,114.419,,,,,,,,,,,,
+489,201,18,Judge Avenue,,residential,288.167,,,,,,,,,,,,
+490,201,203,Grayson Drive,,residential,225.678,,,,,,,,,,,,
+491,201,204,Grayson Drive,,residential,178.811,,,,,,,,,,,,
+492,202,18,Murdock Boulevard,,residential,281.989,,,,,,,,,,,,
+493,203,201,Grayson Drive,,residential,225.678,,,,,,,,,,,,
+494,204,418,Sawyer Street,,residential,96.043,,,,,,,,,,,,
+495,204,17,Sawyer Street,,residential,285.911,,,,,,,,,,,,
+496,204,201,Grayson Drive,,residential,178.811,,,,,,,,,,,,
+497,205,206,Dean Road,,secondary,187.168,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,0.0,0.4697096258814497
+498,205,207,Dean Road,,secondary,112.927,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,0.13707743671211156,0.4207423592005881
+499,205,208,Alcock Road,,residential,205.43,,,,,,,,,,,,
+500,206,205,Dean Road,,secondary,187.168,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,0.0,0.4697096258814497
+501,206,447,Sali Drive,,residential,352.163,,,,,,,,,,,,
+502,206,448,Dean Road,,secondary,122.734,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,0.3164136069096544,0.34625432494004826
+503,207,205,Dean Road,,secondary,112.927,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,0.13707743671211156,0.4207423592005881
+504,207,313,Elm Street,,residential,130.221,,,,,,,,,,,,
+505,207,308,Dean Road,,secondary,94.082,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,0.07283799996298046,0.9620287967136392
+506,208,205,Alcock Road,,residential,205.43,,,,,,,,,,,,
+507,209,210,Meadowvale Drive,,residential,119.841,,,,,,,,,,,,
+508,209,211,Bridlewood Avenue,,residential,119.119,,,,,,,,,,,,
+509,209,212,Bridlewood Avenue,,residential,78.01,,,,,,,,,,,,
+510,210,66,Meadowvale Drive,,residential,87.695,,,,,,,,,,,,
+511,210,209,Meadowvale Drive,,residential,119.841,,,,,,,,,,,,
+512,210,213,Westley Way,,residential,352.684,,,,,,,,,,,,
+513,211,73,Arning Drive,,residential,87.288,,,,,,,,,,,,
+514,211,209,Bridlewood Avenue,,residential,119.119,,,,,,,,,,,,
+515,211,230,Brownwood Avenue; Bridlewood Avenue,,residential,447.998,,,,,,,,,,,,
+516,212,361,Tobie Court,,residential,62.026,,,,,,,,,,,,
+517,212,70,Bridlewood Avenue,,residential,75.498,,,,,,,,,,,,
+518,212,209,Bridlewood Avenue,,residential,78.01,,,,,,,,,,,,
+519,213,255,Innsbruck Drive,,residential,116.956,,,,,,,,,,,,
+520,213,253,Innsbruck Drive,,residential,204.011,,,,,,,,,,,,
+521,213,210,Westley Way,,residential,352.684,,,,,,,,,,,,
+522,214,65,Meadowvale Drive,,residential,41.663,,,,,,,,,,,,
+523,215,216,Culver Road,,residential,33.402,,,,,,,,,,,,
+524,215,217,Union Park Drive,,residential,321.314,,,,,,,,,,,,
+525,215,218,Culver Road,,residential,146.71,,,,,,,,,,,,
+526,216,215,Culver Road,,residential,33.402,,,,,,,,,,,,
+527,217,632,Royal Vista Court,,residential,82.725,,,,,,,,,,,,
+528,217,215,Union Park Drive,,residential,321.314,,,,,,,,,,,,
+529,217,308,Union Park Drive,,residential,488.132,,,,,,,,,,,,
+530,218,215,Culver Road,,residential,146.71,,,,,,,,,,,,
+531,218,691,East Colonial Drive,SR 50,trunk,276.774,40500,75060000,N/A,N/A,2025,S,9.0,F,53.5,F,10.026171954543756,4.098985941087676
+532,219,41,Chandon Drive,,residential,170.577,,,,,,,,,,,,
+533,220,305,Brackin Street,,residential,368.945,,,,,,,,,,,,
+534,220,305,Chandon Drive,,residential,193.853,,,,,,,,,,,,
+535,220,41,Chandon Drive,,residential,95.106,,,,,,,,,,,,
+536,221,222,Sonoma Drive,,residential,212.19,,,,,,,,,,,,
+537,221,223,DuBois Boulevard,,residential,147.759,,,,,,,,,,,,
+538,221,41,DuBois Boulevard,,residential,70.822,,,,,,,,,,,,
+539,222,221,Sonoma Drive,,residential,212.19,,,,,,,,,,,,
+540,223,224,DuBois Boulevard,,residential,50.861,,,,,,,,,,,,
+541,223,221,DuBois Boulevard,,residential,147.759,,,,,,,,,,,,
+542,223,225,Martin Boulevard,,residential,249.239,,,,,,,,,,,,
+543,224,223,DuBois Boulevard,,residential,50.861,,,,,,,,,,,,
+544,224,226,Millinockett Lane,,tertiary,134.297,,,,,,,,,,,,
+545,224,227,Millinockett Lane,,tertiary,429.895,,,,,,,,,,,,
+546,225,365,Martin Boulevard,,residential,10.518,,,,,,,,,,,,
+547,225,223,Martin Boulevard,,residential,249.239,,,,,,,,,,,,
+548,226,115,Bent Tree Drive,,residential,145.979,,,,,,,,,,,,
+549,226,229,Millinockett Lane,,tertiary,115.049,,,,,,,,,,,,
+550,226,224,Millinockett Lane,,tertiary,134.297,,,,,,,,,,,,
+551,227,224,Millinockett Lane,,tertiary,429.895,,,,,,,,,,,,
+552,228,115,Spring Vale Drive,,residential,71.023,,,,,,,,,,,,
+553,228,228,Roma Court; Spring Vale Drive,,residential,335.225,,,,,,,,,,,,
+554,228,228,Roma Court; Spring Vale Drive,,residential,335.225,,,,,,,,,,,,
+555,229,366,Millinockett Lane,,tertiary,13.073,,,,,,,,,,,,
+556,229,226,Millinockett Lane,,tertiary,115.049,,,,,,,,,,,,
+557,229,225,Martin Boulevard,,residential,52.624,,,,,,,,,,,,
+558,230,73,Brownwood Avenue,,residential,206.741,,,,,,,,,,,,
+559,230,211,Brownwood Avenue; Bridlewood Avenue,,residential,447.998,,,,,,,,,,,,
+560,230,197,Wages Way,,residential,150.687,,,,,,,,,,,,
+561,231,232,Valencia Palms Drive,,residential,56.845,,,,,,,,,,,,
+562,231,233,Maple Forest Drive,,residential,105.564,,,,,,,,,,,,
+563,231,234,Maple Forest Drive,,residential,55.761,,,,,,,,,,,,
+564,232,231,Valencia Palms Drive,,residential,56.845,,,,,,,,,,,,
+565,233,231,Maple Forest Drive,,residential,105.564,,,,,,,,,,,,
+566,234,435,Maple Forest Drive,,residential,14.533,,,,,,,,,,,,
+567,234,231,Maple Forest Drive,,residential,55.761,,,,,,,,,,,,
+568,234,671,Valencia College Lane,,tertiary,357.161,13100,75000240,CHICKASAW TRL,ECONLOCKHATCHEE TRL,2025,T,9.0,F,53.5,F,8.051993946717937,2.1123703796929156
+569,235,198,Mozart Drive,,residential,100.553,,,,,,,,,,,,
+570,235,72,Mozart Drive,,residential,115.686,,,,,,,,,,,,
+571,235,70,Bridlewood Avenue,,residential,602.42,,,,,,,,,,,,
+572,236,237,Meller Way,,residential,7.695,,,,,,,,,,,,
+573,236,374,Curameng Drive,,residential,65.593,,,,,,,,,,,,
+574,236,198,Mozart Drive; Meller Way,,residential,459.723,,,,,,,,,,,,
+575,237,236,Meller Way,,residential,7.695,,,,,,,,,,,,
+576,237,197,Jepson Street; Meller Way,,residential,221.055,,,,,,,,,,,,
+577,238,239,Glenmont Lane,,residential,347.225,,,,,,,,,,,,
+578,238,240,Elm Street,,residential,55.127,,,,,,,,,,,,
+579,238,241,Elm Street,,residential,99.877,,,,,,,,,,,,
+580,239,238,Glenmont Lane,,residential,347.225,,,,,,,,,,,,
+581,240,238,Elm Street,,residential,55.127,,,,,,,,,,,,
+582,241,313,Elm Street,,residential,124.834,,,,,,,,,,,,
+583,241,238,Elm Street,,residential,99.877,,,,,,,,,,,,
+584,241,314,Westfall Drive,,residential,400.422,,,,,,,,,,,,
+585,241,315,Westfall Drive,,residential,326.267,,,,,,,,,,,,
+586,242,189,Tomes Court,,residential,116.428,,,,,,,,,,,,
+587,242,258,Tomes Court,,residential,55.087,,,,,,,,,,,,
+588,242,146,Eastview Drive,,residential,212.514,,,,,,,,,,,,
+589,243,35,Murdock Boulevard,,residential,176.258,,,,,,,,,,,,
+590,243,189,Bresslyn Boulevard,,residential,85.21,,,,,,,,,,,,
+591,243,246,Murdock Boulevard,,residential,265.088,,,,,,,,,,,,
+592,244,413,Buttercup Lane,,residential,317.541,,,,,,,,,,,,
+593,244,320,Grayson Drive,,residential,232.908,,,,,,,,,,,,
+594,244,188,Grayson Drive,,residential,183.493,,,,,,,,,,,,
+595,245,92,Barbados Avenue; Tangora Street,,residential,569.344,,,,,,,,,,,,
+596,245,77,Park Manor Drive,,residential,322.547,,,,,,,,,,,,
+597,245,148,Park Manor Drive,,residential,204.557,,,,,,,,,,,,
+598,246,271,Jonathan Drive,,residential,171.046,,,,,,,,,,,,
+599,246,270,Jonathan Drive,,residential,41.907,,,,,,,,,,,,
+600,246,243,Murdock Boulevard,,residential,265.088,,,,,,,,,,,,
+601,247,218,East Colonial Drive,SR 50,trunk,149.28,40500,75060000,N/A,N/A,2025,S,9.0,F,53.5,F,10.289091354981961,0.5354181716298001
+602,247,19,Vincent Road,,residential,256.089,,,,,,,,,,,,
+603,248,200,Vincent Road,,residential,201.209,,,,,,,,,,,,
+604,249,422,Beaverkill Court,,residential,44.14,,,,,,,,,,,,
+605,249,421,River Park Boulevard,,residential,214.758,,,,,,,,,,,,
+606,249,97,River Park Boulevard,,residential,373.141,,,,,,,,,,,,
+607,249,200,Esopus Street,,residential,114.419,,,,,,,,,,,,
+608,250,251,Ruche Court,,residential,70.426,,,,,,,,,,,,
+609,251,250,Ruche Court,,residential,70.426,,,,,,,,,,,,
+610,251,444,Rouse Run Circle,,residential,462.303,,,,,,,,,,,,
+611,251,444,Rouse Run Circle,,residential,417.017,,,,,,,,,,,,
+612,252,253,Innsbruck Drive,,residential,40.898,,,,,,,,,,,,
+613,253,252,Innsbruck Drive,,residential,40.898,,,,,,,,,,,,
+614,253,68,Jane Eyre Drive,,residential,87.652,,,,,,,,,,,,
+615,253,213,Innsbruck Drive,,residential,204.011,,,,,,,,,,,,
+616,253,254,Jane Eyre Drive,,residential,197.694,,,,,,,,,,,,
+617,254,430,Jane Eyre Drive,,residential,85.914,,,,,,,,,,,,
+618,254,253,Jane Eyre Drive,,residential,197.694,,,,,,,,,,,,
+619,254,720,,,residential,111.185,,,,,,,,,,,,
+620,255,256,Jepson Street,,residential,92.019,,,,,,,,,,,,
+621,255,213,Innsbruck Drive,,residential,116.956,,,,,,,,,,,,
+622,255,257,Jepson Street,,residential,171.046,,,,,,,,,,,,
+623,256,351,Bernice Court,,residential,113.71,,,,,,,,,,,,
+624,256,161,Jepson Street,,residential,99.438,,,,,,,,,,,,
+625,256,255,Jepson Street,,residential,92.019,,,,,,,,,,,,
+626,257,304,Twiggs Court,,residential,48.84,,,,,,,,,,,,
+627,257,70,Jepson Street,,residential,88.19,,,,,,,,,,,,
+628,257,255,Jepson Street,,residential,171.046,,,,,,,,,,,,
+629,258,242,Tomes Court,,residential,55.087,,,,,,,,,,,,
+630,259,260,Lakes Cypress Circle,,residential,19.395,,,,,,,,,,,,
+631,259,261,Alafaya Trail,,secondary,186.88,60500,75518000,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,18.20536719981989,8.580983080372121
+632,260,259,Lakes Cypress Circle,,residential,19.395,,,,,,,,,,,,
+633,260,410,Alafaya Trail,,secondary,199.919,60500,75518000,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,0.762813131278893,8.505017344918727
+634,261,381,Alafaya Trail,,secondary,14.311,60500,75518000,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,18.20536719981989,9.102633742952378
+635,262,263,Pon Pon Court,,residential,182.964,,,,,,,,,,,,
+636,262,264,Silverthorn Drive,,residential,54.613,,,,,,,,,,,,
+637,262,265,Silverthorn Drive,,residential,350.256,,,,,,,,,,,,
+638,263,262,Pon Pon Court,,residential,182.964,,,,,,,,,,,,
+639,264,375,Lake Berge Road,,tertiary,145.851,,,,,,,,,,,,
+640,264,333,Lake Berge Road,,tertiary,190.319,,,,,,,,,,,,
+641,264,262,Silverthorn Drive,,residential,54.613,,,,,,,,,,,,
+642,265,262,Silverthorn Drive,,residential,350.256,,,,,,,,,,,,
+643,265,122,Cypress Leaf Drive,,residential,233.383,,,,,,,,,,,,
+644,265,368,Cypress Leaf Drive,,residential,95.873,,,,,,,,,,,,
+645,266,86,Roberta Avenue,,residential,215.95,,,,,,,,,,,,
+646,266,77,Fernando Street,,residential,54.083,,,,,,,,,,,,
+647,266,413,Fernando Street,,residential,51.332,,,,,,,,,,,,
+648,267,268,River's Edge Drive,,residential,428.379,,,,,,,,,,,,
+649,267,269,East Colonial Drive,SR 50,trunk,137.998,60500,75060000,SR 417,N/A,2025,C,9.0,F,53.5,F,1.6599917440942553,3.9686145604844634
+650,268,267,River's Edge Drive,,residential,428.379,,,,,,,,,,,,
+651,269,287,Miami Road,,residential,432.808,,,,,,,,,,,,
+652,269,288,East Colonial Drive,SR 50,trunk,62.076,60500,75060000,SR 417,N/A,2025,C,9.0,F,53.5,F,1.3099588131551738,4.056613666427564
+653,270,246,Jonathan Drive,,residential,41.907,,,,,,,,,,,,
+654,271,246,Jonathan Drive,,residential,171.046,,,,,,,,,,,,
+655,271,272,Park Manor Drive,,residential,144.887,,,,,,,,,,,,
+656,271,273,Park Manor Drive,,residential,63.304,,,,,,,,,,,,
+657,272,425,Regency Street; Hendrix Avenue,,residential,290.666,,,,,,,,,,,,
+658,272,327,Park Manor Drive,,residential,89.972,,,,,,,,,,,,
+659,272,271,Park Manor Drive,,residential,144.887,,,,,,,,,,,,
+660,273,399,Jepson Street,,residential,97.154,,,,,,,,,,,,
+661,273,426,Park Manor Drive,,residential,92.475,,,,,,,,,,,,
+662,273,271,Park Manor Drive,,residential,63.304,,,,,,,,,,,,
+663,274,37,Murdock Boulevard,,residential,32.989,,,,,,,,,,,,
+664,275,132,Murdock Boulevard,,residential,201.547,,,,,,,,,,,,
+665,276,132,Allisheim Avenue,,residential,291.52,,,,,,,,,,,,
+666,276,56,Grayson Drive,,residential,171.113,,,,,,,,,,,,
+667,276,320,Grayson Drive,,residential,333.593,,,,,,,,,,,,
+668,277,83,Murdock Boulevard,,tertiary,21.095,,,,,,,,,,,,
+669,277,17,Murdock Boulevard,,residential,248.081,,,,,,,,,,,,
+670,277,278,East Colonial Drive,SR 50,trunk,238.6,40500,75060000,N/A,N/A,2025,S,9.0,F,53.5,F,10.042380523108053,3.1625208696004563
+671,278,247,East Colonial Drive,SR 50,trunk,36.049,40500,75060000,N/A,N/A,2025,S,9.0,F,53.5,F,10.708157347180679,1.640873196910718
+672,278,693,,,trunk_link,40.561,,,,,,,,,,,,
+673,279,280,Great Blue Court,,residential,93.821,,,,,,,,,,,,
+674,279,281,Wurdermann's Way,,residential,90.045,,,,,,,,,,,,
+675,279,282,Wurdermann's Way,,residential,125.534,,,,,,,,,,,,
+676,280,279,Great Blue Court,,residential,93.821,,,,,,,,,,,,
+677,281,377,Heron's Nest Court,,residential,66.255,,,,,,,,,,,,
+678,281,378,Wurdermann's Way,,residential,56.841,,,,,,,,,,,,
+679,281,279,Wurdermann's Way,,residential,90.045,,,,,,,,,,,,
+680,282,279,Wurdermann's Way,,residential,125.534,,,,,,,,,,,,
+681,283,91,Park Manor Drive,,residential,117.301,,,,,,,,,,,,
+682,283,567,Park Manor Drive,,residential,213.66,,,,,,,,,,,,
+683,284,285,Econlockhatchee Trail,,tertiary,20.825,18200,75000227,CURRY FORD RD,N/A,2025,T,9.0,F,53.5,F,0.47395983791272467,7.589343263435595
+684,284,286,East Colonial Drive,SR 50,trunk,134.694,60500,75060000,SR 417,N/A,2025,C,9.0,F,53.5,F,1.3702858950342658,3.4133359840077646
+685,285,542,East Colonial Drive,SR 50,trunk,14.812,60500,75060000,SR 417,N/A,2025,C,9.0,F,53.5,F,18.94952236857521,1.0635683388015544
+686,285,543,Econlockhatchee Trail,,tertiary,349.616,18200,75000227,CURRY FORD RD,N/A,2025,T,9.0,F,53.5,F,0.0,14.587328323416173
+687,286,579,East Colonial Drive,SR 50,trunk,62.172,60500,75060000,SR 417,N/A,2025,C,9.0,F,53.5,F,1.9484607788041115,3.9831775399115554
+688,287,269,Miami Road,,residential,432.808,,,,,,,,,,,,
+689,288,289,East Colonial Drive,SR 50,trunk,37.463,60500,75060000,SR 417,N/A,2025,C,9.0,F,53.5,F,1.5113478615415288,4.049735174018149
+690,288,315,,,trunk_link,56.761,60500,75060000,SR 417,N/A,2025,C,9.0,F,53.5,F,0.0,26.796977229983042
+691,289,290,Foxbower Road,,residential,444.641,,,,,,,,,,,,
+692,289,291,East Colonial Drive,SR 50,trunk,256.058,60500,75060000,SR 417,N/A,2025,C,9.0,F,53.5,F,1.5362879762607813,4.041533018667849
+693,290,289,Foxbower Road,,residential,444.641,,,,,,,,,,,,
+694,291,292,East Colonial Drive,SR 50,trunk,16.181,40500,75060000,N/A,N/A,2025,S,9.0,F,53.5,F,2.3186492651351265,7.391798403325794
+695,291,124,Dean Road,,secondary,211.038,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,0.0,2.655929011177591
+696,292,293,Dean Road,,secondary,20.841,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,7.688504208899649,0.7171379469882311
+697,292,294,East Colonial Drive,SR 50,trunk,242.31,40500,75060000,N/A,N/A,2025,S,9.0,F,53.5,F,1.8955159834293769,7.4344333352650835
+698,293,467,East Colonial Drive,SR 50,trunk,16.184,40500,75060000,N/A,N/A,2025,S,9.0,F,53.5,F,18.26361291124415,7.508602384013159
+699,293,308,Dean Road,,secondary,192.869,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,0.24592874485382205,3.1450359800747947
+700,294,687,,,trunk_link,43.115,,,,,,,,,,,,
+701,294,688,East Colonial Drive,SR 50,trunk,229.333,40500,75060000,N/A,N/A,2025,S,9.0,F,53.5,F,10.299439735633149,7.592392438207355
+702,295,296,Sophie Boulevard,,residential,21.222,,,,,,,,,,,,
+703,295,297,Sophie Boulevard,,residential,920.678,,,,,,,,,,,,
+704,295,298,East Colonial Drive,SR 50,trunk,170.2,49500,75060000,SR-434/ALAFAYA TRL,SR 408,2025,F,9.0,F,53.5,F,10.497128886322997,1.3343618289682695
+705,296,295,Sophie Boulevard,,residential,21.222,,,,,,,,,,,,
+706,296,524,East Colonial Drive,SR 50,trunk,407.647,49500,75060000,SR-434/ALAFAYA TRL,SR 408,2025,F,9.0,F,53.5,F,9.920298372632876,1.3622303995643676
+707,297,295,Sophie Boulevard,,residential,920.678,,,,,,,,,,,,
+708,298,703,East Colonial Drive,SR 50,trunk,28.707,49500,75060000,SR-434/ALAFAYA TRL,SR 408,2025,F,9.0,F,53.5,F,10.533209005409017,1.3236720811869986
+709,298,638,,,trunk_link,36.823,,,,,,,,,,,,
+710,299,300,,,unclassified,20.937,,,,,,,,,,,,
+711,299,301,East Colonial Drive,SR 50,trunk,418.822,49500,75060000,SR-434/ALAFAYA TRL,SR 408,2025,F,9.0,F,53.5,F,9.110115129801525,0.7139446289723423
+712,299,302,,,unclassified,123.142,,,,,,,,,,,,
+713,300,299,,,unclassified,20.937,,,,,,,,,,,,
+714,300,633,East Colonial Drive,SR 50,trunk,191.251,49500,75060000,SR-434/ALAFAYA TRL,SR 408,2025,F,9.0,F,53.5,F,10.272210040249,1.3448042848673936
+715,301,493,East Colonial Drive,SR 50,trunk,13.217,49500,75060000,SR-434/ALAFAYA TRL,SR 408,2025,F,9.0,F,53.5,F,8.634537774903537,2.6458363055954237
+716,301,103,Woodbury Road,,tertiary,390.318,20000,75000305,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,1.3369719863229335,0.5511254091425002
+717,303,301,Woodbury Road,,tertiary,21.112,20000,75000305,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,13.144799256639631,2.5800646315630047
+718,303,300,East Colonial Drive,SR 50,trunk,416.756,49500,75060000,SR-434/ALAFAYA TRL,SR 408,2025,F,9.0,F,53.5,F,10.13553644541265,0.6981290380788607
+719,304,257,Twiggs Court,,residential,48.84,,,,,,,,,,,,
+720,305,220,Brackin Street,,residential,368.945,,,,,,,,,,,,
+721,305,220,Chandon Drive,,residential,193.853,,,,,,,,,,,,
+722,305,306,Chandon Drive,,residential,203.945,,,,,,,,,,,,
+723,306,716,,,residential,20.306,,,,,,,,,,,,
+724,306,365,Chandon Drive,,residential,40.89,,,,,,,,,,,,
+725,306,305,Chandon Drive,,residential,203.945,,,,,,,,,,,,
+726,307,118,Gronau Court,,residential,122.792,,,,,,,,,,,,
+727,308,217,Union Park Drive,,residential,488.132,,,,,,,,,,,,
+728,308,207,Dean Road,,secondary,94.082,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,0.07283799996298046,0.9620287967136392
+729,308,309,Dean Road,,secondary,106.344,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,0.0,3.543985636199878
+730,309,313,Proctor Avenue; Alley Street,,residential,325.272,,,,,,,,,,,,
+731,309,467,Dean Road,,secondary,88.254,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,7.868438887146695,0.5533705604697445
+732,310,311,Glassborough Drive,,residential,135.448,,,,,,,,,,,,
+733,311,51,Fox Terrier Drive,,residential,48.631,,,,,,,,,,,,
+734,311,310,Glassborough Drive,,residential,135.448,,,,,,,,,,,,
+735,311,312,Glassborough Drive,,residential,175.961,,,,,,,,,,,,
+736,312,311,Glassborough Drive,,residential,175.961,,,,,,,,,,,,
+737,313,207,Elm Street,,residential,130.221,,,,,,,,,,,,
+738,313,241,Elm Street,,residential,124.834,,,,,,,,,,,,
+739,313,309,Proctor Avenue; Alley Street,,residential,325.272,,,,,,,,,,,,
+740,314,241,Westfall Drive,,residential,400.422,,,,,,,,,,,,
+741,315,562,East Colonial Drive,SR 50,trunk,199.895,60500,75060000,SR 417,N/A,2025,C,9.0,F,53.5,F,18.927351970758618,3.874128764789044
+742,315,241,Westfall Drive,,residential,326.267,,,,,,,,,,,,
+743,316,317,Kayla's Court,,residential,349.913,,,,,,,,,,,,
+744,317,316,Kayla's Court,,residential,349.913,,,,,,,,,,,,
+745,318,319,Rouse Lake Road,,residential,988.504,,,,,,,,,,,,
+746,319,318,Rouse Lake Road,,residential,988.504,,,,,,,,,,,,
+747,319,565,East Colonial Drive,SR 50,trunk,302.897,52000,75060000,N/A,SR-434/ALAFAYA TRL,2025,C,9.0,F,53.5,F,10.137301250697847,0.12031628086060664
+748,320,38,Fernando Street,,residential,88.514,,,,,,,,,,,,
+749,320,244,Grayson Drive,,residential,232.908,,,,,,,,,,,,
+750,320,413,Fernando Street,,residential,91.099,,,,,,,,,,,,
+751,320,276,Grayson Drive,,residential,333.593,,,,,,,,,,,,
+752,321,322,Gattis Drive,,residential,306.262,,,,,,,,,,,,
+753,322,339,Gattis Drive,,residential,193.262,,,,,,,,,,,,
+754,322,340,Seaman Street,,residential,98.837,,,,,,,,,,,,
+755,322,321,Gattis Drive,,residential,306.262,,,,,,,,,,,,
+756,322,419,Seaman Street,,residential,111.066,,,,,,,,,,,,
+757,323,324,Indianhead Trail,,residential,279.569,,,,,,,,,,,,
+758,324,323,Indianhead Trail,,residential,279.569,,,,,,,,,,,,
+759,324,325,Iroquois Trail,,residential,102.127,,,,,,,,,,,,
+760,324,326,Iroquois Trail,,residential,98.52,,,,,,,,,,,,
+761,325,324,Iroquois Trail,,residential,102.127,,,,,,,,,,,,
+762,325,408,Alafaya Trail,,secondary,79.007,60500,75518000,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,17.398927393145044,2.4286299503785784
+763,326,324,Iroquois Trail,,residential,98.52,,,,,,,,,,,,
+764,327,146,Park Manor Drive,,residential,87.626,,,,,,,,,,,,
+765,327,328,Godfrey Lane,,residential,111.627,,,,,,,,,,,,
+766,327,272,Park Manor Drive,,residential,89.972,,,,,,,,,,,,
+767,328,327,Godfrey Lane,,residential,111.627,,,,,,,,,,,,
+768,329,130,Sepal Court,,residential,45.453,,,,,,,,,,,,
+769,330,130,Flowers Pointe Lane,,residential,144.888,,,,,,,,,,,,
+770,331,135,O'Berry Hoover Road,,residential,1000.428,,,,,,,,,,,,
+771,331,332,O'Berry Hoover Road,,residential,779.01,,,,,,,,,,,,
+772,331,333,Lake Berge Road; Fangorn Road,,residential; tertiary,1469.482,,,,,,,,,,,,
+773,332,331,O'Berry Hoover Road,,residential,779.01,,,,,,,,,,,,
+774,333,368,Cypress Leaf Drive,,residential,57.643,,,,,,,,,,,,
+775,333,264,Lake Berge Road,,tertiary,190.319,,,,,,,,,,,,
+776,333,331,Lake Berge Road; Fangorn Road,,residential; tertiary,1469.482,,,,,,,,,,,,
+777,334,702,O'Berry Hoover Road,,residential,21.263,,,,,,,,,,,,
+778,334,135,O'Berry Hoover Road,,residential,234.371,,,,,,,,,,,,
+779,334,521,East Colonial Drive,SR 50,trunk,397.292,52000,75060000,N/A,SR-434/ALAFAYA TRL,2025,C,9.0,F,53.5,F,7.9748256514135445,0.08535663777095692
+780,335,336,,,unclassified,18.627,,,,,,,,,,,,
+781,335,337,Lake Underhill Road,,tertiary,112.649,22500,75000304,DEAN RD,AVALON PARK BLVD,2025,S,9.0,F,53.5,F,1.2125103067370444,6.417593563498432
+782,336,335,,,unclassified,18.627,,,,,,,,,,,,
+783,336,534,Lake Underhill Road,,tertiary,332.826,22500,75000304,DEAN RD,AVALON PARK BLVD,2025,S,9.0,F,53.5,F,17.05899438810874,6.901348091114333
+784,337,405,Huckleberry Finn Drive,,residential,16.746,,,,,,,,,,,,
+785,337,406,Huckleberry Finn Drive,,residential,530.322,,,,,,,,,,,,
+786,337,407,Lake Underhill Road,,tertiary,80.833,22500,75000304,DEAN RD,AVALON PARK BLVD,2025,S,9.0,F,53.5,F,0.09168547439866041,5.739071404778987
+787,338,339,Arndt Street,,residential,94.896,,,,,,,,,,,,
+788,339,322,Gattis Drive,,residential,193.262,,,,,,,,,,,,
+789,339,340,Selma Avenue; Arndt Street,,residential,283.19,,,,,,,,,,,,
+790,339,338,Arndt Street,,residential,94.896,,,,,,,,,,,,
+791,340,322,Seaman Street,,residential,98.837,,,,,,,,,,,,
+792,340,339,Selma Avenue; Arndt Street,,residential,283.19,,,,,,,,,,,,
+793,340,445,Selma Avenue,,residential,386.826,,,,,,,,,,,,
+794,341,342,Woodbury Road,,tertiary,433.684,20000,75000305,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,0.0,0.7479919019818482
+795,341,343,Woodbury Road,,tertiary,442.195,20000,75000305,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,0.0,0.3515181800606513
+796,341,344,Sophiamarie Loop,,residential,50.75,,,,,,,,,,,,
+797,342,341,Woodbury Road,,tertiary,433.684,20000,75000305,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,0.0,0.7479919019818482
+798,343,387,Woodbury Road,,tertiary,64.031,20000,75000305,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,0.10636730372195848,0.5215464234506442
+799,343,341,Woodbury Road,,tertiary,442.195,20000,75000305,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,0.0,0.3515181800606513
+800,344,612,Sophiamarie Loop,,residential,54.47,,,,,,,,,,,,
+801,344,341,Sophiamarie Loop,,residential,53.467,,,,,,,,,,,,
+802,345,193,Bloomfield Drive,,tertiary,322.93,,,,,,,,,,,,
+803,345,346,Dean Road,,secondary,138.073,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,0.0,0.6832967019752658
+804,345,185,Dean Road,,secondary,49.806,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,0.17675034783375843,3.5844630439476646
+805,346,662,,,motorway_link,51.905,,,,,,,,,,,,
+806,346,661,Dean Road,,secondary,44.578,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,7.88102706301454,2.281397893597756
+807,347,348,Bloomfield Drive,,tertiary,13.554,,,,,,,,,,,,
+808,347,349,Tree Shore Drive,,residential,60.271,,,,,,,,,,,,
+809,347,350,Rouse Road,,tertiary,211.562,20700,75000030,LAKE UNDERHILL RD,SR 434,2025,S,9.0,F,53.5,F,0.0,9.374699935593824
+810,348,347,Bloomfield Drive,,tertiary,13.554,,,,,,,,,,,,
+811,348,438,Rouse Road,,tertiary,231.175,20700,75000030,LAKE UNDERHILL RD,SR 434,2025,S,9.0,F,53.5,F,12.200397913924448,20.276601497549848
+812,348,50,Bloomfield Drive,,tertiary,70.417,,,,,,,,,,,,
+813,349,626,Tree Shore Drive,,residential,21.249,,,,,,,,,,,,
+814,349,436,Tree Shore Drive,,residential,350.314,,,,,,,,,,,,
+815,349,347,Tree Shore Drive,,residential,60.271,,,,,,,,,,,,
+816,350,378,Wurdermann's Way,,residential,14.322,,,,,,,,,,,,
+817,350,360,Rouse Road,,tertiary,151.083,20700,75000030,LAKE UNDERHILL RD,SR 434,2025,S,9.0,F,53.5,F,0.0,1.8015834221921665
+818,351,256,Bernice Court,,residential,113.71,,,,,,,,,,,,
+819,352,142,Vista Cove Lane,,residential,367.328,,,,,,,,,,,,
+820,353,354,Crescent Boulevard,,residential,205.456,,,,,,,,,,,,
+821,353,355,Crescent Boulevard; Cochin Street,,residential,682.674,,,,,,,,,,,,
+822,353,356,Orpington Street,,residential,187.511,,,,,,,,,,,,
+823,354,353,Crescent Boulevard,,residential,205.456,,,,,,,,,,,,
+824,354,702,East Colonial Drive,SR 50,trunk,209.362,52000,75060000,N/A,SR-434/ALAFAYA TRL,2025,C,9.0,F,53.5,F,9.768816773989208,0.12472184061400071
+825,355,414,Lancien Court,,residential,40.875,,,,,,,,,,,,
+826,355,415,Cochin Street,,residential,88.737,,,,,,,,,,,,
+827,355,353,Crescent Boulevard; Cochin Street,,residential,682.674,,,,,,,,,,,,
+828,356,353,Orpington Street,,residential,187.511,,,,,,,,,,,,
+829,356,520,Alafaya Trail,FL 434,primary,225.179,47500,75037000,SR-50/E COLONIAL DR,UNIVERSITY BLVD,2025,C,9.0,F,53.5,F,17.269980960913156,1.2052010257495311
+830,357,358,Green Heron Court,,residential,62.706,,,,,,,,,,,,
+831,357,359,Heron Bay Drive,,residential,164.86,,,,,,,,,,,,
+832,357,360,Heron Bay Drive,,residential,198.632,,,,,,,,,,,,
+833,358,357,Green Heron Court,,residential,62.706,,,,,,,,,,,,
+834,359,357,Heron Bay Drive,,residential,164.86,,,,,,,,,,,,
+835,360,357,Heron Bay Drive,,residential,198.632,,,,,,,,,,,,
+836,360,370,Rouse Road,,tertiary,187.751,20700,75000030,LAKE UNDERHILL RD,SR 434,2025,S,9.0,F,53.5,F,0.2898993988327943,11.619566111247025
+837,361,212,Tobie Court,,residential,62.026,,,,,,,,,,,,
+838,362,363,Portale Avenue,,residential,140.082,,,,,,,,,,,,
+839,362,364,Tino Court,,residential,117.868,,,,,,,,,,,,
+840,362,125,Portale Avenue,,residential,143.984,,,,,,,,,,,,
+841,363,362,Portale Avenue,,residential,140.082,,,,,,,,,,,,
+842,363,363,Ravida Circle; Portale Avenue,,residential,526.136,,,,,,,,,,,,
+843,363,363,Portale Avenue; Ravida Circle,,residential,526.136,,,,,,,,,,,,
+844,364,362,Tino Court,,residential,117.868,,,,,,,,,,,,
+845,365,366,Martin Boulevard,,residential,51.506,,,,,,,,,,,,
+846,365,225,Martin Boulevard,,residential,10.518,,,,,,,,,,,,
+847,365,306,Chandon Drive,,residential,40.89,,,,,,,,,,,,
+848,366,229,Millinockett Lane,,tertiary,13.073,,,,,,,,,,,,
+849,366,367,Millinockett Lane,,tertiary,106.621,,,,,,,,,,,,
+850,367,474,Millinockett Lane,,tertiary,12.862,,,,,,,,,,,,
+851,367,366,Millinockett Lane,,tertiary,106.621,,,,,,,,,,,,
+852,367,670,Econlockhatchee Trail,,tertiary,185.788,18200,75000227,CURRY FORD RD,N/A,2025,T,9.0,F,53.5,F,4.9686155194279165,4.25176513599105
+853,368,369,Golden Club Court,,residential,136.166,,,,,,,,,,,,
+854,368,265,Cypress Leaf Drive,,residential,95.873,,,,,,,,,,,,
+855,368,333,Cypress Leaf Drive,,residential,57.643,,,,,,,,,,,,
+856,369,368,Golden Club Court,,residential,136.166,,,,,,,,,,,,
+857,370,177,Sand Live Oak Drive,,residential,47.851,,,,,,,,,,,,
+858,370,371,Rouse Road,,tertiary,652.519,20700,75000030,LAKE UNDERHILL RD,SR 434,2025,S,9.0,F,53.5,F,0.0,11.677629769887304
+859,371,423,Einbender Road,,residential,14.696,,,,,,,,,,,,
+860,371,424,Rouse Road,,tertiary,357.308,20700,75000030,LAKE UNDERHILL RD,SR 434,2025,S,9.0,F,53.5,F,3.2069567438255038,11.068779979575964
+861,371,108,Einbender Road,,residential,119.272,,,,,,,,,,,,
+862,372,450,Sylvan Pond Circle,,residential,66.966,,,,,,,,,,,,
+863,372,177,Sylvan Pond Circle,,residential,249.255,,,,,,,,,,,,
+864,372,451,Meadowside Court,,residential,180.71,,,,,,,,,,,,
+865,373,373,Piney Point Circle,,residential,722.188,,,,,,,,,,,,
+866,373,373,Piney Point Circle,,residential,722.188,,,,,,,,,,,,
+867,373,374,Piney Point Circle,,residential,74.686,,,,,,,,,,,,
+868,374,373,Piney Point Circle,,residential,74.686,,,,,,,,,,,,
+869,374,237,Curameng Drive,,residential,64.065,,,,,,,,,,,,
+870,374,94,Dean Road,,secondary,204.924,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,0.0,0.028829295797734744
+871,374,411,Dean Road,,secondary,174.377,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,0.3225719178386023,0.15411835322120737
+872,375,264,Lake Berge Road,,tertiary,145.851,,,,,,,,,,,,
+873,375,376,Lake Berge Road,,tertiary,327.538,,,,,,,,,,,,
+874,375,169,Iroquois Trail,,residential,254.255,,,,,,,,,,,,
+875,376,565,Lake Berge Road,,tertiary,20.596,,,,,,,,,,,,
+876,376,566,East Colonial Drive,SR 50,trunk,269.734,52000,75060000,N/A,SR-434/ALAFAYA TRL,2025,C,9.0,F,53.5,F,10.209033215948882,0.0966262861271332
+877,376,375,Lake Berge Road,,tertiary,327.538,,,,,,,,,,,,
+878,377,281,Heron's Nest Court,,residential,66.255,,,,,,,,,,,,
+879,378,350,Wurdermann's Way,,residential,14.322,,,,,,,,,,,,
+880,378,281,Wurdermann's Way,,residential,56.841,,,,,,,,,,,,
+881,378,348,Rouse Road,,tertiary,212.716,20700,75000030,LAKE UNDERHILL RD,SR 434,2025,S,9.0,F,53.5,F,13.184073863985914,9.158616988304047
+882,379,108,Shoshanna Drive,,residential,125.685,,,,,,,,,,,,
+883,380,108,Shoshanna Drive,,residential,262.688,,,,,,,,,,,,
+884,381,382,Waterford Lakes Parkway,,tertiary,18.998,,,,,,,,,,,,
+885,381,383,North Alafaya Trail,,secondary,253.433,60500,75518000,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,17.566187398788585,3.100312009837495
+886,382,539,North Alafaya Trail,,secondary,13.822,60500,75518000,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,0.702971959790755,9.289322092332455
+887,382,23,Waterford Lakes Parkway,,tertiary,123.111,,,,,,,,,,,,
+888,383,636,North Alafaya Trail,,secondary,12.205,60500,75518000,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,16.958445019157182,9.330250235744984
+889,384,385,Waterford Lakes Parkway,,tertiary,188.657,,,,,,,,,,,,
+890,384,386,Waterford Lakes Parkway,,tertiary,483.823,,,,,,,,,,,,
+891,385,150,Coquina Rock Street,,residential,13.436,,,,,,,,,,,,
+892,385,149,Waterford Lakes Parkway,,tertiary,175.203,,,,,,,,,,,,
+893,385,395,,,residential,47.844,,,,,,,,,,,,
+894,386,384,Waterford Lakes Parkway,,tertiary,483.823,,,,,,,,,,,,
+895,386,104,Woodbury Road,,tertiary,461.373,20000,75000305,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,0.0,0.5692689617989259
+896,386,387,Woodbury Road,,tertiary,233.877,20000,75000305,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,0.0,0.08278944888091644
+897,387,343,Woodbury Road,,tertiary,64.031,20000,75000305,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,0.10636730372195842,0.52154642345063
+898,387,386,Woodbury Road,,tertiary,233.877,20000,75000305,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,0.0,0.08278944888090223
+899,388,389,Woodbury Glen Drive,,residential,147.614,,,,,,,,,,,,
+900,388,389,Woodbury Oaks Drive,,residential,299.368,,,,,,,,,,,,
+901,388,390,Woodbury Glen Drive,,residential,61.786,,,,,,,,,,,,
+902,389,388,Woodbury Glen Drive,,residential,147.614,,,,,,,,,,,,
+903,389,388,Woodbury Oaks Drive,,residential,299.368,,,,,,,,,,,,
+904,389,104,Woodbury Glen Drive,,residential,146.283,,,,,,,,,,,,
+905,390,388,Woodbury Glen Drive,,residential,61.786,,,,,,,,,,,,
+906,391,392,Tikimber Lane,,residential,225.13,,,,,,,,,,,,
+907,391,392,Pointe Allyson Way,,residential,194.942,,,,,,,,,,,,
+908,391,393,Pointe Allyson Way,,residential,26.96,,,,,,,,,,,,
+909,392,394,Tikimber Lane,,residential,141.557,,,,,,,,,,,,
+910,392,391,Tikimber Lane,,residential,225.13,,,,,,,,,,,,
+911,392,391,Pointe Allyson Way,,residential,194.942,,,,,,,,,,,,
+912,393,391,Pointe Allyson Way,,residential,26.96,,,,,,,,,,,,
+913,393,193,Pointe Allyson Way,,residential,44.475,,,,,,,,,,,,
+914,393,469,Rondell Court,,residential,64.912,,,,,,,,,,,,
+915,394,392,Tikimber Lane,,residential,141.557,,,,,,,,,,,,
+916,395,33,Coquina Rock Street,,residential,4.393,,,,,,,,,,,,
+917,395,385,Coquina Rock Street,,residential,51.176,,,,,,,,,,,,
+918,396,397,Coquina Rock Street,,residential,55.486,,,,,,,,,,,,
+919,396,33,Coquina Rock Street,,residential,61.664,,,,,,,,,,,,
+920,396,32,Lexington Summit Street,,residential,280.922,,,,,,,,,,,,
+921,397,396,Coquina Rock Street,,residential,55.486,,,,,,,,,,,,
+922,398,399,Maloney Lane,,residential,274.663,,,,,,,,,,,,
+923,398,400,Jane Eyre Drive,,residential,94.723,,,,,,,,,,,,
+924,398,401,Jane Eyre Drive,,residential,96.802,,,,,,,,,,,,
+925,399,398,Maloney Lane,,residential,274.663,,,,,,,,,,,,
+926,399,273,Jepson Street,,residential,97.154,,,,,,,,,,,,
+927,399,402,Jepson Street,,residential,93.973,,,,,,,,,,,,
+928,400,402,Dunhill Drive,,residential,273.987,,,,,,,,,,,,
+929,400,398,Jane Eyre Drive,,residential,94.723,,,,,,,,,,,,
+930,400,430,Jane Eyre Drive,,residential,100.164,,,,,,,,,,,,
+931,401,449,Park Manor Drive,,residential,93.367,,,,,,,,,,,,
+932,401,449,Inverson Street; Dawson Avenue; Jane Eyre Drive,,residential,485.926,,,,,,,,,,,,
+933,401,464,Park Manor Drive,,residential,39.459,,,,,,,,,,,,
+934,401,398,Jane Eyre Drive,,residential,96.802,,,,,,,,,,,,
+935,402,400,Dunhill Drive,,residential,273.987,,,,,,,,,,,,
+936,402,399,Jepson Street,,residential,93.973,,,,,,,,,,,,
+937,402,404,Jepson Street,,residential,114.323,,,,,,,,,,,,
+938,403,161,Hardwick Court,,residential,113.452,,,,,,,,,,,,
+939,404,430,Woodvalley Way,,residential,321.054,,,,,,,,,,,,
+940,404,161,Jepson Street,,residential,91.011,,,,,,,,,,,,
+941,404,402,Jepson Street,,residential,114.323,,,,,,,,,,,,
+942,405,337,Huckleberry Finn Drive,,residential,16.746,,,,,,,,,,,,
+943,405,336,Lake Underhill Road,,tertiary,111.44,22500,75000304,DEAN RD,AVALON PARK BLVD,2025,S,9.0,F,53.5,F,15.469646008455717,7.348581552333343
+944,406,337,Huckleberry Finn Drive,,residential,530.322,,,,,,,,,,,,
+945,407,533,,,tertiary_link,78.333,22500,75000304,DEAN RD,AVALON PARK BLVD,2025,S,9.0,F,53.5,F,0.0,4.985695181123351
+946,407,639,Lake Underhill Road,,tertiary,316.686,22500,75000304,DEAN RD,AVALON PARK BLVD,2025,S,9.0,F,53.5,F,0.0,6.948472151402793
+947,408,645,,,secondary_link,24.462,,,,,,,,,,,,
+948,408,644,Alafaya Trail,,secondary,105.68,60500,75518000,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,16.921223838842856,4.030787128868312
+949,409,410,Ashton Manor Way,,residential,19.713,,,,,,,,,,,,
+950,409,259,Alafaya Trail,,secondary,196.764,60500,75518000,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,18.355640860700905,8.44222266423769
+951,410,409,Ashton Manor Way,,residential,19.713,,,,,,,,,,,,
+952,410,540,Alafaya Trail,,secondary,260.588,60500,75518000,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,0.6924778146511839,7.600837317211813
+953,411,412,Cypress Glen Place,,residential,351.559,,,,,,,,,,,,
+954,411,181,Dean Acre Drive,,residential,66.523,,,,,,,,,,,,
+955,411,374,Dean Road,,secondary,174.377,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,0.3225719178386023,0.15411835322120737
+956,411,141,Dean Road,,secondary,92.77,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,0.3225719178386023,0.11161450629620617
+957,412,411,Cypress Glen Place,,residential,351.559,,,,,,,,,,,,
+958,413,266,Fernando Street,,residential,51.332,,,,,,,,,,,,
+959,413,244,Buttercup Lane,,residential,317.541,,,,,,,,,,,,
+960,413,320,Fernando Street,,residential,91.099,,,,,,,,,,,,
+961,414,355,Lancien Court,,residential,40.875,,,,,,,,,,,,
+962,415,355,Cochin Street,,residential,88.737,,,,,,,,,,,,
+963,415,494,Alafaya Trail,FL 434,primary,106.298,47500,75037000,SR-50/E COLONIAL DR,UNIVERSITY BLVD,2025,C,9.0,F,53.5,F,17.097442289386038,0.46279299255564865
+964,416,50,Cypress Tree Court,,residential,311.087,,,,,,,,,,,,
+965,417,76,Sonata Lane,,residential,224.471,,,,,,,,,,,,
+966,418,204,Sawyer Street,,residential,96.043,,,,,,,,,,,,
+967,419,322,Seaman Street,,residential,111.066,,,,,,,,,,,,
+968,420,98,Schoharie Court,,residential,178.609,,,,,,,,,,,,
+969,421,473,Neversink Court,,residential,155.159,,,,,,,,,,,,
+970,421,98,River Park Boulevard,,residential,257.63,,,,,,,,,,,,
+971,421,249,River Park Boulevard,,residential,214.758,,,,,,,,,,,,
+972,422,249,Beaverkill Court,,residential,44.14,,,,,,,,,,,,
+973,423,371,Einbender Road,,residential,14.696,,,,,,,,,,,,
+974,423,378,Rouse Road,,tertiary,985.208,20700,75000030,LAKE UNDERHILL RD,SR 434,2025,S,9.0,F,53.5,F,12.855736412570723,10.242774475965206
+975,424,616,Rouse Road,,tertiary,382.56,20700,75000030,LAKE UNDERHILL RD,SR 434,2025,S,9.0,F,53.5,F,0.0,11.084865568980689
+976,425,426,Regency Street,,residential,105.829,,,,,,,,,,,,
+977,425,427,Regency Court,,residential,61.587,,,,,,,,,,,,
+978,425,272,Regency Street; Hendrix Avenue,,residential,290.666,,,,,,,,,,,,
+979,426,425,Regency Street,,residential,105.829,,,,,,,,,,,,
+980,426,449,Park Manor Drive,,residential,86.879,,,,,,,,,,,,
+981,426,273,Park Manor Drive,,residential,92.475,,,,,,,,,,,,
+982,427,425,Regency Court,,residential,61.587,,,,,,,,,,,,
+983,428,194,Crystal Point Drive,,residential,110.651,,,,,,,,,,,,
+984,429,194,Crystal Point Drive,,residential,66.054,,,,,,,,,,,,
+985,430,404,Woodvalley Way,,residential,321.054,,,,,,,,,,,,
+986,430,400,Jane Eyre Drive,,residential,100.164,,,,,,,,,,,,
+987,430,254,Jane Eyre Drive,,residential,85.914,,,,,,,,,,,,
+988,431,22,Valencia Gardens Drive,,residential,14.036,,,,,,,,,,,,
+989,431,165,Valencia Gardens Drive,,residential,47.499,,,,,,,,,,,,
+990,431,21,Econlockhatchee Trail,,tertiary,258.407,18200,75000227,CURRY FORD RD,N/A,2025,T,9.0,F,53.5,F,5.135351315141542,3.7436617999693453
+991,432,434,Maple Forest Drive,,residential,242.392,,,,,,,,,,,,
+992,432,434,Oak Manor Circle,,residential,174.349,,,,,,,,,,,,
+993,432,165,Oak Manor Circle,,residential,225.229,,,,,,,,,,,,
+994,433,434,Maple Forest Drive,,residential,75.609,,,,,,,,,,,,
+995,433,164,Valencia Gardens Drive,,residential,101.144,,,,,,,,,,,,
+996,433,435,Maple Forest Drive,,residential,194.205,,,,,,,,,,,,
+997,434,433,Maple Forest Drive,,residential,75.609,,,,,,,,,,,,
+998,434,432,Maple Forest Drive,,residential,242.392,,,,,,,,,,,,
+999,434,432,Oak Manor Circle,,residential,174.349,,,,,,,,,,,,
+1000,435,234,Maple Forest Drive,,residential,14.533,,,,,,,,,,,,
+1001,435,433,Maple Forest Drive,,residential,194.205,,,,,,,,,,,,
+1002,435,446,Valencia College Lane,,tertiary,206.9,13100,75000240,CHICKASAW TRL,ECONLOCKHATCHEE TRL,2025,T,9.0,F,53.5,F,1.4042244160995845,3.1943137410232985
+1003,436,349,Tree Shore Drive,,residential,350.314,,,,,,,,,,,,
+1004,437,438,,,motorway_link,10.125,,,,,,,,,,,,
+1005,437,347,Rouse Road,,tertiary,222.962,20700,75000030,LAKE UNDERHILL RD,SR 434,2025,S,9.0,F,53.5,F,0.0,19.677924259540546
+1006,438,704,Rouse Road,,tertiary,24.748,,,,,,,,,,,,
+1007,439,440,Rouse Road,,tertiary,20.262,,,,,,,,,,,,
+1008,439,441,,,motorway_link,64.705,250,75008174,ROUSE RD,SR 408 EB,2025,F,8.0,F,99.9,W,0.6868735879669556,16.76745030037803
+1009,440,656,Rouse Road,,tertiary,255.104,,,,,,,,,,,,
+1010,441,480,,,motorway_link,676.979,75000,75008160,Bridge No-750360,Bridge No-750362,2025,C,9.0,F,53.5,F,0.0,2.541088785092928
+1011,442,443,,,residential,10.79,,,,,,,,,,,,
+1012,442,444,Rouse Run Circle,,residential,25.447,,,,,,,,,,,,
+1013,443,623,Rouse Run Circle,,residential,30.518,,,,,,,,,,,,
+1014,443,442,,,residential,10.79,,,,,,,,,,,,
+1015,444,443,Rouse Run Circle,,residential,25.575,,,,,,,,,,,,
+1016,444,251,Rouse Run Circle,,residential,462.303,,,,,,,,,,,,
+1017,444,251,Rouse Run Circle,,residential,417.017,,,,,,,,,,,,
+1018,445,560,East Colonial Drive,SR 50,trunk,233.955,60500,75060000,SR 417,N/A,2025,C,9.0,F,53.5,F,1.1277974179149353,1.3706347869437003
+1019,445,340,Selma Avenue,,residential,386.826,,,,,,,,,,,,
+1020,447,206,Sali Drive,,residential,352.163,,,,,,,,,,,,
+1021,448,206,Dean Road,,secondary,122.734,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,0.3164136069096544,0.34625432494003405
+1022,449,426,Park Manor Drive,,residential,86.879,,,,,,,,,,,,
+1023,449,401,Park Manor Drive,,residential,93.367,,,,,,,,,,,,
+1024,449,401,Inverson Street; Dawson Avenue; Jane Eyre Drive,,residential,485.926,,,,,,,,,,,,
+1025,450,452,Sylvan Pond Circle,,residential,192.111,,,,,,,,,,,,
+1026,450,372,Sylvan Pond Circle,,residential,66.966,,,,,,,,,,,,
+1027,450,453,Pond Pine Court,,residential,146.116,,,,,,,,,,,,
+1028,451,372,Meadowside Court,,residential,180.71,,,,,,,,,,,,
+1029,452,178,Sylvan Pond Circle,,residential,97.344,,,,,,,,,,,,
+1030,452,450,Sylvan Pond Circle,,residential,192.111,,,,,,,,,,,,
+1031,452,454,Longleaf Pine Court,,residential,119.289,,,,,,,,,,,,
+1032,453,450,Pond Pine Court,,residential,146.116,,,,,,,,,,,,
+1033,454,452,Longleaf Pine Court,,residential,119.289,,,,,,,,,,,,
+1034,455,178,Pond Cypress Court,,residential,98.046,,,,,,,,,,,,
+1035,456,125,River Crest Court,,residential,324.16,,,,,,,,,,,,
+1036,457,458,East-West Expressway,FL 408 Toll,motorway,1349.712,43500,75008160,Bridge No-750362,75008177 WB ON,2025,S,9.0,F,53.5,F,23.976050824829798,22.376505170012024
+1037,458,502,East-West Expressway,FL 408 Toll,motorway,47.237,75000,75008160,Bridge No-750360,Bridge No-750362,2025,C,9.0,F,53.5,F,26.53422190074364,4.8542890006279045
+1038,459,460,East-West Expressway,FL 408 Toll,motorway,296.336,62500,75008160,END OF 75008000,DEAN RD,2025,C,9.0,F,53.5,F,2.3845637289534416,3.483269165408967
+1039,460,479,East-West Expressway,FL 408 Toll,motorway,461.721,62500,75008160,END OF 75008000,DEAN RD,2025,C,9.0,F,53.5,F,0.0,4.161460654405772
+1040,461,481,East-West Expressway,FL 408 Toll,motorway,232.249,103000,75008160,DEAN RD,Bridge No-750360,2025,S,9.0,F,53.5,F,0.0,0.18038161324653856
+1041,462,463,East-West Expressway,FL 408 Toll,motorway,42.764,75000,75008160,Bridge No-750360,Bridge No-750362,2025,C,9.0,F,53.5,F,1.1264734210669196,5.231077208102554
+1042,463,480,East-West Expressway,FL 408 Toll,motorway,734.159,75000,75008160,Bridge No-750360,Bridge No-750362,2025,C,9.0,F,53.5,F,0.1583968514096836,2.086870460010351
+1043,464,401,Park Manor Drive,,residential,39.459,,,,,,,,,,,,
+1044,465,123,Hackberry Drive,,residential,308.508,,,,,,,,,,,,
+1045,465,123,Cypress Leaf Drive,,residential,234.332,,,,,,,,,,,,
+1046,465,122,Cypress Leaf Drive,,residential,74.162,,,,,,,,,,,,
+1047,466,119,Richardson Court,,residential,298.854,,,,,,,,,,,,
+1048,467,291,Dean Road,,secondary,20.808,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,8.384258917932241,0.7186601937283825
+1049,467,315,East Colonial Drive,SR 50,trunk,246.679,60500,75060000,SR 417,N/A,2025,C,9.0,F,53.5,F,18.39265870880262,4.07645742616611
+1050,468,491,Woodbury Cove Drive,,residential,37.388,,,,,,,,,,,,
+1051,468,104,Woodbury Cove Drive,,residential,15.466,,,,,,,,,,,,
+1052,469,393,Rondell Court,,residential,64.912,,,,,,,,,,,,
+1053,470,471,Sundance Court,,residential,13.282,,,,,,,,,,,,
+1054,470,137,Econlockhatchee Trail,,tertiary,84.461,18200,75000227,CURRY FORD RD,N/A,2025,T,9.0,F,53.5,F,6.354446869085097,4.906284657458798
+1055,471,470,Sundance Court,,residential,13.282,,,,,,,,,,,,
+1056,471,367,Econlockhatchee Trail,,tertiary,270.522,18200,75000227,CURRY FORD RD,N/A,2025,T,9.0,F,53.5,F,4.969231551338376,4.367078303657522
+1057,471,628,Sundance Court,,residential,128.399,,,,,,,,,,,,
+1058,472,193,Dean Point Place,,residential,275.902,,,,,,,,,,,,
+1059,473,421,Neversink Court,,residential,155.159,,,,,,,,,,,,
+1060,474,367,Millinockett Lane,,tertiary,12.862,,,,,,,,,,,,
+1061,474,470,Econlockhatchee Trail,,tertiary,270.473,18200,75000227,CURRY FORD RD,N/A,2025,T,9.0,F,53.5,F,7.426928190224353,4.278036240314677
+1062,475,97,River Park Boulevard,,residential,484.981,,,,,,,,,,,,
+1063,476,477,East-West Expressway,FL 408 Toll,motorway,110.637,62500,75008160,END OF 75008000,DEAN RD,2025,C,9.0,F,53.5,F,0.0,4.517276425845978
+1064,476,478,,,motorway_link,118.761,19500,75008167,SR 408 E/B,DEAN RD,2025,F,8.0,F,99.9,W,0.9151234004861293,0.43806873785561606
+1065,477,9,East-West Expressway,FL 408 Toll,motorway,638.574,103000,75008160,DEAN RD,Bridge No-750360,2025,S,9.0,F,53.5,F,0.0,1.6267315586894142
+1066,478,514,,,motorway_link,211.767,19500,75008167,SR 408 E/B,DEAN RD,2025,F,8.0,F,99.9,W,0.0,2.8229621860282066
+1067,479,476,East-West Expressway,FL 408 Toll,motorway,72.676,62500,75008160,END OF 75008000,DEAN RD,2025,C,9.0,F,53.5,F,0.0,6.197591459737225
+1068,480,483,East-West Expressway,FL 408 Toll,motorway,62.678,75000,75008160,Bridge No-750360,Bridge No-750362,2025,C,9.0,F,53.5,F,0.1583968514096836,1.2481046529983688
+1069,481,482,,,motorway_link,506.95,5600,75008171,SR-408 EB,ROUSE RD,2025,F,8.0,F,99.9,W,0.0,3.584252800809111
+1070,481,462,East-West Expressway,FL 408 Toll,motorway,521.733,103000,75008160,DEAN RD,Bridge No-750360,2025,S,9.0,F,53.5,F,0.0,0.6843390110623488
+1071,482,647,,,motorway_link,61.993,5600,75008171,SR-408 EB,ROUSE RD,2025,F,8.0,F,99.9,W,0.0,5.5326805245739195
+1072,482,651,,,motorway_link,51.066,5600,75008171,SR-408 EB,ROUSE RD,2025,F,8.0,F,99.9,W,0.0,26.436035840466815
+1073,483,559,East-West Expressway,FL 408 Toll,motorway,44.064,75000,75008160,Bridge No-750360,Bridge No-750362,2025,C,9.0,F,53.5,F,0.0,1.790500741144065
+1074,484,485,,,motorway_link,754.96,8900,75008179,E COLONIAL DR/SR 50,SR 408 WB,2025,S,8.0,F,99.9,W,0.0,14.252066961082722
+1075,484,486,East Colonial Drive,SR 50,trunk,183.957,49500,75060000,SR-434/ALAFAYA TRL,SR 408,2025,F,9.0,F,53.5,F,12.28921892302441,3.57473238655038
+1076,486,303,East Colonial Drive,SR 50,trunk,12.958,49500,75060000,SR-434/ALAFAYA TRL,SR 408,2025,F,9.0,F,53.5,F,11.894046449469501,2.283597721793001
+1077,486,600,Woodbury Road,,tertiary,188.884,20000,75000305,E COLONIAL DR,CHALLENGER PKWY,2025,T,9.0,F,53.5,F,0.0,19.253749119085157
+1078,487,488,,,unclassified,26.086,,,,,,,,,,,,
+1079,487,489,Challenger Parkway,,secondary,497.232,,,,,,,,,,,,
+1080,488,487,,,unclassified,26.086,,,,,,,,,,,,
+1081,488,495,Challenger Parkway,,secondary,181.345,6100,75000349,ALAFAYA TRL,470' N OF 75000817,2025,S,9.0,F,53.5,F,25.446705800320444,24.975075025487598
+1082,489,581,Challenger Parkway,,secondary,13.554,,,,,,,,,,,,
+1083,489,604,Woodbury Road,,tertiary,244.605,20000,75000305,E COLONIAL DR,CHALLENGER PKWY,2025,T,9.0,F,53.5,F,12.309617662153938,27.286780300683944
+1084,490,491,Woodbury Cove Drive,,residential,276.208,,,,,,,,,,,,
+1085,491,490,Woodbury Cove Drive,,residential,276.208,,,,,,,,,,,,
+1086,491,468,Woodbury Cove Drive,,residential,36.342,,,,,,,,,,,,
+1087,492,103,,,unclassified,192.029,,,,,,,,,,,,
+1088,493,486,Woodbury Road,,tertiary,21.036,20000,75000305,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,0.03350592388050171,1.8664094485367286
+1089,493,551,East Colonial Drive,SR 50,trunk,126.222,49500,75060000,SR-434/ALAFAYA TRL,SR 408,2025,F,9.0,F,53.5,F,7.5090437511057475,3.0735750187766087
+1090,494,151,Alafaya Trail,FL 434,primary,15.78,47500,75037000,SR-50/E COLONIAL DR,UNIVERSITY BLVD,2025,C,9.0,F,53.5,F,17.26660028653415,0.5209564987061839
+1091,495,496,Challenger Parkway,,secondary,16.753,6100,75000349,ALAFAYA TRL,470' N OF 75000817,2025,S,9.0,F,53.5,F,25.428636527762542,26.616909978492686
+1092,495,496,Ingenuity Drive,,unclassified,420.196,,,,,,,,,,,,
+1093,496,157,Ingenuity Drive,,unclassified,26.286,,,,,,,,,,,,
+1094,496,573,Challenger Parkway,,secondary,425.174,,,,,,,,,,,,
+1095,497,498,Challenger Parkway,,motorway,361.745,40500,75008160,75008177 WB ON,END OF MAINTENANCE,2025,C,9.0,F,53.5,F,0.7491138849794114,28.575788229531838
+1096,498,583,Challenger Parkway,,secondary,14.644,,,,,,,,,,,,
+1097,499,494,Challenger Parkway,,secondary,18.611,6100,75000349,ALAFAYA TRL,470' N OF 75000817,2025,S,9.0,F,53.5,F,16.539263722503794,23.280672492930165
+1098,499,545,Alafaya Trail,FL 434,primary,291.783,47500,75037000,SR-50/E COLONIAL DR,UNIVERSITY BLVD,2025,C,9.0,F,53.5,F,1.3691511776219756,0.4799104100053313
+1099,500,501,East-West Expressway,FL 408 Toll,motorway,48.556,103000,75008160,DEAN RD,Bridge No-750360,2025,S,9.0,F,53.5,F,26.358784318140966,2.021642725269743
+1100,501,506,East-West Expressway,FL 408 Toll,motorway,667.385,103000,75008160,DEAN RD,Bridge No-750360,2025,S,9.0,F,53.5,F,25.65015807876369,0.4464064014481437
+1101,502,503,East-West Expressway,FL 408 Toll,motorway,471.4,15500,75008175,ALAFAYA TR,WB SR 408,2025,S,8.0,F,99.9,W,13.050305060975166,20.971674658283007
+1102,503,513,East-West Expressway,FL 408 Toll,motorway,574.585,75000,75008160,Bridge No-750360,Bridge No-750362,2025,C,9.0,F,53.5,F,26.57124890231531,0.6270612189229432
+1103,504,505,East-West Expressway,FL 408 Toll,motorway,82.48,62500,75008160,END OF 75008000,DEAN RD,2025,C,9.0,F,53.5,F,26.54805052953801,5.390492487091109
+1104,505,507,East-West Expressway,FL 408 Toll,motorway,403.193,62500,75008160,END OF 75008000,DEAN RD,2025,C,9.0,F,53.5,F,24.151961573886016,4.559922483844105
+1105,506,578,East-West Expressway,FL 408 Toll,motorway,713.879,103000,75008160,DEAN RD,Bridge No-750360,2025,S,9.0,F,53.5,F,19.36337426017444,0.16511011462878855
+1106,506,578,,,motorway_link,716.568,103000,75008160,DEAN RD,Bridge No-750360,2025,S,9.0,F,53.5,F,25.060243751666007,0.16511011462878855
+1107,507,508,,,motorway_link,453.381,5600,75300030,SR 417,SR 408 WB,2025,F,8.0,F,99.9,W,18.75696832870067,5.620262803479363
+1108,507,509,East-West Expressway,FL 408 Toll,motorway,555.803,5600,75300030,SR 417,SR 408 WB,2025,F,8.0,F,99.9,W,12.447019640853034,28.520643780655945
+1109,510,511,,,motorway_link,332.966,500,75008269,SR 408 WB,DEAN RD,2025,F,8.0,F,99.9,W,0.0,1.703952554140301
+1110,510,512,East-West Expressway,FL 408 Toll,motorway,613.689,500,75008269,SR 408 WB,DEAN RD,2025,F,8.0,F,99.9,W,17.033597926332888,10.314827754190844
+1111,511,29,,,motorway_link,51.927,,,,,,,,,,,,
+1112,511,28,,,motorway_link,34.114,500,75008269,SR 408 WB,DEAN RD,2025,F,8.0,F,99.9,W,2.520637226463341,23.621681604512048
+1113,512,504,East-West Expressway,FL 408 Toll,motorway,100.351,19500,75008166,DEAN RD,SR-408,2025,F,8.0,F,99.9,W,14.081233509028335,12.667313964001437
+1114,513,557,East-West Expressway,FL 408 Toll,motorway,43.37,75000,75008160,Bridge No-750360,Bridge No-750362,2025,C,9.0,F,53.5,F,28.406161160867093,1.030777706013776
+1115,514,650,,,motorway_link,46.752,,,,,,,,,,,,
+1116,514,652,,,motorway_link,30.214,19500,75008167,SR 408 E/B,DEAN RD,2025,F,8.0,F,99.9,W,0.22464398527208687,24.875773297362315
+1117,515,504,,,motorway_link,101.306,19500,75008166,DEAN RD,SR-408,2025,F,8.0,F,99.9,W,0.0,0.2381313867176118
+1118,516,517,Econlockhatchee Trail,,tertiary,74.803,18200,75000227,CURRY FORD RD,N/A,2025,T,9.0,F,53.5,F,0.5145898657564701,3.0744633537450596
+1119,516,518,Econlockhatchee Trail,,tertiary,53.154,18200,75000227,CURRY FORD RD,N/A,2025,T,9.0,F,53.5,F,0.0,3.970222124779937
+1120,517,516,Econlockhatchee Trail,,tertiary,74.803,18200,75000227,CURRY FORD RD,N/A,2025,T,9.0,F,53.5,F,0.5145898657564701,3.0744633537450454
+1121,517,519,Econlockhatchee Trail,,tertiary,463.354,18200,75000227,CURRY FORD RD,N/A,2025,T,9.0,F,53.5,F,0.0,3.2305261323285777
+1122,518,516,Econlockhatchee Trail,,tertiary,53.154,18200,75000227,CURRY FORD RD,N/A,2025,T,9.0,F,53.5,F,0.0,3.970222124779937
+1123,518,586,Econlockhatchee Trail,,tertiary,242.631,18200,75000227,CURRY FORD RD,N/A,2025,T,9.0,F,53.5,F,0.0,1.3735186506715706
+1124,519,517,Econlockhatchee Trail,,tertiary,463.354,18200,75000227,CURRY FORD RD,N/A,2025,T,9.0,F,53.5,F,0.0,3.2305261323285634
+1125,520,521,Alafaya Trail,FL 434,primary,21.579,47500,75037000,SR-50/E COLONIAL DR,UNIVERSITY BLVD,2025,C,9.0,F,53.5,F,19.749482845302296,2.216342638117311
+1126,520,354,East Colonial Drive,SR 50,trunk,187.753,52000,75060000,N/A,SR-434/ALAFAYA TRL,2025,C,9.0,F,53.5,F,11.454015356548622,0.12977365496718107
+1127,521,522,East Colonial Drive,SR 50,trunk,20.319,49500,75060000,SR-434/ALAFAYA TRL,SR 408,2025,F,9.0,F,53.5,F,7.741796986083094,1.3677962313113312
+1128,521,523,Alafaya Trail,,secondary,152.543,60500,75518000,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,18.279071995004635,2.73080264419508
+1129,522,524,Alafaya Trail,FL 434,primary,21.498,47500,75037000,SR-50/E COLONIAL DR,UNIVERSITY BLVD,2025,C,9.0,F,53.5,F,0.6536191436413475,0.9951311059939343
+1130,522,295,East Colonial Drive,SR 50,trunk,409.761,49500,75060000,SR-434/ALAFAYA TRL,SR 408,2025,F,9.0,F,53.5,F,7.762436676587175,1.2629332908871618
+1131,523,325,Alafaya Trail,,secondary,27.731,60500,75518000,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,17.398927393145044,1.733018433622476
+1132,523,541,,,secondary_link,34.174,,,,,,,,,,,,
+1133,524,520,East Colonial Drive,SR 50,trunk,20.782,49500,75060000,SR-434/ALAFAYA TRL,SR 408,2025,F,9.0,F,53.5,F,13.241959421863715,1.3859783609473197
+1134,524,525,Alafaya Trail,FL 434,primary,227.727,47500,75037000,SR-50/E COLONIAL DR,UNIVERSITY BLVD,2025,C,9.0,F,53.5,F,0.7235328223490005,1.669434521031448
+1135,525,546,Orpington Street,,unclassified,163.228,,,,,,,,,,,,
+1136,525,547,Alafaya Trail,FL 434,primary,173.571,47500,75037000,SR-50/E COLONIAL DR,UNIVERSITY BLVD,2025,C,9.0,F,53.5,F,1.038662843014661,0.13993562300821338
+1137,526,15,,,unclassified,20.027,,,,,,,,,,,,
+1138,526,2,North Alafaya Trail,,secondary,218.053,60500,75518000,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,18.194831510490232,0.5070937206230184
+1139,527,503,,,motorway_link,438.299,15500,75008175,ALAFAYA TR,WB SR 408,2025,S,8.0,F,99.9,W,0.0,7.353899492802185
+1140,528,529,North Alafaya Trail,,secondary,203.032,60500,75518000,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,18.147806657534378,9.639207525984446
+1141,528,574,North Alafaya Trail,,secondary,204.826,60500,75518000,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,9.541279393910647,6.9717882479185675
+1142,529,530,Alafaya Trail,,secondary,14.992,60500,75518000,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,18.953476783906655,10.69849534478955
+1143,529,531,Lake Underhill Road,,tertiary,232.612,22500,75000304,DEAN RD,AVALON PARK BLVD,2025,S,9.0,F,53.5,F,14.45006632473475,7.003144978415353
+1144,530,535,Lake Underhill Road,,tertiary,9.572,22500,75000304,DEAN RD,AVALON PARK BLVD,2025,S,9.0,F,53.5,F,0.32087327391186504,3.4564557101394264
+1145,530,536,Alafaya Trail,,secondary,253.146,37000,75000231,N/A,LAKE UNDERHILL RD,2025,F,9.0,F,53.5,F,17.927499742820157,9.69627737251895
+1146,531,639,,,tertiary_link,19.506,,,,,,,,,,,,
+1147,531,533,Lake Underhill Road,,tertiary,241.309,22500,75000304,DEAN RD,AVALON PARK BLVD,2025,S,9.0,F,53.5,F,15.181874712127238,6.093760475920224
+1148,532,439,Rouse Road,,tertiary,71.998,,,,,,,,,,,,
+1149,532,441,,,motorway_link,83.513,20700,75000030,LAKE UNDERHILL RD,SR 434,2025,S,9.0,F,53.5,F,0.0,18.68414570777989
+1150,533,405,Lake Underhill Road,,tertiary,155.38,22500,75000304,DEAN RD,AVALON PARK BLVD,2025,S,9.0,F,53.5,F,15.181874712127238,6.638350978744459
+1151,534,27,Kehoe Boulevard,,residential,17.998,,,,,,,,,,,,
+1152,534,593,Kehoe Boulevard,,residential,110.416,,,,,,,,,,,,
+1153,534,26,Lake Underhill Road,,tertiary,782.258,22500,75000304,DEAN RD,AVALON PARK BLVD,2025,S,9.0,F,53.5,F,14.694406539316658,12.540507294927433
+1154,535,58,Lake Underhill Road,,tertiary,10.551,22500,75000304,DEAN RD,AVALON PARK BLVD,2025,S,9.0,F,53.5,F,0.16495492677219098,3.433849203664205
+1155,537,538,North Alafaya Trail,,secondary,11.13,60500,75518000,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,1.366358206003751,10.106220882371645
+1156,538,383,,,unclassified,18.912,,,,,,,,,,,,
+1157,538,382,North Alafaya Trail,,secondary,248.815,60500,75518000,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,0.445429625185797,3.1438577317134957
+1158,539,261,Waterford Lakes Parkway,,tertiary,19.046,,,,,,,,,,,,
+1159,539,260,Alafaya Trail,,secondary,186.509,60500,75518000,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,0.7298710056407429,8.684476371606408
+1160,540,644,,,unclassified,18.927,,,,,,,,,,,,
+1161,540,645,Alafaya Trail,,secondary,86.6,60500,75518000,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,0.9718508227470155,4.345301783690942
+1162,541,522,Alafaya Trail,,secondary,173.149,60500,75518000,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,0.44026973334078834,2.369716989970428
+1163,542,560,Econlockhatchee Trail,,tertiary,20.973,18200,75000227,CURRY FORD RD,N/A,2025,T,9.0,F,53.5,F,15.146837230777681,8.012206096915591
+1164,542,669,East Colonial Drive,SR 50,trunk,343.422,60500,75060000,SR 417,N/A,2025,C,9.0,F,53.5,F,18.457407858514454,1.7368763950534336
+1165,543,570,Econlockhatchee Trail,,tertiary,68.819,14200,75000228,USPS EXIT,TORRINGTON AVE,2025,T,9.0,F,53.5,F,8.578496006584421,10.527461511403118
+1166,544,445,East Colonial Drive,SR 50,trunk,544.998,60500,75060000,SR 417,N/A,2025,C,9.0,F,53.5,F,1.5458729698452671,3.283358669241494
+1167,546,672,Hawley Trail,,residential,56.218,,,,,,,,,,,,
+1168,546,525,Orpington Street,,unclassified,163.228,,,,,,,,,,,,
+1169,546,592,Orpington Street,,unclassified; residential,736.56,,,,,,,,,,,,
+1170,547,548,Alafaya Trail,FL 434,primary,25.954,47500,75037000,SR-50/E COLONIAL DR,UNIVERSITY BLVD,2025,C,9.0,F,53.5,F,1.7539065859625507,0.5678853033377749
+1171,547,549,,,primary_link,33.244,,,,,,,,,,,,
+1172,548,152,Alafaya Trail,FL 434,primary,277.359,47500,75037000,SR-50/E COLONIAL DR,UNIVERSITY BLVD,2025,C,9.0,F,53.5,F,1.2212015444056084,0.23522684951785777
+1173,549,590,,,residential,72.628,,,,,,,,,,,,
+1174,549,591,Alafaya Trail,FL 434,primary,168.586,47500,75037000,SR-50/E COLONIAL DR,UNIVERSITY BLVD,2025,C,9.0,F,53.5,F,16.854975087377678,0.5799550516822904
+1175,550,484,East Colonial Drive,SR 50,trunk,209.09,49500,75060000,SR-434/ALAFAYA TRL,SR 408,2025,F,9.0,F,53.5,F,14.256668792094219,5.91453127153585
+1176,551,552,,,motorway_link,651.38,2700,75008177,E COLONIAL DR/ SR 50,SR 408 WB,2025,F,8.0,F,99.9,W,0.0,1.276901120580746
+1177,551,553,East Colonial Drive,SR 50,trunk,290.608,49500,75060000,SR-434/ALAFAYA TRL,SR 408,2025,F,9.0,F,53.5,F,4.654715724261008,5.595872272043607
+1178,554,555,Dean Road,,secondary,56.76,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,8.996618141430467,2.1478339111393154
+1179,555,556,Dean Road,,secondary,5.956,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,9.342542872094805,2.553491731338596
+1180,556,28,Dean Road,,secondary,21.845,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,9.154228496555982,2.0114257166106597
+1181,556,30,,,motorway_link,16.545,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,1.750498733079164,29.031732874062655
+1182,557,558,East-West Expressway,FL 408 Toll,motorway,167.408,75000,75008160,Bridge No-750360,Bridge No-750362,2025,C,9.0,F,53.5,F,26.66949162777227,0.7431538493619421
+1183,558,437,,,motorway_link,776.349,800,75008173,ROUSE RD,SR 408 WB,2025,F,8.0,F,99.9,W,0.0,10.355851095111547
+1184,558,500,East-West Expressway,FL 408 Toll,motorway,634.623,800,75008173,ROUSE RD,SR 408 WB,2025,F,8.0,F,99.9,W,12.732959690698813,27.317605521708856
+1185,559,1,East-West Expressway,FL 408 Toll,motorway,566.555,75000,75008160,Bridge No-750360,Bridge No-750362,2025,C,9.0,F,53.5,F,0.0,0.3350053523938712
+1186,560,284,East Colonial Drive,SR 50,trunk,14.655,60500,75060000,SR 417,N/A,2025,C,9.0,F,53.5,F,1.768235334041577,1.6204298596579312
+1187,560,634,Econlockhatchee Trail,,tertiary,175.97,18200,75000227,CURRY FORD RD,N/A,2025,T,9.0,F,53.5,F,8.524580477154142,5.193841156223513
+1188,561,84,East Colonial Drive,SR 50,trunk,27.482,40500,75060000,N/A,N/A,2025,S,9.0,F,53.5,F,11.251363307062132,6.312654546008133
+1189,561,694,,,trunk_link,37.53,,,,,,,,,,,,
+1190,562,267,,,trunk_link,56.88,60500,75060000,SR 417,N/A,2025,C,9.0,F,53.5,F,0.0,27.145304986148172
+1191,562,563,East Colonial Drive,SR 50,trunk,170.836,60500,75060000,SR 417,N/A,2025,C,9.0,F,53.5,F,18.878042020498164,4.139142088133264
+1192,563,564,East Colonial Drive,SR 50,trunk,62.353,60500,75060000,SR 417,N/A,2025,C,9.0,F,53.5,F,18.808352159344352,4.097660667463481
+1193,564,285,East Colonial Drive,SR 50,trunk,134.072,60500,75060000,SR 417,N/A,2025,C,9.0,F,53.5,F,18.592772533404233,3.4166934134940967
+1194,565,376,Lake Berge Road,,tertiary,20.596,,,,,,,,,,,,
+1195,565,630,Retreat Avenue,,residential,84.524,,,,,,,,,,,,
+1196,565,631,East Colonial Drive,SR 50,trunk,113.553,52000,75060000,N/A,SR-434/ALAFAYA TRL,2025,C,9.0,F,53.5,F,10.296299797464679,0.06361155651975992
+1197,566,319,,,trunk_link,40.762,,,,,,,,,,,,
+1198,566,170,East Colonial Drive,SR 50,trunk,130.141,52000,75060000,N/A,SR-434/ALAFAYA TRL,2025,C,9.0,F,53.5,F,10.46520392473027,0.09496291935423073
+1199,567,618,East Colonial Drive,SR 50,trunk,146.076,52000,75060000,N/A,SR-434/ALAFAYA TRL,2025,C,9.0,F,53.5,F,11.038596663314603,0.14630223899192174
+1200,568,569,Torrington Avenue,,unclassified,14.863,,,,,,,,,,,,
+1201,568,569,Econlockhatchee Trail,,tertiary,647.874,4700,75000425,SR 50 /E COLONIAL DR,ECONLOCKHATCHEE TRL,2025,T,9.0,F,53.5,F,0.0,29.68823807683154
+1202,569,568,Torrington Avenue,,unclassified,14.863,,,,,,,,,,,,
+1203,569,571,Econlockhatchee Trail,,tertiary,273.2,14200,75000228,USPS EXIT,TORRINGTON AVE,2025,T,9.0,F,53.5,F,6.687518790631999,2.4634357161421008
+1204,570,568,Econlockhatchee Trail,,tertiary,273.978,14200,75000228,USPS EXIT,TORRINGTON AVE,2025,T,9.0,F,53.5,F,6.31623231343854,1.5166096317849878
+1205,571,580,Econlockhatchee Trail,,tertiary,68.069,14200,75000228,USPS EXIT,TORRINGTON AVE,2025,T,9.0,F,53.5,F,8.560598722990266,9.61017685509502
+1206,572,415,Alafaya Trail,FL 434,primary,287.119,47500,75037000,SR-50/E COLONIAL DR,UNIVERSITY BLVD,2025,C,9.0,F,53.5,F,16.889521823469718,0.2981777290594039
+1207,573,156,Challenger Tech Court,,unclassified,25.464,,,,,,,,,,,,
+1208,573,155,Challenger Parkway,,secondary,260.834,6100,75000349,ALAFAYA TRL,470' N OF 75000817,2025,S,9.0,F,53.5,F,22.776976479887058,13.689083072581468
+1209,573,577,Challenger Tech Court,,unclassified,164.086,,,,,,,,,,,,
+1210,574,535,North Alafaya Trail,,secondary,14.667,60500,75518000,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,9.541279393910647,10.109633029695132
+1211,574,529,Lake Underhill Road,,tertiary,9.401,22500,75000304,DEAN RD,AVALON PARK BLVD,2025,S,9.0,F,53.5,F,14.266407905748446,5.347466796273242
+1212,575,576,North Alafaya Trail,,secondary,11.558,60500,75518000,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,17.713274063261046,21.87211936775681
+1213,576,6,,,unclassified,19.687,,,,,,,,,,,,
+1214,576,637,North Alafaya Trail,,secondary,179.17,60500,75518000,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,17.713274063261046,21.082976978285515
+1215,577,641,Challenger Tech Court,,unclassified,79.543,,,,,,,,,,,,
+1216,578,510,East-West Expressway,FL 408 Toll,motorway,265.23,103000,75008160,DEAN RD,Bridge No-750360,2025,S,9.0,F,53.5,F,25.060243751666007,0.06932190045512243
+1217,579,267,East Colonial Drive,SR 50,trunk,121.96,60500,75060000,SR 417,N/A,2025,C,9.0,F,53.5,F,1.6873634511761342,4.160510090886044
+1218,580,542,Econlockhatchee Trail,,tertiary,353.128,14200,75000228,USPS EXIT,TORRINGTON AVE,2025,T,9.0,F,53.5,F,4.595839701046661,5.871303597318004
+1219,581,498,Woodbury Road,,tertiary,25.909,,,,,,,,,,,,
+1220,581,582,Challenger Parkway,,motorway,344.632,40500,75008160,75008177 WB ON,END OF MAINTENANCE,2025,C,9.0,F,53.5,F,27.6366587591369,29.05216263633602
+1221,583,489,Woodbury Road,,tertiary,25.588,,,,,,,,,,,,
+1222,583,488,Challenger Parkway,,secondary,518.243,,,,,,,,,,,,
+1223,584,585,Lake Downey Drive,,residential,408.439,,,,,,,,,,,,
+1224,585,584,Lake Downey Drive,,residential,408.439,,,,,,,,,,,,
+1225,585,690,East Colonial Drive,SR 50,trunk,265.734,40500,75060000,N/A,N/A,2025,S,9.0,F,53.5,F,10.050425951094693,4.41510700802101
+1226,586,587,Shepton Street,,residential,13.363,,,,,,,,,,,,
+1227,586,588,Econlockhatchee Trail,,tertiary,403.402,18200,75000227,CURRY FORD RD,N/A,2025,T,9.0,F,53.5,F,6.6974363616545585,3.095064567259527
+1228,587,586,Shepton Street,,residential,13.363,,,,,,,,,,,,
+1229,587,609,Shepton Street,,residential,57.597,,,,,,,,,,,,
+1230,587,518,Econlockhatchee Trail,,tertiary,242.395,18200,75000227,CURRY FORD RD,N/A,2025,T,9.0,F,53.5,F,0.19960383589189118,4.548683618262714
+1231,588,20,Econlockhatchee Trail,,tertiary,13.688,18200,75000227,CURRY FORD RD,N/A,2025,T,9.0,F,53.5,F,8.587479542449346,2.257386625006532
+1232,589,474,Econlockhatchee Trail,,tertiary,303.396,18200,75000227,CURRY FORD RD,N/A,2025,T,9.0,F,53.5,F,7.906638054914565,4.4501750706310474
+1233,590,549,,,residential,72.628,,,,,,,,,,,,
+1234,591,356,Alafaya Trail,FL 434,primary,31.739,47500,75037000,SR-50/E COLONIAL DR,UNIVERSITY BLVD,2025,C,9.0,F,53.5,F,17.270122300324296,1.598399636049166
+1235,591,525,,,primary_link,38.612,,,,,,,,,,,,
+1236,592,546,Orpington Street,,unclassified; residential,736.56,,,,,,,,,,,,
+1237,593,717,,,residential,22.448,,,,,,,,,,,,
+1238,593,718,Kehoe Boulevard,,residential,91.0,,,,,,,,,,,,
+1239,594,595,Kehoe Boulevard,,residential,74.009,,,,,,,,,,,,
+1240,594,596,Carey Way,,residential,352.112,,,,,,,,,,,,
+1241,594,597,Kehoe Boulevard,,residential,27.292,,,,,,,,,,,,
+1242,595,596,Kehoe Boulevard,,residential,135.497,,,,,,,,,,,,
+1243,595,594,Kehoe Boulevard,,residential,74.009,,,,,,,,,,,,
+1244,595,598,Pepin Drive,,residential,243.969,,,,,,,,,,,,
+1245,596,595,Kehoe Boulevard,,residential,135.497,,,,,,,,,,,,
+1246,596,598,Carey Way,,residential,72.194,,,,,,,,,,,,
+1247,596,594,Carey Way,,residential,352.112,,,,,,,,,,,,
+1248,597,594,Kehoe Boulevard,,residential,27.292,,,,,,,,,,,,
+1249,597,613,Kehoe Boulevard,,residential,20.804,,,,,,,,,,,,
+1250,598,599,Carey Way,,residential,226.684,,,,,,,,,,,,
+1251,598,596,Carey Way,,residential,72.194,,,,,,,,,,,,
+1252,598,595,Pepin Drive,,residential,243.969,,,,,,,,,,,,
+1253,599,598,Carey Way,,residential,226.684,,,,,,,,,,,,
+1254,599,599,Carey Way,,residential,348.055,,,,,,,,,,,,
+1255,599,599,Carey Way,,residential,348.055,,,,,,,,,,,,
+1256,600,601,Woodbury Road,,tertiary,10.386,20000,75000305,E COLONIAL DR,CHALLENGER PKWY,2025,T,9.0,F,53.5,F,0.2137135143956558,18.576113090512322
+1257,600,709,Graduation Way,,residential,18.894,,,,,,,,,,,,
+1258,601,602,,,unclassified,14.665,,,,,,,,,,,,
+1259,601,603,Woodbury Road,,tertiary,111.63,20000,75000305,E COLONIAL DR,CHALLENGER PKWY,2025,T,9.0,F,53.5,F,0.0,18.904866479007666
+1260,602,600,,,unclassified,15.466,,,,,,,,,,,,
+1261,602,303,Woodbury Road,,tertiary,194.445,20000,75000305,E COLONIAL DR,CHALLENGER PKWY,2025,T,9.0,F,53.5,F,12.40073445874954,19.58034423284822
+1262,603,605,Woodbury Road,,tertiary,18.838,20000,75000305,E COLONIAL DR,CHALLENGER PKWY,2025,T,9.0,F,53.5,F,0.0,19.574573319256572
+1263,603,664,Hub Plaza,,residential,14.786,20000,75000305,E COLONIAL DR,CHALLENGER PKWY,2025,T,9.0,F,53.5,F,0.297096871756939,8.40676882316994
+1264,604,605,,,tertiary_link,38.417,20000,75000305,E COLONIAL DR,CHALLENGER PKWY,2025,T,9.0,F,53.5,F,0.5248683437788739,29.575606969117516
+1265,604,602,Woodbury Road,,tertiary,172.035,20000,75000305,E COLONIAL DR,CHALLENGER PKWY,2025,T,9.0,F,53.5,F,12.529882892075838,16.56419410429679
+1266,605,663,Woodbury Road,,tertiary,16.047,20000,75000305,E COLONIAL DR,CHALLENGER PKWY,2025,T,9.0,F,53.5,F,0.0,8.235395842620633
+1267,605,664,,,residential,9.17,,,,,,,,,,,,
+1268,606,607,Glastonbury Drive,,residential,93.841,,,,,,,,,,,,
+1269,607,606,Glastonbury Drive,,residential,93.841,,,,,,,,,,,,
+1270,607,610,Glastonbury Drive,,residential,77.081,,,,,,,,,,,,
+1271,607,608,Shepton Street,,residential,110.679,,,,,,,,,,,,
+1272,608,607,Shepton Street,,residential,110.679,,,,,,,,,,,,
+1273,608,609,Shepton Street,,residential,571.357,,,,,,,,,,,,
+1274,608,610,Watchet Way,,residential,189.845,,,,,,,,,,,,
+1275,609,610,Glastonbury Drive,,residential,76.814,,,,,,,,,,,,
+1276,609,611,Glastonbury Drive,,residential,55.787,,,,,,,,,,,,
+1277,609,608,Shepton Street,,residential,571.357,,,,,,,,,,,,
+1278,609,587,Shepton Street,,residential,57.597,,,,,,,,,,,,
+1279,610,607,Glastonbury Drive,,residential,77.081,,,,,,,,,,,,
+1280,610,609,Glastonbury Drive,,residential,76.814,,,,,,,,,,,,
+1281,610,608,Watchet Way,,residential,189.845,,,,,,,,,,,,
+1282,611,609,Glastonbury Drive,,residential,55.787,,,,,,,,,,,,
+1283,612,344,Sophiamarie Loop,,residential,54.47,,,,,,,,,,,,
+1284,612,612,Sophiamarie Loop,,residential,663.037,,,,,,,,,,,,
+1285,612,612,Sophiamarie Loop,,residential,663.037,,,,,,,,,,,,
+1286,613,717,Kehoe Boulevard,,residential,84.046,,,,,,,,,,,,
+1287,614,128,Coconut Grove Lane,,residential,255.279,,,,,,,,,,,,
+1288,615,424,,,tertiary_link,81.373,20700,75000030,LAKE UNDERHILL RD,SR 434,2025,S,9.0,F,53.5,F,3.2069567438255038,20.279354595027613
+1289,615,423,Rouse Road,,tertiary,435.897,20700,75000030,LAKE UNDERHILL RD,SR 434,2025,S,9.0,F,53.5,F,15.481694129654635,10.785229135795575
+1290,616,617,Rouse Road,,tertiary,21.651,20700,75000030,LAKE UNDERHILL RD,SR 434,2025,S,9.0,F,53.5,F,0.4633790009927982,13.454169514689212
+1291,616,376,East Colonial Drive,SR 50,trunk,382.316,52000,75060000,N/A,SR-434/ALAFAYA TRL,2025,C,9.0,F,53.5,F,10.047962696839987,0.17008072448595613
+1292,617,619,East Colonial Drive,SR 50,trunk,16.618,52000,75060000,N/A,SR-434/ALAFAYA TRL,2025,C,9.0,F,53.5,F,10.124848107668722,0.2675812671189135
+1293,617,620,Rouse Road,,tertiary,430.469,20700,75000030,LAKE UNDERHILL RD,SR 434,2025,S,9.0,F,53.5,F,0.0,12.777537384000311
+1294,618,616,East Colonial Drive,SR 50,trunk,16.715,52000,75060000,N/A,SR-434/ALAFAYA TRL,2025,C,9.0,F,53.5,F,11.013731212341321,0.04216710355183295
+1295,618,615,Rouse Road,,tertiary,307.198,20700,75000030,LAKE UNDERHILL RD,SR 434,2025,S,9.0,F,53.5,F,15.14885484268456,11.846808880948217
+1296,619,618,Rouse Road,,tertiary,21.569,20700,75000030,LAKE UNDERHILL RD,SR 434,2025,S,9.0,F,53.5,F,16.83618000893101,13.229316581726238
+1297,619,621,East Colonial Drive,SR 50,trunk,144.137,52000,75060000,N/A,SR-434/ALAFAYA TRL,2025,C,9.0,F,53.5,F,10.095622201210317,0.08235679822675479
+1298,620,442,Rouse Run Circle,,residential,30.092,,,,,,,,,,,,
+1299,620,623,Rouse Road,,tertiary,11.588,20700,75000030,LAKE UNDERHILL RD,SR 434,2025,S,9.0,F,53.5,F,0.5975038632463423,11.651094582565491
+1300,621,673,Park Manor Drive,,residential,349.595,,,,,,,,,,,,
+1301,621,698,East Colonial Drive,SR 50,trunk,144.905,40500,75060000,N/A,N/A,2025,S,9.0,F,53.5,F,10.066314671687985,6.253316294446563
+1302,622,620,Rouse Run Circle,,residential,13.594,,,,,,,,,,,,
+1303,622,619,Rouse Road,,tertiary,427.532,20700,75000030,LAKE UNDERHILL RD,SR 434,2025,S,9.0,F,53.5,F,13.81942521415411,12.398865689141957
+1304,623,624,Rouse Run Circle,,residential,13.588,,,,,,,,,,,,
+1305,623,625,Rouse Road,,tertiary,1159.797,20700,75000030,LAKE UNDERHILL RD,SR 434,2025,S,9.0,F,53.5,F,0.0,11.63665160755501
+1306,624,622,Rouse Road,,tertiary,11.966,20700,75000030,LAKE UNDERHILL RD,SR 434,2025,S,9.0,F,53.5,F,14.205562432051495,11.670421731444023
+1307,626,349,Tree Shore Drive,,residential,21.249,,,,,,,,,,,,
+1308,627,185,Twin Oaks Lane,,residential,250.662,,,,,,,,,,,,
+1309,628,471,Sundance Court,,residential,128.399,,,,,,,,,,,,
+1310,628,628,Sundance Court,,residential,82.145,,,,,,,,,,,,
+1311,628,628,Sundance Court,,residential,82.145,,,,,,,,,,,,
+1312,629,629,Rosewalk Court,,residential,83.015,,,,,,,,,,,,
+1313,629,629,Rosewalk Court,,residential,83.015,,,,,,,,,,,,
+1314,629,138,Rosewalk Court,,residential,142.573,,,,,,,,,,,,
+1315,630,674,Retreat Avenue,,residential,119.982,,,,,,,,,,,,
+1316,630,565,Retreat Avenue,,residential,84.524,,,,,,,,,,,,
+1317,631,63,East Colonial Drive,SR 50,trunk,145.652,52000,75060000,N/A,SR-434/ALAFAYA TRL,2025,C,9.0,F,53.5,F,10.268437188510006,0.06036895182069202
+1318,631,684,,,residential,197.034,,,,,,,,,,,,
+1319,632,217,Royal Vista Court,,residential,82.725,,,,,,,,,,,,
+1320,633,638,East Colonial Drive,SR 50,trunk,28.899,49500,75060000,SR-434/ALAFAYA TRL,SR 408,2025,F,9.0,F,53.5,F,10.355684982574513,1.3850810026036982
+1321,633,703,,,trunk_link,37.245,,,,,,,,,,,,
+1322,634,138,Econlockhatchee Trail,,tertiary,280.392,18200,75000227,CURRY FORD RD,N/A,2025,T,9.0,F,53.5,F,6.047352650800059,5.192337944612461
+1323,635,575,,,unclassified,19.18,,,,,,,,,,,,
+1324,635,537,North Alafaya Trail,,secondary,250.998,60500,75518000,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,0.9118460738458618,18.737045829705124
+1325,636,537,,,unclassified,19.013,,,,,,,,,,,,
+1326,636,575,North Alafaya Trail,,secondary,255.105,60500,75518000,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,17.06279725944738,18.63195033986665
+1327,637,527,,,motorway_link,108.747,60500,75518000,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,19.141116804138456,21.417571226899653
+1328,637,5,North Alafaya Trail,,secondary,74.414,60500,75518000,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,18.05394239418543,15.961753486220914
+1329,638,296,East Colonial Drive,SR 50,trunk,203.914,49500,75060000,SR-434/ALAFAYA TRL,SR 408,2025,F,9.0,F,53.5,F,9.972897562795996,1.2101778456858767
+1330,639,531,,,tertiary_link,19.506,,,,,,,,,,,,
+1331,639,530,Lake Underhill Road,,tertiary,231.651,22500,75000304,DEAN RD,AVALON PARK BLVD,2025,S,9.0,F,53.5,F,0.4502353181006182,5.89446864175258
+1332,640,60,,,unclassified,13.177,,,,,,,,,,,,
+1333,640,59,Lake Underhill Road,,tertiary,150.038,22500,75000304,DEAN RD,AVALON PARK BLVD,2025,S,9.0,F,53.5,F,12.466828886701949,6.707338739689309
+1334,641,577,Challenger Tech Court,,unclassified,19.362,,,,,,,,,,,,
+1335,641,573,Challenger Tech Court,,unclassified,170.354,,,,,,,,,,,,
+1336,642,459,East-West Expressway,FL 408 Toll,motorway,492.711,62500,75008160,END OF 75008000,DEAN RD,2025,C,9.0,F,53.5,F,0.985692415010034,3.6902343449661714
+1337,644,540,,,unclassified,18.927,,,,,,,,,,,,
+1338,644,409,Alafaya Trail,,secondary,256.662,60500,75518000,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,16.921223838842856,7.96332961908486
+1339,645,646,Alafaya Trail,,secondary,69.036,60500,75518000,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,1.0601127077032095,3.4267675468435215
+1340,646,541,Alafaya Trail,,secondary,26.85,60500,75518000,LAKE UNDERHILL RD,E COLONIAL DR,2025,T,9.0,F,53.5,F,1.2503660518200597,0.3819350160211741
+1341,646,325,,,secondary_link,32.587,,,,,,,,,,,,
+1342,647,648,Rouse Road,,tertiary,266.381,,,,,,,,,,,,
+1343,649,11,Dean Road,,tertiary,75.848,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,9.94885804941724,0.014065559074367684
+1344,649,13,,,motorway_link,84.165,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,17.35697570078222,26.01964344829537
+1345,650,649,Dean Road,,tertiary,292.162,17000,75620000,N/A,75008168 EB ON,2025,F,9.0,F,53.5,F,0.0,15.85804803625274
+1346,651,653,,,motorway_link,6.771,20700,75000030,LAKE UNDERHILL RD,SR 434,2025,S,9.0,F,53.5,F,9.388046064243039,17.67930977588582
+1347,651,647,Rouse Road,,tertiary,32.799,,,,,,,,,,,,
+1348,652,650,Dean Road,,tertiary,39.773,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,6.624576376437447,0.9636362914189647
+1349,652,654,,,motorway_link,10.75,,,,,,,,,,,,
+1350,653,439,,,motorway_link,13.381,,,,,,,,,,,,
+1351,653,440,,,motorway_link,13.768,20700,75000030,LAKE UNDERHILL RD,SR 434,2025,S,9.0,F,53.5,F,0.2895193191570917,9.660944804352965
+1352,654,11,,,motorway_link,9.627,19500,75008167,SR 408 E/B,DEAN RD,2025,F,8.0,F,99.9,W,29.818273181552243,17.15654635353198
+1353,654,12,,,motorway_link,15.706,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,1.7438711396314048,29.209468566024924
+1354,655,653,,,motorway_link,14.134,,,,,,,,,,,,
+1355,655,651,Rouse Road,,tertiary,17.604,,,,,,,,,,,,
+1356,656,437,Rouse Road,,tertiary,24.475,,,,,,,,,,,,
+1357,656,500,,,motorway_link,541.539,,,,,,,,,,,,
+1358,657,652,Dean Road,,tertiary,18.509,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,6.778238260954803,1.1779000826017807
+1359,657,654,,,motorway_link,14.89,17000,75620000,N/A,75008168 EB ON,2025,F,9.0,F,53.5,F,25.589812966683056,27.2769902912907
+1360,658,657,Dean Road,,secondary,7.657,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,6.97383792524084,2.1440249675987957
+1361,659,658,Dean Road,,secondary,55.247,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,7.03021092944898,2.1735250226143847
+1362,660,659,Dean Road,,secondary,3.76,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,7.134578867778062,1.3648351574002646
+1363,661,660,Dean Road,,secondary,25.232,25000,75620000,75008168 EB ON,SEMINOLE CO LINE,2025,T,9.0,F,53.5,F,7.134578867778062,3.198973255459549
+1364,661,662,,,motorway_link,33.863,19500,75008166,DEAN RD,SR-408,2025,F,8.0,F,99.9,W,2.1271648743224305,23.063070430675992
+1365,662,515,,,motorway_link,206.039,19500,75008166,DEAN RD,SR-408,2025,F,8.0,F,99.9,W,0.18586966850848277,3.2972804769731283
+1366,663,581,Woodbury Road,,tertiary,253.232,20000,75000305,E COLONIAL DR,CHALLENGER PKWY,2025,T,9.0,F,53.5,F,0.0,25.240534359658113
+1367,664,705,Hub Plaza,,residential,37.463,,,,,,,,,,,,
+1368,665,666,,,residential,23.183,,,,,,,,,,,,
+1369,666,665,,,residential,23.183,,,,,,,,,,,,
+1370,667,539,Waterford Lakes Parkway,,tertiary,202.604,,,,,,,,,,,,
+1371,667,23,,,tertiary_link,83.101,,,,,,,,,,,,
+1372,668,169,Jackie,,residential,195.854,,,,,,,,,,,,
+1373,670,431,Econlockhatchee Trail,,tertiary,310.263,18200,75000227,CURRY FORD RD,N/A,2025,T,9.0,F,53.5,F,5.029648716513306,4.2511172880174115
+1374,670,589,,,tertiary_link,120.678,18200,75000227,CURRY FORD RD,N/A,2025,T,9.0,F,53.5,F,0.0,11.00481547763927
+1375,671,588,Valencia College Lane,,tertiary,15.107,13100,75000240,CHICKASAW TRL,ECONLOCKHATCHEE TRL,2025,T,9.0,F,53.5,F,7.8665713960760275,4.377807948954748
+1376,671,587,Econlockhatchee Trail,,tertiary,402.142,18200,75000227,CURRY FORD RD,N/A,2025,T,9.0,F,53.5,F,6.054382005247499,3.3369326620754123
+1377,673,621,Park Manor Drive,,residential,349.595,,,,,,,,,,,,
+1378,674,679,,,residential,8.786,,,,,,,,,,,,
+1379,675,676,,,residential,23.309,,,,,,,,,,,,
+1380,676,677,,,residential,83.424,,,,,,,,,,,,
+1381,676,675,,,residential,23.309,,,,,,,,,,,,
+1382,676,678,,,residential,157.104,,,,,,,,,,,,
+1383,677,676,,,residential,83.424,,,,,,,,,,,,
+1384,677,686,,,residential,171.934,,,,,,,,,,,,
+1385,677,678,,,residential,73.024,,,,,,,,,,,,
+1386,677,679,,,residential,40.799,,,,,,,,,,,,
+1387,678,686,,,residential,238.587,,,,,,,,,,,,
+1388,678,676,,,residential,157.104,,,,,,,,,,,,
+1389,678,677,,,residential,73.024,,,,,,,,,,,,
+1390,679,681,,,residential,27.22,,,,,,,,,,,,
+1391,679,677,,,residential,40.799,,,,,,,,,,,,
+1392,680,674,,,residential,21.923,,,,,,,,,,,,
+1393,680,630,Retreat Avenue,,residential,120.703,,,,,,,,,,,,
+1394,681,680,,,residential,8.614,,,,,,,,,,,,
+1395,681,682,,,residential,41.643,,,,,,,,,,,,
+1396,682,683,,,residential,20.968,,,,,,,,,,,,
+1397,682,683,,,residential,357.957,,,,,,,,,,,,
+1398,682,681,,,residential,41.643,,,,,,,,,,,,
+1399,683,684,,,residential,43.855,,,,,,,,,,,,
+1400,683,682,,,residential,20.968,,,,,,,,,,,,
+1401,683,682,,,residential,357.957,,,,,,,,,,,,
+1402,683,685,,,residential,169.959,,,,,,,,,,,,
+1403,684,683,,,residential,43.855,,,,,,,,,,,,
+1404,684,685,,,residential,276.755,,,,,,,,,,,,
+1405,684,631,,,residential,197.034,,,,,,,,,,,,
+1406,685,686,,,residential,123.385,,,,,,,,,,,,
+1407,685,683,,,residential,169.959,,,,,,,,,,,,
+1408,685,684,,,residential,276.755,,,,,,,,,,,,
+1409,686,685,,,residential,123.385,,,,,,,,,,,,
+1410,686,677,,,residential,171.934,,,,,,,,,,,,
+1411,686,678,,,residential,238.587,,,,,,,,,,,,
+1412,687,293,East Colonial Drive,SR 50,trunk,275.966,40500,75060000,N/A,N/A,2025,S,9.0,F,53.5,F,10.469976845388562,7.534057215969511
+1413,688,585,East Colonial Drive,SR 50,trunk,32.224,40500,75060000,N/A,N/A,2025,S,9.0,F,53.5,F,10.299439735633149,6.353407031286594
+1414,688,689,,,trunk_link,32.041,,,,,,,,,,,,
+1415,689,687,East Colonial Drive,SR 50,trunk,217.364,40500,75060000,N/A,N/A,2025,S,9.0,F,53.5,F,10.122408464223446,7.414517571133956
+1416,690,81,East Colonial Drive,SR 50,trunk,39.681,40500,75060000,N/A,N/A,2025,S,9.0,F,53.5,F,10.411183874527826,1.88967316861266
+1417,690,218,,,trunk_link,39.94,,,,,,,,,,,,
+1418,691,689,East Colonial Drive,SR 50,trunk,31.22,40500,75060000,N/A,N/A,2025,S,9.0,F,53.5,F,10.311577223488058,6.66398951025846
+1419,691,585,,,trunk_link,31.3,,,,,,,,,,,,
+1420,692,693,East Colonial Drive,SR 50,trunk,37.297,40500,75060000,N/A,N/A,2025,S,9.0,F,53.5,F,10.453896240641331,0.5778215353124665
+1421,692,247,,,trunk_link,42.528,,,,,,,,,,,,
+1422,693,82,East Colonial Drive,SR 50,trunk,214.771,40500,75060000,N/A,N/A,2025,S,9.0,F,53.5,F,10.08257385697812,2.4887222167773757
+1423,694,277,East Colonial Drive,SR 50,trunk,307.514,40500,75060000,N/A,N/A,2025,S,9.0,F,53.5,F,10.492772207847281,6.134236897900763
+1424,695,694,East Colonial Drive,SR 50,trunk,31.575,40500,75060000,N/A,N/A,2025,S,9.0,F,53.5,F,10.492772207847281,6.249593812396483
+1425,695,84,,,trunk_link,40.963,40500,75060000,N/A,N/A,2025,S,9.0,F,53.5,F,0.0,27.293992462221695
+1426,696,697,East Colonial Drive,SR 50,trunk,165.465,40500,75060000,N/A,N/A,2025,S,9.0,F,53.5,F,11.127769471702463,6.188588553491968
+1427,697,567,East Colonial Drive,SR 50,trunk,12.694,40500,75060000,N/A,N/A,2025,S,9.0,F,53.5,F,11.259525611287815,6.200480372130357
+1428,697,283,Park Manor Drive,,residential,215.244,,,,,,,,,,,,
+1429,698,696,,,trunk_link,40.285,40500,75060000,N/A,N/A,2025,S,9.0,F,53.5,F,0.0,28.053718988499526
+1430,698,695,East Colonial Drive,SR 50,trunk,186.86,40500,75060000,N/A,N/A,2025,S,9.0,F,53.5,F,10.345630249512869,6.253051672329917
+1431,699,319,East Colonial Drive,SR 50,trunk,119.229,52000,75060000,N/A,SR-434/ALAFAYA TRL,2025,C,9.0,F,53.5,F,10.084528781448771,0.12672126492773828
+1432,699,170,,,trunk_link,32.171,,,,,,,,,,,,
+1433,700,334,East Colonial Drive,SR 50,trunk,204.853,52000,75060000,N/A,SR-434/ALAFAYA TRL,2025,C,9.0,F,53.5,F,10.848179688896506,0.09773814306399231
+1434,701,700,,,trunk_link,35.486,,,,,,,,,,,,
+1435,701,699,East Colonial Drive,SR 50,trunk,200.565,52000,75060000,N/A,SR-434/ALAFAYA TRL,2025,C,9.0,F,53.5,F,9.930007115851696,0.12574807640234553
+1436,702,334,O'Berry Hoover Road,,residential,21.263,,,,,,,,,,,,
+1437,702,701,East Colonial Drive,SR 50,trunk,174.774,52000,75060000,N/A,SR-434/ALAFAYA TRL,2025,C,9.0,F,53.5,F,9.795502291473436,0.12579600151372006
+1438,703,299,East Colonial Drive,SR 50,trunk,219.74,49500,75060000,SR-434/ALAFAYA TRL,SR 408,2025,F,9.0,F,53.5,F,10.440189374307234,1.337792947587559
+1439,704,655,Rouse Road,,tertiary,251.964,,,,,,,,,,,,
+1440,704,656,,,motorway_link,10.751,,,,,,,,,,,,
+1441,705,708,,,residential,8.157,,,,,,,,,,,,
+1442,705,707,Hub Plaza,,residential,20.998,,,,,,,,,,,,
+1443,706,707,,,residential,7.785,,,,,,,,,,,,
+1444,706,708,Hub Plaza,,residential,21.673,,,,,,,,,,,,
+1445,707,706,,,residential,7.785,,,,,,,,,,,,
+1446,707,711,Hub Plaza,,residential,31.473,,,,,,,,,,,,
+1447,708,705,,,residential,8.157,,,,,,,,,,,,
+1448,708,663,Hub Plaza,,residential,49.919,,,,,,,,,,,,
+1449,709,712,,,residential,6.576,,,,,,,,,,,,
+1450,709,710,Graduation Way,,residential,15.813,,,,,,,,,,,,
+1451,710,711,Graduation Way,,residential,154.081,,,,,,,,,,,,
+1452,710,712,Graduation Way,,residential,13.097,,,,,,,,,,,,
+1453,711,710,Graduation Way,,residential,154.081,,,,,,,,,,,,
+1454,711,706,Hub Plaza,,residential,31.351,,,,,,,,,,,,
+1455,711,713,Hub Plaza,,residential,79.437,,,,,,,,,,,,
+1456,712,709,,,residential,6.576,,,,,,,,,,,,
+1457,712,601,Graduation Way,,residential,15.384,,,,,,,,,,,,
+1458,713,711,Hub Plaza,,residential,79.437,,,,,,,,,,,,
+1459,714,459,,,motorway_link,752.503,62500,75008160,END OF 75008000,DEAN RD,2025,C,9.0,F,53.5,F,3.008209387115136,3.033767941036389
+1460,715,460,,,motorway_link,401.515,4600,75300026,SR 417 NB,SR 408 EB,2025,S,8.0,F,99.9,W,0.0,8.947938841616377
+1461,716,306,,,residential,20.306,,,,,,,,,,,,
+1462,717,593,,,residential,22.448,,,,,,,,,,,,
+1463,717,534,Kehoe Boulevard,,residential,107.955,,,,,,,,,,,,
+1464,718,597,Kehoe Boulevard,,residential,17.833,,,,,,,,,,,,
+1465,718,613,,,residential,20.292,,,,,,,,,,,,
+1466,719,624,Rouse Road,,tertiary,1477.507,20700,75000030,LAKE UNDERHILL RD,SR 434,2025,S,9.0,F,53.5,F,13.176360922132016,11.495961551587754
+1467,720,254,,,residential,111.185,,,,,,,,,,,,
+1468,721,299,Cricket Club Circle,,unclassified,125.038,,,,,,,,,,,,
+1469,722,234,Valencia College Lane,,tertiary,63.813,13100,75000240,CHICKASAW TRL,ECONLOCKHATCHEE TRL,2025,T,9.0,F,53.5,F,8.38559499707866,2.040988033686522

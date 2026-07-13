@@ -17,6 +17,7 @@ DEFAULT_OUTPUT_FILE = BASE_DIR / "outputs" / "fdot" / "fdot_vs_simulation.csv"
 
 FDOT_REQUIRED_COLUMNS = {"EdgeID", "fdot_aadt"}
 SIM_REQUIRED_COLUMNS = {"EdgeID", "estimated_flow_veh_per_hr"}
+MIN_RECOMMENDED_SIMULATION_DURATION_SECONDS = 15 * 60
 
 
 def classify_geh(score: float) -> str:
@@ -53,14 +54,10 @@ def _normalize_edge_ids(dataframe: pd.DataFrame) -> pd.DataFrame:
 def build_fdot_comparison(
     fdot_mapping: pd.DataFrame,
     simulation_metrics: pd.DataFrame,
-    hourly_factor: float = 1.0 / 24.0,
 ) -> pd.DataFrame:
     """Return edge-level FDOT validation values without writing files."""
     _require_columns(fdot_mapping, FDOT_REQUIRED_COLUMNS, "FDOT mapping")
     _require_columns(simulation_metrics, SIM_REQUIRED_COLUMNS, "Simulation metrics")
-
-    if hourly_factor <= 0:
-        raise ValueError("hourly_factor must be greater than zero.")
 
     fdot = _normalize_edge_ids(fdot_mapping)
     simulation = _normalize_edge_ids(simulation_metrics)
@@ -89,9 +86,31 @@ def build_fdot_comparison(
             "Confirm that the mapping was generated from the same map and edge ordering."
         )
 
-    # AADT represents vehicles per day. The default 1/24 conversion is a rough
-    # average hour and can later be replaced by a map-specific time-of-day factor.
-    comparison["fdot_estimated_veh_per_hr"] = comparison["fdot_aadt"] * hourly_factor
+    if "fdot_k_factor_percent" in comparison.columns:
+        k_factor = pd.to_numeric(comparison["fdot_k_factor_percent"], errors="coerce")
+    else:
+        k_factor = pd.Series(np.nan, index=comparison.index, dtype=float)
+    valid_k_factor = k_factor.gt(0) & k_factor.le(100)
+
+    # FDOT defines two-way design-hour volume as AADT multiplied by K. RoadMap
+    # edges are directional, but this dataset does not identify which geometry
+    # direction is the peak direction, so use a neutral 50/50 split. If K is
+    # unavailable, fall back to half of the rough AADT/24 average hour.
+    design_hour_total = comparison["fdot_aadt"] * k_factor / 100.0
+    fallback_average_hour_total = comparison["fdot_aadt"] / 24.0
+    comparison["fdot_hourly_total_veh_per_hr"] = np.where(
+        valid_k_factor,
+        design_hour_total,
+        fallback_average_hour_total,
+    )
+    comparison["fdot_estimated_veh_per_hr"] = (
+        comparison["fdot_hourly_total_veh_per_hr"] / 2.0
+    )
+    comparison["fdot_hourly_method"] = np.where(
+        valid_k_factor,
+        "design_hour_k_factor_directional_split",
+        "average_hour_fallback_directional_split",
+    )
     comparison["difference_per_hr"] = (
         comparison["estimated_flow_veh_per_hr"]
         - comparison["fdot_estimated_veh_per_hr"]
@@ -116,13 +135,32 @@ def build_fdot_comparison(
     return comparison.sort_values("geh_score", ascending=False, na_position="last")
 
 
-def summarize_fdot_comparison(comparison: pd.DataFrame) -> dict:
+def summarize_fdot_comparison(
+    comparison: pd.DataFrame,
+    simulation_duration_seconds: float | None = None,
+) -> dict:
     """Create JSON-safe values for the telemetry panel and run metadata."""
     counts = comparison["geh_result"].value_counts()
     valid_geh = comparison["geh_score"].dropna()
     valid_error = comparison["percent_error_per_hr"].dropna()
     matched_edges = int(len(comparison))
     good_edges = int(counts.get("Good", 0))
+    method_counts = comparison["fdot_hourly_method"].value_counts()
+    k_factor_edges = int(method_counts.get("design_hour_k_factor_directional_split", 0))
+    fallback_edges = int(method_counts.get("average_hour_fallback_directional_split", 0))
+    warnings = []
+
+    if simulation_duration_seconds is not None:
+        simulation_duration_seconds = float(simulation_duration_seconds)
+        if simulation_duration_seconds < MIN_RECOMMENDED_SIMULATION_DURATION_SECONDS:
+            warnings.append(
+                "Simulation duration is shorter than 15 minutes; hourly flow extrapolation "
+                "and GEH results are preliminary."
+            )
+    if fallback_edges:
+        warnings.append(
+            f"{fallback_edges} matched edges did not have a valid FDOT K factor and used the AADT/24 fallback."
+        )
 
     return {
         "matched_edges": matched_edges,
@@ -136,7 +174,17 @@ def summarize_fdot_comparison(comparison: pd.DataFrame) -> dict:
         "mean_absolute_percent_error": (
             round(float(valid_error.abs().mean()), 2) if not valid_error.empty else None
         ),
-        "hourly_conversion_note": "FDOT AADT multiplied by 1/24 (rough average hour).",
+        "simulation_duration_s": simulation_duration_seconds,
+        "minimum_recommended_duration_s": MIN_RECOMMENDED_SIMULATION_DURATION_SECONDS,
+        "k_factor_edges": k_factor_edges,
+        "fallback_edges": fallback_edges,
+        "hourly_conversion_method": (
+            "FDOT two-way design-hour volume = AADT × K factor; RoadMap directional target = design-hour volume ÷ 2."
+        ),
+        "directional_assumption": (
+            "Neutral 50/50 directional split because the FDOT peak-direction orientation is not available."
+        ),
+        "validation_warnings": warnings,
     }
 
 
@@ -145,7 +193,7 @@ def compare_fdot_to_simulation(
     simulation_metrics_path: Path,
     output_path: Path,
     summary_path: Path | None = None,
-    hourly_factor: float = 1.0 / 24.0,
+    simulation_duration_seconds: float | None = None,
 ) -> dict:
     """Run comparison, save the edge table and summary, and return the summary."""
     fdot_mapping_path = Path(fdot_mapping_path)
@@ -155,8 +203,8 @@ def compare_fdot_to_simulation(
 
     fdot = _load_csv(fdot_mapping_path, "FDOT edge mapping")
     simulation = _load_csv(simulation_metrics_path, "Simulation edge metrics")
-    comparison = build_fdot_comparison(fdot, simulation, hourly_factor)
-    summary = summarize_fdot_comparison(comparison)
+    comparison = build_fdot_comparison(fdot, simulation)
+    summary = summarize_fdot_comparison(comparison, simulation_duration_seconds)
     summary.update({
         "mapping_path": str(fdot_mapping_path),
         "simulation_metrics_path": str(simulation_metrics_path),
@@ -175,7 +223,7 @@ def main() -> None:
     parser.add_argument("--simulation-metrics", type=Path, default=DEFAULT_SIM_METRICS_FILE)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT_FILE)
     parser.add_argument("--summary", type=Path)
-    parser.add_argument("--hourly-factor", type=float, default=1.0 / 24.0)
+    parser.add_argument("--simulation-duration-seconds", type=float)
     args = parser.parse_args()
 
     summary = compare_fdot_to_simulation(
@@ -183,7 +231,7 @@ def main() -> None:
         args.simulation_metrics,
         args.output,
         args.summary,
-        args.hourly_factor,
+        args.simulation_duration_seconds,
     )
     print(json.dumps({"success": True, "summary": summary}, indent=2))
 
