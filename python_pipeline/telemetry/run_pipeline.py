@@ -440,6 +440,28 @@ def get_runs_dir() -> Path:
     return OUTPUT_DIR / "runs"
 
 
+def iter_run_folders() -> list[Path]:
+    """Find both legacy flat runs and map-organized runs."""
+    runs_dir = get_runs_dir()
+    if not runs_dir.exists():
+        return []
+    return sorted(
+        (folder for folder in runs_dir.glob("**/run_*") if folder.is_dir()),
+        key=lambda folder: folder.name,
+        reverse=True,
+    )
+
+
+def find_run_folder(run_id: str) -> Path | None:
+    """Resolve a unique run ID without exposing map folder paths to Unreal."""
+    if not run_id or Path(run_id).name != run_id:
+        return None
+    for folder in iter_run_folders():
+        if folder.name == run_id:
+            return folder
+    return None
+
+
 # Safely loads JSON from a file. If the file is missing or broken, return an empty dict.
 def load_json_file(path: Path) -> dict:
     if not path.exists():
@@ -465,9 +487,7 @@ def list_saved_runs() -> dict:
 
     runs = []
 
-    for run_folder in sorted(runs_dir.glob("run_*"), reverse=True):
-        if not run_folder.is_dir():
-            continue
+    for run_folder in iter_run_folders():
 
         metadata = load_json_file(run_folder / "run_metadata.json")
         summary = load_json_file(run_folder / "telemetry_summary.json")
@@ -491,14 +511,14 @@ def list_saved_runs() -> dict:
 
 # Gets metadata and summary values for one saved run.
 def get_run_details(run_id: str) -> dict:
-    run_folder = get_runs_dir() / run_id
+    run_folder = find_run_folder(run_id)
 
-    if not run_folder.exists():
+    if run_folder is None:
         return {
             "success": False,
             "error": "Run folder not found.",
             "run_id": run_id,
-            "run_folder": str(run_folder),
+            "run_folder": "",
         }
 
     metadata = load_json_file(run_folder / "run_metadata.json")
@@ -515,17 +535,18 @@ def get_run_details(run_id: str) -> dict:
 
 # Returns the expected heatmap PNG path for one run and metric.
 def get_heatmap_path(run_id: str, metric: str) -> dict:
-    run_folder = get_runs_dir() / run_id
-    heatmap_path = run_folder / "heatmaps" / f"heatmap_{metric}.png"
+    run_folder = find_run_folder(run_id)
 
-    if not run_folder.exists():
+    if run_folder is None:
         return {
             "success": False,
             "error": "Run folder not found.",
             "run_id": run_id,
             "metric": metric,
-            "run_folder": str(run_folder),
+            "run_folder": "",
         }
+
+    heatmap_path = run_folder / "heatmaps" / f"heatmap_{metric}.png"
 
     if not heatmap_path.exists():
         return {
@@ -581,15 +602,15 @@ def add_available_heatmap_to_metadata(run_folder: Path, metric: str, output_path
 
 # Generates one heatmap for one saved run instead of generating every metric automatically.
 def generate_single_heatmap(run_id: str, metric: str) -> dict:
-    run_folder = get_runs_dir() / run_id
+    run_folder = find_run_folder(run_id)
 
-    if not run_folder.exists():
+    if run_folder is None:
         return {
             "success": False,
             "error": "Run folder not found.",
             "run_id": run_id,
             "metric": metric,
-            "run_folder": str(run_folder),
+            "run_folder": "",
         }
 
     edge_metrics_path = run_folder / "edge_metrics.csv"
@@ -774,11 +795,14 @@ def main() -> int:
     # Optional positional args passed by the Unreal frontend:
     #   argv[2] = active roadmap nodes JSONL
     #   argv[3] = active roadmap edges JSONL
+    #   argv[4] = active roadmap display name
     nodes_jsonl_path = Path(sys.argv[2]) if len(sys.argv) > 2 else None
     edge_jsonl_path = Path(sys.argv[3]) if len(sys.argv) > 3 else EDGE_JSONL_PATH
+    map_name = sys.argv[4].strip() if len(sys.argv) > 4 else "Unknown map"
 
     print(f"Active nodes JSONL: {nodes_jsonl_path}")
     print(f"Active edges JSONL: {edge_jsonl_path}")
+    print(f"Active roadmap: {map_name}")
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     CSV_DIR.mkdir(parents=True, exist_ok=True)
@@ -791,7 +815,7 @@ def main() -> int:
 
     # Create a new folder for this simulation run.
     # This keeps the current telemetry results separate from older runs.
-    run_id, run_folder = create_run_folder(OUTPUT_DIR)
+    run_id, run_folder = create_run_folder(OUTPUT_DIR, map_name)
 
     print(f"Created telemetry run: {run_id}")
     print(f"Run folder: {run_folder}")

@@ -165,12 +165,9 @@ def get_highway_type(row):
 # Pick the best display label for a road using its name first, then its route ref.
 def get_road_label(row):
     name = simplify_osm_value(row.get("name"))
-    ref = simplify_osm_value(row.get("ref"))
 
     if name:
         return name
-    if ref:
-        return ref
     return None
 
 
@@ -306,6 +303,7 @@ def draw_road_labels(ax, network_df: pd.DataFrame):
         return
 
     label_candidates = []
+    compact_map = len(network_df) < 400
 
     for _, row in network_df.iterrows():
         if not should_label_road(row):
@@ -313,6 +311,11 @@ def draw_road_labels(ax, network_df: pd.DataFrame):
 
         label = get_road_label(row)
         if not label:
+            continue
+
+        # Route shields identify compact-map highways more cleanly than a long
+        # motorway name drawn along the same narrow corridor.
+        if compact_map and get_highway_type(row) in {"motorway", "trunk"}:
             continue
 
         if pd.isna(row["source_x"]) or pd.isna(row["source_y"]):
@@ -332,41 +335,50 @@ def draw_road_labels(ax, network_df: pd.DataFrame):
     best_by_label = {}
     for item in label_candidates:
         label = item[0]
-        if label not in best_by_label or item[1] > best_by_label[label][1]:
-            best_by_label[label] = item
+        label_key = label
+        if compact_map:
+            words = label.split()
+            if words and words[0].lower() in {"north", "south", "east", "west"}:
+                label_key = " ".join(words[1:])
+        if label_key not in best_by_label or item[1] > best_by_label[label_key][1]:
+            best_by_label[label_key] = item
 
     best_labels = sorted(best_by_label.values(), key=lambda item: item[1], reverse=True)
-    best_labels = best_labels[:MAX_ROAD_LABELS]
+    # Compact networks need fewer, smaller labels than a large regional map.
+    label_limit = min(MAX_ROAD_LABELS, 5 if compact_map else MAX_ROAD_LABELS)
+    best_labels = best_labels[:label_limit]
 
     vertical_labels_drawn = 0
     labels_drawn = 0
     for label, _, segment, highway in best_labels:
         mid_x, mid_y, angle = point_and_angle_at_fraction(segment, 0.50)
 
-        # Keep only a few near-vertical names so they do not dominate the map.
-        if abs(angle) >= 65:
+        # Large maps can follow road angles; compact schematic maps keep labels horizontal.
+        if not compact_map and abs(angle) >= 65:
             if vertical_labels_drawn >= 4:
                 continue
             vertical_labels_drawn += 1
 
         if highway in {"motorway", "trunk"}:
-            font_size = 10
+            font_size = 12 if compact_map else 10
             font_weight = "bold"
         elif highway in {"primary", "secondary"}:
-            font_size = 9
+            font_size = 11 if compact_map else 9
             font_weight = "normal"
         else:
-            font_size = 8
+            font_size = 10 if compact_map else 8
             font_weight = "normal"
+
+        display_label = label if len(label) <= 24 else label[:23] + "\u2026"
 
         text = ax.text(
             mid_x,
             mid_y,
-            label,
+            display_label,
             fontsize=font_size,
             fontweight=font_weight,
             color="#F5F5F5",
-            rotation=angle,
+            rotation=0.0 if compact_map else angle,
             rotation_mode="anchor",
             ha="center",
             va="center",
@@ -374,7 +386,7 @@ def draw_road_labels(ax, network_df: pd.DataFrame):
         )
 
         text.set_path_effects([
-            path_effects.Stroke(linewidth=3.0, foreground="#000000"),
+            path_effects.Stroke(linewidth=2.75 if compact_map else 3.0, foreground="#000000"),
             path_effects.Normal(),
         ])
         labels_drawn += 1
@@ -897,6 +909,9 @@ def build_line_segments(network_df: pd.DataFrame, metrics_df: pd.DataFrame, metr
     require_network_columns(network_df)
 
     merged = network_df.merge(metrics_df, on="EdgeID", how="left")
+    compact_map = len(merged) < 400
+    background_scale = 1.25 if compact_map else 1.0
+    heat_scale = 1.15 if compact_map else 1.0
 
     background_segments = []
     background_widths = []
@@ -913,12 +928,12 @@ def build_line_segments(network_df: pd.DataFrame, metrics_df: pd.DataFrame, metr
 
         segment = get_segment_from_row(row)
         background_segments.append(segment)
-        background_widths.append(road_width(row, heat=False))
+        background_widths.append(road_width(row, heat=False) * background_scale)
 
         if metric in merged.columns and not pd.isna(row.get(metric)):
             key = canonical_segment_key(segment)
             value = float(row[metric])
-            width = road_width(row, heat=True)
+            width = road_width(row, heat=True) * heat_scale
             existing = heat_by_geometry.get(key)
 
             # Shared two-way geometry is drawn once using the more important direction.
@@ -1053,9 +1068,12 @@ def plot_heatmap(
         labeled_network_df,
     ) = build_line_segments(network_df, metrics_df, metric)
 
-    fig, ax = plt.subplots(figsize=(20, 10.5), facecolor="none")
+    # Match Unreal's 1600x1128 vector brush exactly. A mismatched SVG canvas
+    # makes Slate stretch text and route shields even when the map lines look acceptable.
+    fig, ax = plt.subplots(figsize=(16, 11.28), facecolor="none")
     fig.patch.set_alpha(0.0)
     ax.set_facecolor("none")
+    fig.subplots_adjust(left=0.0, right=1.0, bottom=0.0, top=1.0)
 
     # Optional context layers. These only draw if the file paths are passed in.
     draw_geojson_polygons(
@@ -1084,6 +1102,36 @@ def plot_heatmap(
         alpha=0.18,
         zorder=0,
     )
+
+    # Give limited-access highways a recognizable corridor underneath the
+    # telemetry layer so I-4 remains distinct from ordinary surface streets.
+    highway_segments = []
+    for _, row in labeled_network_df.iterrows():
+        if get_highway_type(row) in {"motorway", "trunk"}:
+            highway_segments.append(get_segment_from_row(row))
+
+    if highway_segments:
+        highway_outer = LineCollection(
+            highway_segments,
+            colors="#172235",
+            linewidths=6.2,
+            alpha=0.95,
+            capstyle="round",
+            joinstyle="round",
+            zorder=0.6,
+        )
+        ax.add_collection(highway_outer)
+
+        highway_inner = LineCollection(
+            highway_segments,
+            colors="#66758A",
+            linewidths=3.5,
+            alpha=0.82,
+            capstyle="round",
+            joinstyle="round",
+            zorder=0.8,
+        )
+        ax.add_collection(highway_inner)
 
     # Draw a dark road outline first so the roads are easier to see.
     if background_segments:
@@ -1186,7 +1234,9 @@ def plot_heatmap(
         add_top_bottleneck_markers(ax, heat_segments, heat_values, metric)
 
     set_tight_map_bounds(ax, background_segments, pad_ratio=0.015)
-    ax.set_aspect("equal", adjustable="box")
+    # Fit arbitrary map shapes into the fixed analysis viewport. Geometry may
+    # scale schematically, while text remains normal screen-space typography.
+    ax.set_aspect("auto")
     ax.axis("off")
 
     friendly_titles = {
@@ -1204,9 +1254,16 @@ def plot_heatmap(
     svg_output_path = output_path.with_suffix(".svg")
     if colorbar is not None:
         colorbar.ax.set_visible(False)
-    plt.savefig(svg_output_path, format="svg", transparent=True, bbox_inches="tight", pad_inches=0.02)
+    # Keep the fixed canvas; bbox_inches="tight" would change the aspect ratio
+    # for each map and cause Unreal to stretch compact maps such as Downtown.
+    plt.savefig(svg_output_path, format="svg", transparent=True)
     if colorbar is not None:
         colorbar.ax.set_visible(True)
+
+    # The PNG remains a full dashboard/export fallback, so restore its wider
+    # landscape canvas after the fixed-aspect map-only SVG has been written.
+    fig.set_size_inches(20, 10.5, forward=True)
+    fig.subplots_adjust(left=0.0, right=1.0, bottom=0.0, top=1.0)
 
     rows = summary_rows_for_metric(
         metric,
@@ -1327,6 +1384,7 @@ def add_route_shields(ax, network_df: pd.DataFrame):
         if matched not in refs_to_draw:
             refs_to_draw[matched] = (x, y)
 
+    compact_map = len(network_df) < 400
     for ref, (x, y) in refs_to_draw.items():
         number = ref.replace("I ", "").replace("I-", "").replace("US ", "").replace("FL ", "").replace("SR ", "")
         if ref.startswith("I"):
@@ -1340,7 +1398,7 @@ def add_route_shields(ax, network_df: pd.DataFrame):
             x,
             y,
             label,
-            fontsize=7.5,
+            fontsize=10.0 if compact_map else 7.5,
             color="#F5F5F5",
             ha="center",
             va="center",
@@ -1348,7 +1406,7 @@ def add_route_shields(ax, network_df: pd.DataFrame):
             zorder=30,
         )
         text.set_path_effects([
-            path_effects.Stroke(linewidth=2.5, foreground="#000000"),
+            path_effects.Stroke(linewidth=1.75 if compact_map else 2.5, foreground="#000000"),
             path_effects.Normal(),
         ])
 

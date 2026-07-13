@@ -22,6 +22,15 @@ ALLOWED_METRICS = {
 }
 
 
+def find_run_folder(runs_root: Path, run_id: str) -> Path | None:
+    if not run_id or Path(run_id).name != run_id or not runs_root.exists():
+        return None
+    return next(
+        (folder for folder in runs_root.glob("**/run_*") if folder.is_dir() and folder.name == run_id),
+        None,
+    )
+
+
 # Finds the real telemetry folder in both development and packaged builds.
 # Packaged builds use the folder containing run_pipeline.exe instead of
 # PyInstaller's temporary extraction folder.
@@ -71,13 +80,14 @@ def update_available_heatmaps(run_folder: Path, metric: str, output_path: Path) 
 # Generates one selected heatmap for one saved run.
 def generate_selected_heatmap(run_id: str, metric: str, network_path: Path | None = None) -> Path:
     telemetry_dir = get_telemetry_dir()
-    run_folder = telemetry_dir / "outputs" / "runs" / run_id
+    runs_root = telemetry_dir / "outputs" / "runs"
+    run_folder = find_run_folder(runs_root, run_id)
 
     if metric not in ALLOWED_METRICS:
         raise ValueError(f"Unsupported heatmap metric: {metric}")
 
-    if not run_folder.exists():
-        raise FileNotFoundError(f"Run folder not found: {run_folder}")
+    if run_folder is None:
+        raise FileNotFoundError(f"Run folder not found: {run_id}")
 
     edge_metrics_path = run_folder / "edge_metrics.csv"
 

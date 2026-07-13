@@ -20,6 +20,12 @@ struct FTelemetryRunInfo
     UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
     FString Status;
 
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
+    FString MapName;
+
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
+    FString MapId;
+
     // Date and time when the telemetry run was created.
     UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
     FString CreatedAt;
@@ -124,7 +130,11 @@ public:
 
     // Gets the saved telemetry runs and converts them into Blueprint-friendly structs.
     UFUNCTION(BlueprintCallable, Category = "RoadMap Telemetry")
-    static bool GetSavedRuns(TArray<FTelemetryRunInfo>& OutRuns, FString& OutError);
+    static bool GetSavedRuns(
+        const FString& ActiveMapName,
+        TArray<FTelemetryRunInfo>& OutRuns,
+        FString& OutError
+    );
 
         // Gets one saved run and converts its JSON summary into a Blueprint-friendly struct.
     UFUNCTION(BlueprintCallable, Category = "RoadMap Telemetry")

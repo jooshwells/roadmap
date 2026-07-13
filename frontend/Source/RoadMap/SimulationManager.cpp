@@ -329,6 +329,17 @@ void ASimulationManager::StopSimulation()
 	// heatmaps draw on the active map instead of the bundled Waterford default.
 	FString NodesPath, EdgesPath;
 	ResolveActiveMapPaths(NodesPath, EdgesPath);
+	FString ActiveMapName = TEXT("Waterford (Default)");
+	if (const UWorld* World = GetWorld())
+	{
+		if (const URoadmapGameInstance* GameInstance = World->GetGameInstance<URoadmapGameInstance>())
+		{
+			if (GameInstance->HasActiveRoadmap())
+			{
+				ActiveMapName = GameInstance->GetActiveRoadmapName();
+			}
+		}
+	}
 
 	FString NetworkGraphCsvPath = FPaths::ConvertRelativePathToFull(
 		FPaths::Combine(TelemetryDir, TEXT("data/network/network_graph_active.csv"))
@@ -355,7 +366,8 @@ void ASimulationManager::StopSimulation()
 		PipelineExePath,
 		SimulationCsvPath,
 		NodesPath,
-		EdgesPath
+		EdgesPath,
+		ActiveMapName
 	);
 
 	//TrafficSimEngine = new TrafficSimulation();

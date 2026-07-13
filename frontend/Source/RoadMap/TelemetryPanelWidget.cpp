@@ -22,6 +22,7 @@
 #include "Components/VerticalBoxSlot.h"
 #include "Engine/Texture2D.h"
 #include "Misc/Paths.h"
+#include "RoadmapGameInstance.h"
 #include "Styling/CoreStyle.h"
 #include "Styling/SlateTypes.h"
 
@@ -543,8 +544,20 @@ void UTelemetryPanelWidget::RefreshRunList()
     SavedRuns.Empty();
     SelectedRunIndex = INDEX_NONE;
 
+    ActiveMapName = TEXT("Waterford (Default)");
+    if (const UWorld* World = GetWorld())
+    {
+        if (const URoadmapGameInstance* GameInstance = World->GetGameInstance<URoadmapGameInstance>())
+        {
+            if (GameInstance->HasActiveRoadmap())
+            {
+                ActiveMapName = GameInstance->GetActiveRoadmapName();
+            }
+        }
+    }
+
     FString ErrorMessage;
-    if (!UTelemetryPanelBridge::GetSavedRuns(SavedRuns, ErrorMessage))
+    if (!UTelemetryPanelBridge::GetSavedRuns(ActiveMapName, SavedRuns, ErrorMessage))
     {
         RunListBox->AddChildToVerticalBox(MakeText(ErrorMessage, 12, ErrorColor, FName("Medium")));
         SetStatus(ErrorMessage, true);
@@ -553,10 +566,14 @@ void UTelemetryPanelWidget::RefreshRunList()
 
     if (SavedRuns.IsEmpty())
     {
-        UTextBlock* EmptyText = MakeText(TEXT("No saved simulation runs were found."), 13, TextSecondary);
+        UTextBlock* EmptyText = MakeText(
+            FString::Printf(TEXT("No saved simulation runs were found for %s."), *ActiveMapName),
+            13,
+            TextSecondary
+        );
         EmptyText->SetAutoWrapText(true);
         RunListBox->AddChildToVerticalBox(EmptyText);
-        SetStatus(TEXT("No saved telemetry runs are available."));
+        SetStatus(FString::Printf(TEXT("No saved telemetry runs are available for %s."), *ActiveMapName));
         return;
     }
 
@@ -572,7 +589,12 @@ void UTelemetryPanelWidget::RefreshRunList()
     }
 
     RunDetailsText->SetText(FText::FromString(TEXT("Select a saved run to view its telemetry summary.")));
-    SetStatus(FString::Printf(TEXT("Loaded %d saved run%s."), SavedRuns.Num(), SavedRuns.Num() == 1 ? TEXT("") : TEXT("s")));
+    SetStatus(FString::Printf(
+        TEXT("Loaded %d saved run%s for %s."),
+        SavedRuns.Num(),
+        SavedRuns.Num() == 1 ? TEXT("") : TEXT("s"),
+        *ActiveMapName
+    ));
 }
 
 // Loads and formats details for the currently selected run.

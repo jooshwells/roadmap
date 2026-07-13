@@ -120,6 +120,7 @@ private:
     TArray<FTelemetryRunInfo> SavedRuns;
     int32 SelectedRunIndex = INDEX_NONE;
     FString SelectedMetric = TEXT("bottleneck_score");
+    FString ActiveMapName;
 
     UPROPERTY()
     TObjectPtr<UVerticalBox> RunListBox;

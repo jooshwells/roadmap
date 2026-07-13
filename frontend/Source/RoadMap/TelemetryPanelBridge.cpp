@@ -1,11 +1,45 @@
 #include "TelemetryPanelBridge.h"
 
 #include "HAL/PlatformFilemanager.h"
+#include "HAL/FileManager.h"
 #include "Misc/Paths.h"
 #include "Misc/FileHelper.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "ImageUtils.h"
+
+namespace
+{
+    FString FindTelemetryRunFolder(const FString& RunsDirectory, const FString& RunId)
+    {
+        const FString LegacyPath = FPaths::Combine(RunsDirectory, RunId);
+        if (IFileManager::Get().DirectoryExists(*LegacyPath))
+        {
+            return LegacyPath;
+        }
+
+        TArray<FString> MetadataPaths;
+        IFileManager::Get().FindFilesRecursive(
+            MetadataPaths,
+            *RunsDirectory,
+            TEXT("run_metadata.json"),
+            true,
+            false,
+            false
+        );
+
+        for (const FString& MetadataPath : MetadataPaths)
+        {
+            const FString Candidate = FPaths::GetPath(MetadataPath);
+            if (FPaths::GetCleanFilename(Candidate) == RunId)
+            {
+                return Candidate;
+            }
+        }
+
+        return FString();
+    }
+}
 
 
 // Finds the packaged telemetry EXE inside Content/ThirdParty.
@@ -115,6 +149,7 @@ bool UTelemetryPanelBridge::RunTelemetryScript(const FString& RelativeScriptPath
 
 // Gets saved telemetry runs directly from the run folders without launching Python.
 bool UTelemetryPanelBridge::GetSavedRuns(
+    const FString& ActiveMapName,
     TArray<FTelemetryRunInfo>& OutRuns,
     FString& OutError
 )
@@ -134,43 +169,38 @@ bool UTelemetryPanelBridge::GetSavedRuns(
         return true;
     }
 
-    TArray<FString> RunFolderNames;
-
-    // Collect only directories whose names begin with "run_".
-    PlatformFile.IterateDirectory(
+    TArray<FString> MetadataPaths;
+    IFileManager::Get().FindFilesRecursive(
+        MetadataPaths,
         *RunsDirectory,
-        [&RunFolderNames](const TCHAR* Path, bool bIsDirectory)
-        {
-            if (!bIsDirectory)
-            {
-                return true;
-            }
-
-            const FString FolderName = FPaths::GetCleanFilename(Path);
-
-            if (FolderName.StartsWith(TEXT("run_")))
-            {
-                RunFolderNames.Add(FolderName);
-            }
-
-            // Returning true tells Unreal to continue checking the remaining entries.
-            return true;
-        }
+        TEXT("run_metadata.json"),
+        true,
+        false,
+        false
     );
 
+    TArray<FString> RunFolderPaths;
+    for (const FString& MetadataPath : MetadataPaths)
+    {
+        const FString FolderPath = FPaths::GetPath(MetadataPath);
+        if (FPaths::GetCleanFilename(FolderPath).StartsWith(TEXT("run_")))
+        {
+            RunFolderPaths.Add(FolderPath);
+        }
+    }
+
     // Newer run IDs sort after older run IDs, so reverse sorting shows newest first.
-    RunFolderNames.Sort(
+    RunFolderPaths.Sort(
         [](const FString& Left, const FString& Right)
         {
-            return Left > Right;
+            return FPaths::GetCleanFilename(Left) > FPaths::GetCleanFilename(Right);
         }
     );
 
     // Load the metadata and summary files for every saved run.
-    for (const FString& RunFolderName : RunFolderNames)
+    for (const FString& RunFolderPath : RunFolderPaths)
     {
-        const FString RunFolderPath =
-            FPaths::Combine(RunsDirectory, RunFolderName);
+        const FString RunFolderName = FPaths::GetCleanFilename(RunFolderPath);
 
         const FString MetadataPath =
             FPaths::Combine(RunFolderPath, TEXT("run_metadata.json"));
@@ -232,6 +262,16 @@ bool UTelemetryPanelBridge::GetSavedRuns(
                 TEXT("created_at"),
                 RawCreatedAt
             );
+
+            MetadataObject->TryGetStringField(TEXT("map_name"), RunInfo.MapName);
+            MetadataObject->TryGetStringField(TEXT("map_id"), RunInfo.MapId);
+        }
+
+        // Runs created before map-aware telemetry are intentionally hidden from
+        // a specific roadmap rather than being incorrectly attributed to it.
+        if (!ActiveMapName.IsEmpty() && !RunInfo.MapName.Equals(ActiveMapName, ESearchCase::IgnoreCase))
+        {
+            continue;
         }
 
         // Older metadata files may not contain created_at, so use the run ID.
@@ -342,10 +382,7 @@ bool UTelemetryPanelBridge::GetSavedRunDetails(
         return false;
     }
 
-    const FString RunFolderPath = FPaths::Combine(
-        GetTelemetryRunsPath(),
-        RunId
-    );
+    const FString RunFolderPath = FindTelemetryRunFolder(GetTelemetryRunsPath(), RunId);
 
     const FString MetadataPath = FPaths::Combine(
         RunFolderPath,
@@ -560,10 +597,7 @@ bool UTelemetryPanelBridge::GetGeneratedHeatmapPath(
         return false;
     }
 
-    const FString RunFolderPath = FPaths::Combine(
-        GetTelemetryRunsPath(),
-        RunId
-    );
+    const FString RunFolderPath = FindTelemetryRunFolder(GetTelemetryRunsPath(), RunId);
 
     const FString HeatmapPath = FPaths::Combine(
         RunFolderPath,
