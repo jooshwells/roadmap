@@ -43,7 +43,7 @@ def get_telemetry_dir() -> Path:
 
 # Updates run_metadata.json after a heatmap is created.
 # This lets Unreal know which heatmaps are already available for this run.
-def update_available_heatmaps(run_folder: Path, metric: str, output_path: Path) -> None:
+def update_available_heatmaps(run_folder: Path, metric: str, output_path: Path, focus: str = "all") -> None:
     metadata_path = run_folder / "run_metadata.json"
 
     if metadata_path.exists():
@@ -56,6 +56,7 @@ def update_available_heatmaps(run_folder: Path, metric: str, output_path: Path) 
 
     heatmap_entry = {
         "metric": metric,
+        "focus": focus,
         "path": output_path.relative_to(run_folder).as_posix(),
     }
 
@@ -63,8 +64,12 @@ def update_available_heatmaps(run_folder: Path, metric: str, output_path: Path) 
     available_heatmaps = [
         item for item in available_heatmaps
         if not (
-            item == metric
-            or (isinstance(item, dict) and item.get("metric") == metric)
+            item == metric and focus == "all"
+            or (
+                isinstance(item, dict)
+                and item.get("metric") == metric
+                and item.get("focus", "all") == focus
+            )
         )
     ]
 
@@ -78,7 +83,7 @@ def update_available_heatmaps(run_folder: Path, metric: str, output_path: Path) 
 
 
 # Generates one selected heatmap for one saved run.
-def generate_selected_heatmap(run_id: str, metric: str, network_path: Path | None = None) -> Path:
+def generate_selected_heatmap(run_id: str, metric: str, network_path: Path | None = None, focus: str = "all") -> Path:
     telemetry_dir = get_telemetry_dir()
     runs_root = telemetry_dir / "outputs" / "runs"
     run_folder = find_run_folder(runs_root, run_id)
@@ -103,7 +108,8 @@ def generate_selected_heatmap(run_id: str, metric: str, network_path: Path | Non
     heatmap_dir = run_folder / "heatmaps"
     heatmap_dir.mkdir(parents=True, exist_ok=True)
 
-    output_path = heatmap_dir / f"heatmap_{metric}.png"
+    suffix = "" if focus == "all" else f"_{focus}"
+    output_path = heatmap_dir / f"heatmap_{metric}{suffix}.png"
 
     network_df, metrics_df = load_files(network_path, edge_metrics_path)
 
@@ -112,9 +118,10 @@ def generate_selected_heatmap(run_id: str, metric: str, network_path: Path | Non
         metrics_df,
         metric,
         output_path,
+        focus=focus,
     )
 
-    update_available_heatmaps(run_folder, metric, output_path)
+    update_available_heatmaps(run_folder, metric, output_path, focus)
 
     return output_path
 
@@ -128,6 +135,13 @@ def main() -> int:
         "--run-id",
         required=True,
         help="Run folder name, such as run_2026-07-06_14-31-16.",
+    )
+
+    parser.add_argument(
+        "--focus",
+        default="all",
+        choices=["all", "worst_25", "worst_10", "worst_5"],
+        help="Optional road-focus level.",
     )
 
     parser.add_argument(
@@ -152,6 +166,7 @@ def main() -> int:
             run_id=args.run_id,
             metric=args.metric,
             network_path=network_path,
+            focus=args.focus,
         )
 
         print(json.dumps({

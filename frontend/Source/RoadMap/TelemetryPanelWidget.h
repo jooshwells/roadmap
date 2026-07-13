@@ -83,6 +83,8 @@ private:
 
     // Converts the active metric ID into a readable heatmap title.
     FString GetMetricDisplayName(const FString& MetricId) const;
+    FString GetFocusId(const FString& DisplayName) const;
+    FString GetFocusDisplayName(const FString& FocusId) const;
 
     // Displays a normal or error status message at the bottom of the panel.
     void SetStatus(const FString& Message, bool bIsError = false);
@@ -105,6 +107,9 @@ private:
     UFUNCTION()
     void HandleMetricSelectionChanged(FString SelectedItem, ESelectInfo::Type SelectionType);
 
+    UFUNCTION()
+    void HandleFocusSelectionChanged(FString SelectedItem, ESelectInfo::Type SelectionType);
+
     // Launches Python to generate only the selected metric heatmap.
     UFUNCTION()
     void HandleGenerateHeatmapClicked();
@@ -120,6 +125,7 @@ private:
     TArray<FTelemetryRunInfo> SavedRuns;
     int32 SelectedRunIndex = INDEX_NONE;
     FString SelectedMetric = TEXT("bottleneck_score");
+    FString SelectedFocus = TEXT("all");
     FString ActiveMapName;
 
     UPROPERTY()
@@ -133,6 +139,9 @@ private:
 
     UPROPERTY()
     TObjectPtr<UComboBoxString> MetricComboBox;
+
+    UPROPERTY()
+    TObjectPtr<UComboBoxString> FocusComboBox;
 
     UPROPERTY()
     TObjectPtr<UOverlay> HeatmapViewer;

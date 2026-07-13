@@ -150,6 +150,7 @@ public:
     static bool GetGeneratedHeatmapPath(
         const FString& RunId,
         const FString& Metric,
+        const FString& Focus,
         FString& OutHeatmapPath,
         FString& OutError
     );
@@ -170,7 +171,12 @@ public:
 
     // Runs generate_selected_heatmap.py for one run and metric.
     UFUNCTION(BlueprintCallable, Category = "RoadMap Telemetry")
-    static bool GenerateSelectedHeatmap(const FString& RunId, const FString& Metric, FString& OutJson);
+    static bool GenerateSelectedHeatmap(
+        const FString& RunId,
+        const FString& Metric,
+        const FString& Focus,
+        FString& OutJson
+    );
 
 private:
 

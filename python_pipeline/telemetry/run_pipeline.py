@@ -568,7 +568,7 @@ def get_heatmap_path(run_id: str, metric: str) -> dict:
 
 
 # Adds a generated heatmap path to run_metadata.json so Unreal knows where it is.
-def add_available_heatmap_to_metadata(run_folder: Path, metric: str, output_path: Path) -> None:
+def add_available_heatmap_to_metadata(run_folder: Path, metric: str, output_path: Path, focus: str = "all") -> None:
     metadata_path = run_folder / "run_metadata.json"
     metadata = load_json_file(metadata_path)
 
@@ -580,6 +580,7 @@ def add_available_heatmap_to_metadata(run_folder: Path, metric: str, output_path
     available_heatmaps = metadata.get("available_heatmaps", [])
     heatmap_entry = {
         "metric": metric,
+        "focus": focus,
         "path": output_path.relative_to(run_folder).as_posix(),
     }
 
@@ -587,8 +588,12 @@ def add_available_heatmap_to_metadata(run_folder: Path, metric: str, output_path
     available_heatmaps = [
         item for item in available_heatmaps
         if not (
-            item == metric
-            or (isinstance(item, dict) and item.get("metric") == metric)
+            item == metric and focus == "all"
+            or (
+                isinstance(item, dict)
+                and item.get("metric") == metric
+                and item.get("focus", "all") == focus
+            )
         )
     ]
     available_heatmaps.append(heatmap_entry)
@@ -601,7 +606,11 @@ def add_available_heatmap_to_metadata(run_folder: Path, metric: str, output_path
 
 
 # Generates one heatmap for one saved run instead of generating every metric automatically.
-def generate_single_heatmap(run_id: str, metric: str) -> dict:
+def heatmap_file_stem(metric: str, focus: str) -> str:
+    return f"heatmap_{metric}" if focus == "all" else f"heatmap_{metric}_{focus}"
+
+
+def generate_single_heatmap(run_id: str, metric: str, focus: str = "all") -> dict:
     run_folder = find_run_folder(run_id)
 
     if run_folder is None:
@@ -637,7 +646,7 @@ def generate_single_heatmap(run_id: str, metric: str) -> dict:
     heatmap_dir = run_folder / "heatmaps"
     heatmap_dir.mkdir(parents=True, exist_ok=True)
 
-    output_path = heatmap_dir / f"heatmap_{metric}.png"
+    output_path = heatmap_dir / f"{heatmap_file_stem(metric, focus)}.png"
 
     network_df, metrics_df = load_files(network_path, edge_metrics_path)
 
@@ -646,9 +655,10 @@ def generate_single_heatmap(run_id: str, metric: str) -> dict:
         metrics_df,
         metric,
         output_path,
+        focus=focus,
     )
 
-    add_available_heatmap_to_metadata(run_folder, metric, output_path)
+    add_available_heatmap_to_metadata(run_folder, metric, output_path, focus)
 
     return {
         "success": True,
@@ -718,13 +728,14 @@ def handle_panel_command(argv: list[str]) -> int:
         elif command == "generate-heatmap":
             run_id = get_arg_value("--run-id")
             metric = get_arg_value("--metric")
+            focus = get_arg_value("--focus") or "all"
             if not run_id or not metric:
                 result = {
                     "success": False,
                     "error": "Missing --run-id or --metric.",
                 }
             else:
-                result = generate_single_heatmap(run_id, metric)
+                result = generate_single_heatmap(run_id, metric, focus)
 
         else:
             result = {

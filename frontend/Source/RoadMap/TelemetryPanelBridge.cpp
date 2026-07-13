@@ -569,6 +569,7 @@ bool UTelemetryPanelBridge::GetSavedRunDetails(
 bool UTelemetryPanelBridge::GetGeneratedHeatmapPath(
     const FString& RunId,
     const FString& Metric,
+    const FString& Focus,
     FString& OutHeatmapPath,
     FString& OutError
 )
@@ -597,14 +598,25 @@ bool UTelemetryPanelBridge::GetGeneratedHeatmapPath(
         return false;
     }
 
+    if (Focus != TEXT("all") && Focus != TEXT("worst_25") &&
+        Focus != TEXT("worst_10") && Focus != TEXT("worst_5"))
+    {
+        OutError = TEXT("The selected road focus is invalid.");
+        return false;
+    }
+
     const FString RunFolderPath = FindTelemetryRunFolder(GetTelemetryRunsPath(), RunId);
 
+    const FString FocusSuffix = Focus.IsEmpty() || Focus == TEXT("all")
+        ? FString()
+        : FString::Printf(TEXT("_%s"), *Focus);
     const FString HeatmapPath = FPaths::Combine(
         RunFolderPath,
         TEXT("heatmaps"),
         FString::Printf(
-            TEXT("heatmap_%s.png"),
-            *Metric
+            TEXT("heatmap_%s%s.png"),
+            *Metric,
+            *FocusSuffix
         )
     );
 
@@ -771,13 +783,19 @@ UTexture2D* UTelemetryPanelBridge::LoadHeatmapTexture(
 }
 
 // Runs generate_selected_heatmap.py for one run and metric.
-bool UTelemetryPanelBridge::GenerateSelectedHeatmap(const FString& RunId, const FString& Metric, FString& OutJson)
+bool UTelemetryPanelBridge::GenerateSelectedHeatmap(
+    const FString& RunId,
+    const FString& Metric,
+    const FString& Focus,
+    FString& OutJson
+)
 {
     return RunTelemetryScript(
         TEXT("src/heatmaps/generate_selected_heatmap.py"),
         {
             FString::Printf(TEXT("--run-id \"%s\""), *RunId),
-            FString::Printf(TEXT("--metric \"%s\""), *Metric)
+            FString::Printf(TEXT("--metric \"%s\""), *Metric),
+            FString::Printf(TEXT("--focus \"%s\""), *Focus)
         },
         OutJson
     );

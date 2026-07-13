@@ -368,6 +368,24 @@ void UTelemetryPanelWidget::BuildWidgetTree()
     MetricComboBox->SetSelectedOption(TEXT("Bottleneck Score"));
     DetailsColumn->AddChildToVerticalBox(MetricComboBox);
 
+    UTextBlock* FocusLabel = MakeText(TEXT("ROAD FOCUS"), 11, TextSecondary, FName("Medium"), 180);
+    if (UVerticalBoxSlot* FocusLabelSlot = DetailsColumn->AddChildToVerticalBox(FocusLabel))
+    {
+        FocusLabelSlot->SetPadding(FMargin(0.0f, 14.0f, 0.0f, 8.0f));
+    }
+
+    FocusComboBox = WidgetTree->ConstructWidget<UComboBoxString>();
+    FocusComboBox->AddOption(TEXT("All Roads"));
+    FocusComboBox->AddOption(TEXT("Worst 25%"));
+    FocusComboBox->AddOption(TEXT("Worst 10%"));
+    FocusComboBox->AddOption(TEXT("Worst 5%"));
+    FocusComboBox->OnSelectionChanged.AddDynamic(
+        this,
+        &UTelemetryPanelWidget::HandleFocusSelectionChanged
+    );
+    FocusComboBox->SetSelectedOption(TEXT("All Roads"));
+    DetailsColumn->AddChildToVerticalBox(FocusComboBox);
+
     UHorizontalBox* Actions = WidgetTree->ConstructWidget<UHorizontalBox>();
     if (UVerticalBoxSlot* ActionsSlot = DetailsColumn->AddChildToVerticalBox(Actions))
     {
@@ -711,6 +729,22 @@ void UTelemetryPanelWidget::SetStatus(const FString& Message, bool bIsError)
     StatusText->SetColorAndOpacity(FSlateColor(bIsError ? ErrorColor : Success));
 }
 
+FString UTelemetryPanelWidget::GetFocusId(const FString& DisplayName) const
+{
+    if (DisplayName == TEXT("Worst 25%")) return TEXT("worst_25");
+    if (DisplayName == TEXT("Worst 10%")) return TEXT("worst_10");
+    if (DisplayName == TEXT("Worst 5%")) return TEXT("worst_5");
+    return TEXT("all");
+}
+
+FString UTelemetryPanelWidget::GetFocusDisplayName(const FString& FocusId) const
+{
+    if (FocusId == TEXT("worst_25")) return TEXT("Worst 25%");
+    if (FocusId == TEXT("worst_10")) return TEXT("Worst 10%");
+    if (FocusId == TEXT("worst_5")) return TEXT("Worst 5%");
+    return TEXT("All Roads");
+}
+
 // Builds a small bilinear texture so the native legend changes color smoothly.
 void UTelemetryPanelWidget::UpdateHeatmapLegendGradient(const TArray<FString>& ColorsTopToBottom)
 {
@@ -797,6 +831,15 @@ void UTelemetryPanelWidget::HandleMetricSelectionChanged(
     SetStatus(FString::Printf(TEXT("Selected metric: %s."), *SelectedItem));
 }
 
+void UTelemetryPanelWidget::HandleFocusSelectionChanged(
+    FString SelectedItem,
+    ESelectInfo::Type SelectionType
+)
+{
+    SelectedFocus = GetFocusId(SelectedItem);
+    SetStatus(FString::Printf(TEXT("Road focus: %s."), *GetFocusDisplayName(SelectedFocus)));
+}
+
 // Launches Python to generate only the selected metric heatmap.
 void UTelemetryPanelWidget::HandleGenerateHeatmapClicked()
 {
@@ -817,6 +860,7 @@ void UTelemetryPanelWidget::HandleGenerateHeatmapClicked()
     if (!UTelemetryPanelBridge::GenerateSelectedHeatmap(
             SavedRuns[SelectedRunIndex].RunId,
             SelectedMetric,
+            SelectedFocus,
             ResultJson
         ))
     {
@@ -825,8 +869,9 @@ void UTelemetryPanelWidget::HandleGenerateHeatmapClicked()
     }
 
     SetStatus(FString::Printf(
-        TEXT("%s heatmap generated successfully."),
-        *GetMetricDisplayName(SelectedMetric)
+        TEXT("%s heatmap generated successfully for %s."),
+        *GetMetricDisplayName(SelectedMetric),
+        *GetFocusDisplayName(SelectedFocus)
     ));
 }
 
@@ -849,6 +894,7 @@ void UTelemetryPanelWidget::HandleViewHeatmapClicked()
     if (!UTelemetryPanelBridge::GetGeneratedHeatmapPath(
             SavedRuns[SelectedRunIndex].RunId,
             SelectedMetric,
+            SelectedFocus,
             HeatmapPath,
             ErrorMessage
         ))
@@ -935,8 +981,9 @@ void UTelemetryPanelWidget::HandleViewHeatmapClicked()
     }
 
     HeatmapTitleText->SetText(FText::FromString(FString::Printf(
-        TEXT("%s Heatmap  |  %s"),
+        TEXT("%s Heatmap  |  %s  |  %s"),
         *GetMetricDisplayName(SelectedMetric),
+        *GetFocusDisplayName(SelectedFocus),
         *SavedRuns[SelectedRunIndex].CreatedAt
     )));
     HeatmapViewer->SetVisibility(ESlateVisibility::Visible);

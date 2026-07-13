@@ -69,6 +69,38 @@ HEAT_WIDTHS = {
 BASE_BACKGROUND_WIDTH = 0.50
 BASE_HEAT_WIDTH = 1.65
 
+FOCUS_PERCENTAGES = {
+    "all": None,
+    "worst_25": 0.25,
+    "worst_10": 0.10,
+    "worst_5": 0.05,
+}
+
+
+def normalize_focus(focus: str | None) -> str:
+    focus_id = (focus or "all").strip().lower()
+    if focus_id not in FOCUS_PERCENTAGES:
+        raise ValueError(f"Unsupported road focus: {focus}")
+    return focus_id
+
+
+def filter_metrics_for_focus(metrics_df: pd.DataFrame, metric: str, focus: str) -> pd.DataFrame:
+    """Keep the metric-aware worst fraction while retaining all background roads."""
+    focus_id = normalize_focus(focus)
+    fraction = FOCUS_PERCENTAGES[focus_id]
+    if fraction is None or metric not in metrics_df.columns:
+        return metrics_df.copy()
+
+    candidates = metrics_df.dropna(subset=[metric]).copy()
+    if metric != "avg_speed_mph":
+        candidates = candidates[candidates[metric] > 1e-9]
+    if candidates.empty:
+        return candidates
+
+    keep_count = max(1, math.ceil(len(candidates) * fraction))
+    ascending = metric == "avg_speed_mph"
+    return candidates.sort_values(metric, ascending=ascending).head(keep_count)
+
 
 # Load the road network and telemetry metrics CSV files.
 def load_files(network_path: Path, edge_metrics_path: Path):
@@ -610,7 +642,7 @@ def get_extreme_road_info(merged_df: pd.DataFrame, metric: str):
 
 
 # Build the rows shown in the upper-left simulation summary card.
-def summary_rows_for_metric(metric, heat_values, background_count, heat_count, merged_df):
+def summary_rows_for_metric(metric, heat_values, background_count, heat_count, merged_df, focus="all"):
     """Build the lines shown in the summary card."""
     values = pd.Series(heat_values)
     unit = metric_value_unit(metric)
@@ -619,7 +651,7 @@ def summary_rows_for_metric(metric, heat_values, background_count, heat_count, m
     if metric == "bottleneck_score" and (values.empty or values.abs().max() <= 1e-9):
         return [
             ("Road Segments", f"{background_count:,}"),
-            ("Analyzed Roads", f"{heat_count:,}"),
+            ("Highlighted Roads" if focus != "all" else "Analyzed Roads", f"{heat_count:,}"),
             ("Result", "No significant bottlenecks detected"),
         ]
 
@@ -632,7 +664,7 @@ def summary_rows_for_metric(metric, heat_values, background_count, heat_count, m
 
     rows = [
         ("Road Segments", f"{background_count:,}"),
-        ("Analyzed Segments", f"{heat_count:,}"),
+        ("Highlighted Roads" if focus != "all" else "Analyzed Segments", f"{heat_count:,}"),
         (metric_extreme_label(metric), extreme_road),
     ]
 
@@ -694,7 +726,7 @@ def set_tight_map_bounds(ax, segments, pad_ratio=0.035):
 
 
 # Draw the small dashboard-style summary card.
-def add_stats_card(ax, metric, heat_values, background_count, heat_count, merged_df):
+def add_stats_card(ax, metric, heat_values, background_count, heat_count, merged_df, focus="all"):
     """Draw the summary card in the upper-left corner."""
     if not heat_values:
         return
@@ -706,6 +738,7 @@ def add_stats_card(ax, metric, heat_values, background_count, heat_count, merged
         background_count,
         heat_count,
         merged_df,
+        focus,
     )
 
     # Separate text calls make the spacing look cleaner than one big multiline string.
@@ -1050,6 +1083,7 @@ def plot_heatmap(
     parks_geojson=None,
     buildings_geojson=None,
     show_markers=False,
+    focus="all",
 ):
     if metric not in metrics_df.columns:
         raise ValueError(
@@ -1057,7 +1091,9 @@ def plot_heatmap(
             f"Available columns are: {list(metrics_df.columns)}"
         )
 
+    focus = normalize_focus(focus)
     cmap_name, colorbar_label, clip_high_values = choose_color_settings(metric)
+    focused_metrics_df = filter_metrics_for_focus(metrics_df, metric, focus)
 
     (
         background_segments,
@@ -1066,7 +1102,7 @@ def plot_heatmap(
         heat_widths,
         heat_values,
         labeled_network_df,
-    ) = build_line_segments(network_df, metrics_df, metric)
+    ) = build_line_segments(network_df, focused_metrics_df, metric)
 
     # Match Unreal's 1600x1128 vector brush exactly. A mismatched SVG canvas
     # makes Slate stretch text and route shields even when the map lines look acceptable.
@@ -1247,6 +1283,8 @@ def plot_heatmap(
     }
 
     title = friendly_titles.get(metric, metric)
+    if focus != "all":
+        title += " - " + focus.replace("worst_", "Worst ").replace("_", " ").title() + "%"
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -1271,6 +1309,7 @@ def plot_heatmap(
         background_count=len(background_segments),
         heat_count=len(heat_segments),
         merged_df=labeled_network_df,
+        focus=focus,
     )
     save_heatmap_display_info(output_path, metric, title, colorbar_label, vmin, vmax, rows)
 
@@ -1282,6 +1321,7 @@ def plot_heatmap(
         background_count=len(background_segments),
         heat_count=len(heat_segments),
         merged_df=labeled_network_df,
+        focus=focus,
     )
     ax.set_title(
         f"RoadMap\n{title}",
