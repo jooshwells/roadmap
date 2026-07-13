@@ -337,8 +337,19 @@ def draw_road_labels(ax, network_df: pd.DataFrame):
     label_candidates = []
     compact_map = len(network_df) < 400
 
+    highway_priority = {
+        "primary": 0,
+        "secondary": 1,
+        "tertiary": 2,
+        "residential": 3,
+    }
+
     for _, row in network_df.iterrows():
-        if not should_label_road(row):
+        highway = get_highway_type(row)
+        if compact_map:
+            if highway in {"motorway", "trunk", "motorway_link", "service"}:
+                continue
+        elif not should_label_road(row):
             continue
 
         label = get_road_label(row)
@@ -347,9 +358,6 @@ def draw_road_labels(ax, network_df: pd.DataFrame):
 
         # Route shields identify compact-map highways more cleanly than a long
         # motorway name drawn along the same narrow corridor.
-        if compact_map and get_highway_type(row) in {"motorway", "trunk"}:
-            continue
-
         if pd.isna(row["source_x"]) or pd.isna(row["source_y"]):
             continue
         if pd.isna(row["target_x"]) or pd.isna(row["target_y"]):
@@ -358,11 +366,15 @@ def draw_road_labels(ax, network_df: pd.DataFrame):
         segment = get_segment_from_row(row)
         length = segment_length(segment)
 
-        # Skip tiny road segments because labels would overlap and look messy.
-        if length < 200:
+        # Downtown streets are often split into short city blocks. Keep those
+        # available to the collision-aware compact-map layout, while retaining
+        # the stricter cutoff used by larger maps.
+        minimum_label_length = 90 if compact_map else 200
+        if length < minimum_label_length:
             continue
 
-        label_candidates.append((label, length, segment, get_highway_type(row)))
+        priority = highway_priority.get(highway, 4)
+        label_candidates.append((label, length, segment, highway, priority))
 
     best_by_label = {}
     for item in label_candidates:
@@ -372,18 +384,61 @@ def draw_road_labels(ax, network_df: pd.DataFrame):
             words = label.split()
             if words and words[0].lower() in {"north", "south", "east", "west"}:
                 label_key = " ".join(words[1:])
-        if label_key not in best_by_label or item[1] > best_by_label[label_key][1]:
+        if label_key not in best_by_label or (item[4], -item[1]) < (best_by_label[label_key][4], -best_by_label[label_key][1]):
             best_by_label[label_key] = item
 
-    best_labels = sorted(best_by_label.values(), key=lambda item: item[1], reverse=True)
-    # Compact networks need fewer, smaller labels than a large regional map.
-    label_limit = min(MAX_ROAD_LABELS, 5 if compact_map else MAX_ROAD_LABELS)
-    best_labels = best_labels[:label_limit]
+    best_labels = sorted(best_by_label.values(), key=lambda item: (item[4], -item[1]))
+    label_limit = min(MAX_ROAD_LABELS, 12 if compact_map else MAX_ROAD_LABELS)
+
+    # Approximate label rectangles in normalized map space. This keeps compact
+    # schematic labels readable without requiring a GUI renderer for collision tests.
+    all_segments = [get_segment_from_row(row) for _, row in network_df.iterrows()]
+    all_x = [x for segment in all_segments for x, _ in segment]
+    all_y = [y for segment in all_segments for _, y in segment]
+    min_x, max_x = min(all_x), max(all_x)
+    min_y, max_y = min(all_y), max(all_y)
+    span_x = max(max_x - min_x, 1.0)
+    span_y = max(max_y - min_y, 1.0)
+    occupied_boxes = []
+
+    def collides(box):
+        left, bottom, right, top = box
+        return any(
+            left < other_right and right > other_left and
+            bottom < other_top and top > other_bottom
+            for other_left, other_bottom, other_right, other_top in occupied_boxes
+        )
 
     vertical_labels_drawn = 0
     labels_drawn = 0
-    for label, _, segment, highway in best_labels:
-        mid_x, mid_y, angle = point_and_angle_at_fraction(segment, 0.50)
+    for label, _, segment, highway, _ in best_labels:
+        display_label = label if len(label) <= 24 else label[:23] + "\u2026"
+        placement = None
+        for fraction in (0.50, 0.35, 0.65):
+            candidate_x, candidate_y, candidate_angle = point_and_angle_at_fraction(segment, fraction)
+            if not compact_map:
+                placement = (candidate_x, candidate_y, candidate_angle)
+                break
+
+            normalized_x = (candidate_x - min_x) / span_x
+            normalized_y = (candidate_y - min_y) / span_y
+            half_width = min(0.15, 0.0065 * len(display_label) + 0.018)
+            half_height = 0.027
+            candidate_box = (
+                normalized_x - half_width,
+                normalized_y - half_height,
+                normalized_x + half_width,
+                normalized_y + half_height,
+            )
+            if not collides(candidate_box):
+                occupied_boxes.append(candidate_box)
+                placement = (candidate_x, candidate_y, candidate_angle)
+                break
+
+        if placement is None:
+            continue
+
+        mid_x, mid_y, angle = placement
 
         # Large maps can follow road angles; compact schematic maps keep labels horizontal.
         if not compact_map and abs(angle) >= 65:
@@ -400,8 +455,6 @@ def draw_road_labels(ax, network_df: pd.DataFrame):
         else:
             font_size = 10 if compact_map else 8
             font_weight = "normal"
-
-        display_label = label if len(label) <= 24 else label[:23] + "\u2026"
 
         text = ax.text(
             mid_x,
@@ -422,6 +475,8 @@ def draw_road_labels(ax, network_df: pd.DataFrame):
             path_effects.Normal(),
         ])
         labels_drawn += 1
+        if labels_drawn >= label_limit:
+            break
 
     print(f"Road labels drawn: {labels_drawn}")
 
