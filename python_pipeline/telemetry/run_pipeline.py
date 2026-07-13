@@ -743,12 +743,15 @@ def compare_run_with_fdot(run_id: str, mapping_path: str | None = None) -> dict:
     fdot_folder = run_folder / "fdot"
     comparison_path = fdot_folder / "fdot_vs_simulation.csv"
     summary_path = fdot_folder / "fdot_summary.json"
+    telemetry_summary = load_json_file(run_folder / "telemetry_summary.json")
+    simulation_duration_seconds = telemetry_summary.get("simulation_duration_s")
 
     summary = compare_fdot_to_simulation(
         selected_mapping,
         edge_metrics_path,
         comparison_path,
         summary_path,
+        simulation_duration_seconds,
     )
 
     metadata["fdot_folder"] = "fdot"
