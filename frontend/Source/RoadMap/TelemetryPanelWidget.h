@@ -14,6 +14,7 @@ class UTextBlock;
 class UTexture2D;
 class UVerticalBox;
 class UWidget;
+class UWidgetSwitcher;
 
 DECLARE_DELEGATE_OneParam(FOnTelemetryRunSelected, int32);
 
@@ -47,14 +48,12 @@ class ROADMAP_API UTelemetryPanelWidget : public UUserWidget
     GENERATED_BODY()
 
 public:
-    // Builds the widget tree the first time this widget is initialized.
     virtual bool Initialize() override;
 
 private:
-    // Builds every visible panel and heatmap-viewer widget.
+    // Panel setup and shared styling helpers.
     void BuildWidgetTree();
 
-    // Creates consistently styled text for the telemetry interface.
     UTextBlock* MakeText(
         const FString& Text,
         int32 Size,
@@ -63,62 +62,75 @@ private:
         int32 LetterSpacing = 0
     );
 
-    // Creates a primary or secondary RoadMap action button.
     UButton* MakeActionButton(const FString& Label, bool bPrimary);
 
-    // Creates one selectable row for a saved simulation run.
     UTelemetryRunButton* MakeRunRow(int32 RunIndex, const FTelemetryRunInfo& RunInfo);
 
-    // Loads the saved runs directly through the C++ telemetry bridge.
+    // Run selection and displayed details.
     void RefreshRunList();
 
-    // Loads and formats details for the currently selected run.
     void RefreshSelectedRunDetails();
 
-    // Updates each run row so the selected row has the amber highlight.
     void RefreshRunRowStyles();
 
-    // Converts a readable dropdown option into the Python metric ID.
+    // Converts between UI labels and IDs used by the Python pipeline.
     FString GetMetricId(const FString& DisplayName) const;
 
-    // Converts the active metric ID into a readable heatmap title.
     FString GetMetricDisplayName(const FString& MetricId) const;
+    FString GetMetricHelpText(const FString& MetricId) const;
     FString GetFocusId(const FString& DisplayName) const;
     FString GetFocusDisplayName(const FString& FocusId) const;
 
-    // Displays a normal or error status message at the bottom of the panel.
     void SetStatus(const FString& Message, bool bIsError = false);
 
     // Builds a smooth native legend texture from the metric's ordered colors.
     void UpdateHeatmapLegendGradient(const TArray<FString>& ColorsTopToBottom);
 
-    // Selects a saved run when its list row is clicked.
+    // Switches the right-side workspace while keeping the selected run active.
+    void SetWorkspaceTab(int32 TabIndex);
+    void RefreshWorkspaceTabStyles();
+    void RefreshHeatmapActionState();
+    bool DoesSelectedHeatmapExist() const;
+
+    // Widget event handlers.
     void HandleRunSelected(int32 RunIndex);
 
-    // Closes the complete telemetry panel.
     UFUNCTION()
     void HandleCloseClicked();
 
-    // Reloads the saved telemetry run folders.
     UFUNCTION()
     void HandleRefreshClicked();
 
-    // Keeps the readable metric option and internal metric ID synchronized.
+    UFUNCTION()
+    void HandleOverviewTabClicked();
+
+    UFUNCTION()
+    void HandleHeatmapsTabClicked();
+
+    UFUNCTION()
+    void HandleFDOTTabClicked();
+
     UFUNCTION()
     void HandleMetricSelectionChanged(FString SelectedItem, ESelectInfo::Type SelectionType);
 
     UFUNCTION()
     void HandleFocusSelectionChanged(FString SelectedItem, ESelectInfo::Type SelectionType);
 
-    // Launches Python to generate only the selected metric heatmap.
+    UFUNCTION()
+    void HandlePrimaryHeatmapClicked();
+
     UFUNCTION()
     void HandleGenerateHeatmapClicked();
 
-    // Loads an existing heatmap PNG and opens the large viewer overlay.
     UFUNCTION()
     void HandleViewHeatmapClicked();
 
-    // Closes the large heatmap viewer without closing the telemetry panel.
+    UFUNCTION()
+    void HandleCompareFDOTClicked();
+
+    UFUNCTION()
+    void HandleViewFDOTHeatmapClicked();
+
     UFUNCTION()
     void HandleCloseHeatmapClicked();
 
@@ -127,6 +139,7 @@ private:
     FString SelectedMetric = TEXT("bottleneck_score");
     FString SelectedFocus = TEXT("all");
     FString ActiveMapName;
+    int32 ActiveWorkspaceTab = 0;
 
     UPROPERTY()
     TObjectPtr<UVerticalBox> RunListBox;
@@ -138,10 +151,37 @@ private:
     TObjectPtr<UTextBlock> StatusText;
 
     UPROPERTY()
+    TObjectPtr<UTextBlock> FDOTValidationText;
+
+    UPROPERTY()
+    TObjectPtr<UWidgetSwitcher> WorkspaceSwitcher;
+
+    UPROPERTY()
+    TObjectPtr<UButton> OverviewTabButton;
+
+    UPROPERTY()
+    TObjectPtr<UButton> HeatmapsTabButton;
+
+    UPROPERTY()
+    TObjectPtr<UButton> FDOTTabButton;
+
+    UPROPERTY()
     TObjectPtr<UComboBoxString> MetricComboBox;
 
     UPROPERTY()
     TObjectPtr<UComboBoxString> FocusComboBox;
+
+    UPROPERTY()
+    TObjectPtr<UTextBlock> MetricHelpText;
+
+    UPROPERTY()
+    TObjectPtr<UButton> PrimaryHeatmapButton;
+
+    UPROPERTY()
+    TObjectPtr<UTextBlock> PrimaryHeatmapButtonText;
+
+    UPROPERTY()
+    TObjectPtr<UButton> RegenerateHeatmapButton;
 
     UPROPERTY()
     TObjectPtr<UOverlay> HeatmapViewer;

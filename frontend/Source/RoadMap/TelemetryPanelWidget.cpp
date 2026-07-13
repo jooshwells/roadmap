@@ -20,6 +20,7 @@
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
+#include "Components/WidgetSwitcher.h"
 #include "Engine/Texture2D.h"
 #include "Misc/Paths.h"
 #include "RoadmapGameInstance.h"
@@ -129,20 +130,17 @@ namespace TelemetryPalette
 
 using namespace TelemetryPalette;
 
-// Stores the row index and connects the normal button click event.
 void UTelemetryRunButton::InitializeRow(int32 InRunIndex)
 {
     RunIndex = InRunIndex;
     OnClicked.AddUniqueDynamic(this, &UTelemetryRunButton::HandleClicked);
 }
 
-// Passes this row's index back to the telemetry panel.
 void UTelemetryRunButton::HandleClicked()
 {
     OnRunSelected.ExecuteIfBound(RunIndex);
 }
 
-// Builds the widget tree the first time this widget is initialized.
 bool UTelemetryPanelWidget::Initialize()
 {
     if (!Super::Initialize())
@@ -159,7 +157,6 @@ bool UTelemetryPanelWidget::Initialize()
     return true;
 }
 
-// Creates consistently styled text for the telemetry interface.
 UTextBlock* UTelemetryPanelWidget::MakeText(
     const FString& Text,
     int32 Size,
@@ -177,7 +174,6 @@ UTextBlock* UTelemetryPanelWidget::MakeText(
     return Block;
 }
 
-// Creates a primary or secondary RoadMap action button.
 UButton* UTelemetryPanelWidget::MakeActionButton(const FString& Label, bool bPrimary)
 {
     UButton* Button = WidgetTree->ConstructWidget<UButton>();
@@ -196,7 +192,6 @@ UButton* UTelemetryPanelWidget::MakeActionButton(const FString& Label, bool bPri
     return Button;
 }
 
-// Creates one selectable row for a saved simulation run.
 UTelemetryRunButton* UTelemetryPanelWidget::MakeRunRow(
     int32 RunIndex,
     const FTelemetryRunInfo& RunInfo
@@ -232,7 +227,6 @@ UTelemetryRunButton* UTelemetryPanelWidget::MakeRunRow(
     return Row;
 }
 
-// Builds every visible panel and heatmap-viewer widget.
 void UTelemetryPanelWidget::BuildWidgetTree()
 {
     UCanvasPanel* Canvas = WidgetTree->ConstructWidget<UCanvasPanel>();
@@ -335,7 +329,57 @@ void UTelemetryPanelWidget::BuildWidgetTree()
 
     UVerticalBox* DetailsColumn = WidgetTree->ConstructWidget<UVerticalBox>();
     DetailsCard->SetContent(DetailsColumn);
-    DetailsColumn->AddChildToVerticalBox(MakeText(TEXT("RUN DETAILS"), 11, TextSecondary, FName("Medium"), 180));
+
+    UHorizontalBox* WorkspaceTabs = WidgetTree->ConstructWidget<UHorizontalBox>();
+    if (UVerticalBoxSlot* TabsSlot = DetailsColumn->AddChildToVerticalBox(WorkspaceTabs))
+    {
+        TabsSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 18.0f));
+    }
+
+    OverviewTabButton = MakeActionButton(TEXT("Overview"), true);
+    OverviewTabButton->OnClicked.AddDynamic(this, &UTelemetryPanelWidget::HandleOverviewTabClicked);
+    if (UHorizontalBoxSlot* OverviewSlot = WorkspaceTabs->AddChildToHorizontalBox(OverviewTabButton))
+    {
+        OverviewSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+        OverviewSlot->SetPadding(FMargin(0.0f, 0.0f, 8.0f, 0.0f));
+    }
+
+    HeatmapsTabButton = MakeActionButton(TEXT("Heatmaps"), false);
+    HeatmapsTabButton->OnClicked.AddDynamic(this, &UTelemetryPanelWidget::HandleHeatmapsTabClicked);
+    if (UHorizontalBoxSlot* HeatmapsSlot = WorkspaceTabs->AddChildToHorizontalBox(HeatmapsTabButton))
+    {
+        HeatmapsSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+        HeatmapsSlot->SetPadding(FMargin(0.0f, 0.0f, 8.0f, 0.0f));
+    }
+
+    FDOTTabButton = MakeActionButton(TEXT("FDOT"), false);
+    FDOTTabButton->OnClicked.AddDynamic(this, &UTelemetryPanelWidget::HandleFDOTTabClicked);
+    if (UHorizontalBoxSlot* FDOTSlot = WorkspaceTabs->AddChildToHorizontalBox(FDOTTabButton))
+    {
+        FDOTSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+    }
+
+    WorkspaceSwitcher = WidgetTree->ConstructWidget<UWidgetSwitcher>();
+    if (UVerticalBoxSlot* SwitcherSlot = DetailsColumn->AddChildToVerticalBox(WorkspaceSwitcher))
+    {
+        SwitcherSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+    }
+
+    // Overview keeps the common run information approachable and free of tool controls.
+    UVerticalBox* OverviewPanel = WidgetTree->ConstructWidget<UVerticalBox>();
+    WorkspaceSwitcher->AddChild(OverviewPanel);
+    OverviewPanel->AddChildToVerticalBox(MakeText(TEXT("RUN OVERVIEW"), 11, TextSecondary, FName("Medium"), 180));
+
+    UTextBlock* OverviewHelp = MakeText(
+        TEXT("A plain-language summary of what happened during the selected simulation."),
+        12,
+        TextFaint
+    );
+    OverviewHelp->SetAutoWrapText(true);
+    if (UVerticalBoxSlot* OverviewHelpSlot = OverviewPanel->AddChildToVerticalBox(OverviewHelp))
+    {
+        OverviewHelpSlot->SetPadding(FMargin(0.0f, 7.0f, 0.0f, 0.0f));
+    }
 
     RunDetailsText = MakeText(TEXT("Select a saved run to view its telemetry summary."), 14, TextSecondary);
     RunDetailsText->SetAutoWrapText(true);
@@ -344,14 +388,30 @@ void UTelemetryPanelWidget::BuildWidgetTree()
     // Keep long summaries inside their own scrollable area so the controls stay visible.
     UScrollBox* DetailsScrollBox = WidgetTree->ConstructWidget<UScrollBox>();
     DetailsScrollBox->AddChild(RunDetailsText);
-    if (UVerticalBoxSlot* DetailsTextSlot = DetailsColumn->AddChildToVerticalBox(DetailsScrollBox))
+    if (UVerticalBoxSlot* DetailsTextSlot = OverviewPanel->AddChildToVerticalBox(DetailsScrollBox))
     {
         DetailsTextSlot->SetPadding(FMargin(0.0f, 16.0f, 0.0f, 0.0f));
         DetailsTextSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
     }
 
+    // Heatmap tools stay hidden until the user chooses the Heatmaps tab.
+    UVerticalBox* HeatmapsPanel = WidgetTree->ConstructWidget<UVerticalBox>();
+    WorkspaceSwitcher->AddChild(HeatmapsPanel);
+    HeatmapsPanel->AddChildToVerticalBox(MakeText(TEXT("HEATMAPS"), 11, TextSecondary, FName("Medium"), 180));
+
+    UTextBlock* HeatmapHelp = MakeText(
+        TEXT("Visualize where traffic conditions occurred. Choose a measurement, then limit the map to the roads that matter most."),
+        12,
+        TextFaint
+    );
+    HeatmapHelp->SetAutoWrapText(true);
+    if (UVerticalBoxSlot* HeatmapHelpSlot = HeatmapsPanel->AddChildToVerticalBox(HeatmapHelp))
+    {
+        HeatmapHelpSlot->SetPadding(FMargin(0.0f, 7.0f, 0.0f, 0.0f));
+    }
+
     UTextBlock* MetricLabel = MakeText(TEXT("HEATMAP METRIC"), 11, TextSecondary, FName("Medium"), 180);
-    if (UVerticalBoxSlot* MetricLabelSlot = DetailsColumn->AddChildToVerticalBox(MetricLabel))
+    if (UVerticalBoxSlot* MetricLabelSlot = HeatmapsPanel->AddChildToVerticalBox(MetricLabel))
     {
         MetricLabelSlot->SetPadding(FMargin(0.0f, 18.0f, 0.0f, 8.0f));
     }
@@ -366,10 +426,18 @@ void UTelemetryPanelWidget::BuildWidgetTree()
         &UTelemetryPanelWidget::HandleMetricSelectionChanged
     );
     MetricComboBox->SetSelectedOption(TEXT("Bottleneck Score"));
-    DetailsColumn->AddChildToVerticalBox(MetricComboBox);
+    HeatmapsPanel->AddChildToVerticalBox(MetricComboBox);
+
+    MetricHelpText = MakeText(GetMetricHelpText(TEXT("bottleneck_score")), 11, TextFaint);
+    MetricHelpText->SetAutoWrapText(true);
+    MetricHelpText->SetLineHeightPercentage(1.2f);
+    if (UVerticalBoxSlot* MetricHelpSlot = HeatmapsPanel->AddChildToVerticalBox(MetricHelpText))
+    {
+        MetricHelpSlot->SetPadding(FMargin(0.0f, 8.0f, 0.0f, 0.0f));
+    }
 
     UTextBlock* FocusLabel = MakeText(TEXT("ROAD FOCUS"), 11, TextSecondary, FName("Medium"), 180);
-    if (UVerticalBoxSlot* FocusLabelSlot = DetailsColumn->AddChildToVerticalBox(FocusLabel))
+    if (UVerticalBoxSlot* FocusLabelSlot = HeatmapsPanel->AddChildToVerticalBox(FocusLabel))
     {
         FocusLabelSlot->SetPadding(FMargin(0.0f, 14.0f, 0.0f, 8.0f));
     }
@@ -384,28 +452,79 @@ void UTelemetryPanelWidget::BuildWidgetTree()
         &UTelemetryPanelWidget::HandleFocusSelectionChanged
     );
     FocusComboBox->SetSelectedOption(TEXT("All Roads"));
-    DetailsColumn->AddChildToVerticalBox(FocusComboBox);
+    HeatmapsPanel->AddChildToVerticalBox(FocusComboBox);
 
     UHorizontalBox* Actions = WidgetTree->ConstructWidget<UHorizontalBox>();
-    if (UVerticalBoxSlot* ActionsSlot = DetailsColumn->AddChildToVerticalBox(Actions))
+    if (UVerticalBoxSlot* ActionsSlot = HeatmapsPanel->AddChildToVerticalBox(Actions))
     {
         ActionsSlot->SetPadding(FMargin(0.0f, 16.0f, 0.0f, 0.0f));
     }
 
-    UButton* GenerateButton = MakeActionButton(TEXT("Generate Heatmap"), true);
-    GenerateButton->OnClicked.AddDynamic(this, &UTelemetryPanelWidget::HandleGenerateHeatmapClicked);
-    if (UHorizontalBoxSlot* GenerateSlot = Actions->AddChildToHorizontalBox(GenerateButton))
+    PrimaryHeatmapButton = MakeActionButton(TEXT("Generate & View"), true);
+    PrimaryHeatmapButtonText = Cast<UTextBlock>(PrimaryHeatmapButton->GetContent());
+    PrimaryHeatmapButton->OnClicked.AddDynamic(this, &UTelemetryPanelWidget::HandlePrimaryHeatmapClicked);
+    if (UHorizontalBoxSlot* GenerateSlot = Actions->AddChildToHorizontalBox(PrimaryHeatmapButton))
     {
         GenerateSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
         GenerateSlot->SetPadding(FMargin(0.0f, 0.0f, 10.0f, 0.0f));
     }
 
-    UButton* ViewButton = MakeActionButton(TEXT("View Heatmap"), false);
-    ViewButton->OnClicked.AddDynamic(this, &UTelemetryPanelWidget::HandleViewHeatmapClicked);
-    if (UHorizontalBoxSlot* ViewSlot = Actions->AddChildToHorizontalBox(ViewButton))
+    RegenerateHeatmapButton = MakeActionButton(TEXT("Regenerate"), false);
+    RegenerateHeatmapButton->OnClicked.AddDynamic(this, &UTelemetryPanelWidget::HandleGenerateHeatmapClicked);
+    if (UHorizontalBoxSlot* ViewSlot = Actions->AddChildToHorizontalBox(RegenerateHeatmapButton))
     {
         ViewSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
     }
+    RefreshHeatmapActionState();
+
+    // FDOT validation uses plain language first and keeps GEH as a technical detail.
+    UVerticalBox* FDOTPanel = WidgetTree->ConstructWidget<UVerticalBox>();
+    WorkspaceSwitcher->AddChild(FDOTPanel);
+
+    UTextBlock* FDOTLabel = MakeText(TEXT("FDOT VALIDATION"), 11, TextSecondary, FName("Medium"), 180);
+    FDOTPanel->AddChildToVerticalBox(FDOTLabel);
+
+    UTextBlock* FDOTHelp = MakeText(
+        TEXT("Compare RoadMap traffic volumes with 2025 Florida Department of Transportation estimates. This helps show where the simulation is close to observed traffic and where it may need adjustment."),
+        12,
+        TextFaint
+    );
+    FDOTHelp->SetAutoWrapText(true);
+    FDOTHelp->SetLineHeightPercentage(1.2f);
+    if (UVerticalBoxSlot* FDOTHelpSlot = FDOTPanel->AddChildToVerticalBox(FDOTHelp))
+    {
+        FDOTHelpSlot->SetPadding(FMargin(0.0f, 7.0f, 0.0f, 18.0f));
+    }
+
+    UButton* CompareFDOTButton = MakeActionButton(TEXT("Run FDOT Comparison"), true);
+    CompareFDOTButton->OnClicked.AddDynamic(this, &UTelemetryPanelWidget::HandleCompareFDOTClicked);
+    FDOTPanel->AddChildToVerticalBox(CompareFDOTButton);
+
+    UButton* ViewFDOTMapButton = MakeActionButton(TEXT("View Comparison Map"), false);
+    ViewFDOTMapButton->OnClicked.AddDynamic(this, &UTelemetryPanelWidget::HandleViewFDOTHeatmapClicked);
+    if (UVerticalBoxSlot* ViewFDOTMapSlot = FDOTPanel->AddChildToVerticalBox(ViewFDOTMapButton))
+    {
+        ViewFDOTMapSlot->SetPadding(FMargin(0.0f, 10.0f, 0.0f, 0.0f));
+    }
+
+    FDOTValidationText = MakeText(
+        TEXT("Select a saved run, then start the comparison. Technical measures will be explained alongside the result."),
+        12,
+        TextSecondary
+    );
+    FDOTValidationText->SetAutoWrapText(true);
+    FDOTValidationText->SetLineHeightPercentage(1.25f);
+
+    // Long validation results stay inside the tab instead of extending beyond the panel.
+    UScrollBox* FDOTResultsScrollBox = WidgetTree->ConstructWidget<UScrollBox>();
+    FDOTResultsScrollBox->AddChild(FDOTValidationText);
+    if (UVerticalBoxSlot* FDOTTextSlot = FDOTPanel->AddChildToVerticalBox(FDOTResultsScrollBox))
+    {
+        FDOTTextSlot->SetPadding(FMargin(0.0f, 18.0f, 0.0f, 0.0f));
+        FDOTTextSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+    }
+
+    SetWorkspaceTab(0);
 
     StatusText = MakeText(TEXT("Select a saved run to begin."), 12, TextSecondary);
     StatusText->SetAutoWrapText(true);
@@ -549,7 +668,6 @@ void UTelemetryPanelWidget::BuildWidgetTree()
     }
 }
 
-// Loads the saved runs directly through the C++ telemetry bridge.
 void UTelemetryPanelWidget::RefreshRunList()
 {
     if (!RunListBox)
@@ -561,6 +679,15 @@ void UTelemetryPanelWidget::RefreshRunList()
     RunRows.Empty();
     SavedRuns.Empty();
     SelectedRunIndex = INDEX_NONE;
+    RefreshHeatmapActionState();
+
+    if (FDOTValidationText)
+    {
+        FDOTValidationText->SetText(FText::FromString(
+            TEXT("Select a saved run, then start the comparison. Technical measures will be explained alongside the result.")
+        ));
+        FDOTValidationText->SetColorAndOpacity(FSlateColor(TextSecondary));
+    }
 
     ActiveMapName = TEXT("Waterford (Default)");
     if (const UWorld* World = GetWorld())
@@ -615,7 +742,6 @@ void UTelemetryPanelWidget::RefreshRunList()
     ));
 }
 
-// Loads and formats details for the currently selected run.
 void UTelemetryPanelWidget::RefreshSelectedRunDetails()
 {
     if (!SavedRuns.IsValidIndex(SelectedRunIndex))
@@ -658,7 +784,6 @@ void UTelemetryPanelWidget::RefreshSelectedRunDetails()
     RunDetailsText->SetColorAndOpacity(FSlateColor(TextPrimary));
 }
 
-// Updates each run row so the selected row has the amber highlight.
 void UTelemetryPanelWidget::RefreshRunRowStyles()
 {
     for (int32 RowIndex = 0; RowIndex < RunRows.Num(); ++RowIndex)
@@ -670,7 +795,6 @@ void UTelemetryPanelWidget::RefreshRunRowStyles()
     }
 }
 
-// Converts a readable dropdown option into the Python metric ID.
 FString UTelemetryPanelWidget::GetMetricId(const FString& DisplayName) const
 {
     if (DisplayName == TEXT("Bottleneck Score"))
@@ -696,9 +820,13 @@ FString UTelemetryPanelWidget::GetMetricId(const FString& DisplayName) const
     return TEXT("");
 }
 
-// Converts the active metric ID into a readable heatmap title.
 FString UTelemetryPanelWidget::GetMetricDisplayName(const FString& MetricId) const
 {
+    if (MetricId == TEXT("fdot_geh_score"))
+    {
+        return TEXT("FDOT Traffic Comparison");
+    }
+
     if (MetricId == TEXT("estimated_flow_veh_per_hr"))
     {
         return TEXT("Estimated Traffic Flow");
@@ -717,7 +845,24 @@ FString UTelemetryPanelWidget::GetMetricDisplayName(const FString& MetricId) con
     return TEXT("Bottleneck Score");
 }
 
-// Displays a normal or error status message at the bottom of the panel.
+// Explains each measurement without assuming prior traffic-engineering knowledge.
+FString UTelemetryPanelWidget::GetMetricHelpText(const FString& MetricId) const
+{
+    if (MetricId == TEXT("estimated_flow_veh_per_hr"))
+    {
+        return TEXT("Estimated vehicles passing each road direction per hour. Higher flow means the road carried more traffic, but does not automatically mean it was congested.");
+    }
+    if (MetricId == TEXT("avg_speed_mph"))
+    {
+        return TEXT("Average recorded vehicle speed. Red highlights slower traffic and green highlights faster traffic; interpret it alongside the road's expected speed.");
+    }
+    if (MetricId == TEXT("total_wait_added_s"))
+    {
+        return TEXT("Additional waiting time accumulated by vehicles on each road direction. Red roads added the most delay during this run.");
+    }
+    return TEXT("A combined congestion indicator based on slow traffic and added waiting. Green is lower concern and red identifies the strongest bottleneck candidates.");
+}
+
 void UTelemetryPanelWidget::SetStatus(const FString& Message, bool bIsError)
 {
     if (!StatusText)
@@ -784,7 +929,77 @@ void UTelemetryPanelWidget::UpdateHeatmapLegendGradient(const TArray<FString>& C
     HeatmapLegendGradient->SetBrushFromTexture(LoadedLegendTexture, true);
 }
 
-// Selects a saved run when its list row is clicked.
+// Shows one focused workspace instead of displaying every telemetry control at once.
+void UTelemetryPanelWidget::SetWorkspaceTab(int32 TabIndex)
+{
+    ActiveWorkspaceTab = FMath::Clamp(TabIndex, 0, 2);
+    if (WorkspaceSwitcher)
+    {
+        WorkspaceSwitcher->SetActiveWidgetIndex(ActiveWorkspaceTab);
+    }
+    RefreshWorkspaceTabStyles();
+}
+
+// Uses the amber treatment only on the currently active workspace tab.
+void UTelemetryPanelWidget::RefreshWorkspaceTabStyles()
+{
+    if (OverviewTabButton)
+    {
+        OverviewTabButton->SetStyle(ActionButtonStyle(ActiveWorkspaceTab == 0));
+    }
+    if (HeatmapsTabButton)
+    {
+        HeatmapsTabButton->SetStyle(ActionButtonStyle(ActiveWorkspaceTab == 1));
+    }
+    if (FDOTTabButton)
+    {
+        FDOTTabButton->SetStyle(ActionButtonStyle(ActiveWorkspaceTab == 2));
+    }
+}
+
+bool UTelemetryPanelWidget::DoesSelectedHeatmapExist() const
+{
+    if (!SavedRuns.IsValidIndex(SelectedRunIndex))
+    {
+        return false;
+    }
+
+    FString HeatmapPath;
+    FString ErrorMessage;
+    return UTelemetryPanelBridge::GetGeneratedHeatmapPath(
+        SavedRuns[SelectedRunIndex].RunId,
+        SelectedMetric,
+        SelectedFocus,
+        HeatmapPath,
+        ErrorMessage
+    );
+}
+
+// Presents one clear primary action and only reveals Regenerate when needed.
+void UTelemetryPanelWidget::RefreshHeatmapActionState()
+{
+    const bool bHasSelectedRun = SavedRuns.IsValidIndex(SelectedRunIndex);
+    const bool bHasExistingHeatmap = bHasSelectedRun && DoesSelectedHeatmapExist();
+
+    if (PrimaryHeatmapButton)
+    {
+        PrimaryHeatmapButton->SetIsEnabled(bHasSelectedRun);
+    }
+    if (PrimaryHeatmapButtonText)
+    {
+        PrimaryHeatmapButtonText->SetText(FText::FromString(
+            bHasExistingHeatmap ? TEXT("VIEW EXISTING") : TEXT("GENERATE & VIEW")
+        ));
+    }
+    if (RegenerateHeatmapButton)
+    {
+        RegenerateHeatmapButton->SetIsEnabled(bHasSelectedRun);
+        RegenerateHeatmapButton->SetVisibility(
+            bHasExistingHeatmap ? ESlateVisibility::Visible : ESlateVisibility::Collapsed
+        );
+    }
+}
+
 void UTelemetryPanelWidget::HandleRunSelected(int32 RunIndex)
 {
     if (!SavedRuns.IsValidIndex(RunIndex))
@@ -794,24 +1009,47 @@ void UTelemetryPanelWidget::HandleRunSelected(int32 RunIndex)
     }
 
     SelectedRunIndex = RunIndex;
+    RefreshHeatmapActionState();
+    if (FDOTValidationText)
+    {
+        FDOTValidationText->SetText(FText::FromString(
+            TEXT("Ready to compare this run with 2025 FDOT design-hour estimates. Results will be summarized in plain language with engineering details below.")
+        ));
+        FDOTValidationText->SetColorAndOpacity(FSlateColor(TextSecondary));
+    }
     RefreshRunRowStyles();
     RefreshSelectedRunDetails();
     SetStatus(FString::Printf(TEXT("Selected %s."), *SavedRuns[RunIndex].CreatedAt));
 }
 
-// Closes the complete telemetry panel.
 void UTelemetryPanelWidget::HandleCloseClicked()
 {
     RemoveFromParent();
 }
 
-// Reloads the saved telemetry run folders.
 void UTelemetryPanelWidget::HandleRefreshClicked()
 {
     RefreshRunList();
 }
 
-// Keeps the readable metric option and internal metric ID synchronized.
+void UTelemetryPanelWidget::HandleOverviewTabClicked()
+{
+    SetWorkspaceTab(0);
+    SetStatus(TEXT("Showing the selected run overview."));
+}
+
+void UTelemetryPanelWidget::HandleHeatmapsTabClicked()
+{
+    SetWorkspaceTab(1);
+    SetStatus(TEXT("Choose a measurement and road focus to create a heatmap."));
+}
+
+void UTelemetryPanelWidget::HandleFDOTTabClicked()
+{
+    SetWorkspaceTab(2);
+    SetStatus(TEXT("FDOT validation compares simulated traffic with real-world reference estimates."));
+}
+
 void UTelemetryPanelWidget::HandleMetricSelectionChanged(
     FString SelectedItem,
     ESelectInfo::Type SelectionType
@@ -828,6 +1066,11 @@ void UTelemetryPanelWidget::HandleMetricSelectionChanged(
     }
 
     SelectedMetric = MetricId;
+    if (MetricHelpText)
+    {
+        MetricHelpText->SetText(FText::FromString(GetMetricHelpText(SelectedMetric)));
+    }
+    RefreshHeatmapActionState();
     SetStatus(FString::Printf(TEXT("Selected metric: %s."), *SelectedItem));
 }
 
@@ -837,10 +1080,23 @@ void UTelemetryPanelWidget::HandleFocusSelectionChanged(
 )
 {
     SelectedFocus = GetFocusId(SelectedItem);
+    RefreshHeatmapActionState();
     SetStatus(FString::Printf(TEXT("Road focus: %s."), *GetFocusDisplayName(SelectedFocus)));
 }
 
-// Launches Python to generate only the selected metric heatmap.
+// Views an existing result, or generates and immediately opens a missing one.
+void UTelemetryPanelWidget::HandlePrimaryHeatmapClicked()
+{
+    if (DoesSelectedHeatmapExist())
+    {
+        HandleViewHeatmapClicked();
+    }
+    else
+    {
+        HandleGenerateHeatmapClicked();
+    }
+}
+
 void UTelemetryPanelWidget::HandleGenerateHeatmapClicked()
 {
     if (!SavedRuns.IsValidIndex(SelectedRunIndex))
@@ -868,14 +1124,138 @@ void UTelemetryPanelWidget::HandleGenerateHeatmapClicked()
         return;
     }
 
-    SetStatus(FString::Printf(
-        TEXT("%s heatmap generated successfully for %s."),
-        *GetMetricDisplayName(SelectedMetric),
-        *GetFocusDisplayName(SelectedFocus)
-    ));
+    RefreshHeatmapActionState();
+    HandleViewHeatmapClicked();
 }
 
-// Loads an existing heatmap PNG and opens the large viewer overlay.
+// Runs and displays the map-specific FDOT validation for the selected run.
+void UTelemetryPanelWidget::HandleCompareFDOTClicked()
+{
+    if (!SavedRuns.IsValidIndex(SelectedRunIndex))
+    {
+        SetStatus(TEXT("Select a saved run before comparing with FDOT."), true);
+        return;
+    }
+
+    SetStatus(TEXT("Comparing the selected run with FDOT design-hour estimates..."));
+
+    FTelemetryFDOTValidationSummary Summary;
+    FString ErrorMessage;
+    if (!UTelemetryPanelBridge::CompareSelectedRunWithFDOT(
+            SavedRuns[SelectedRunIndex].RunId,
+            Summary,
+            ErrorMessage
+        ))
+    {
+        if (FDOTValidationText)
+        {
+            FDOTValidationText->SetText(FText::FromString(ErrorMessage));
+            FDOTValidationText->SetColorAndOpacity(FSlateColor(ErrorColor));
+        }
+        SetStatus(ErrorMessage, true);
+        return;
+    }
+
+    FString ResultText = FString::Printf(
+        TEXT("COMPARISON SUMMARY\n"
+             "Close matches: %d\n"
+             "Needs review: %d\n"
+             "Large differences: %d\n"
+             "Compared road directions: %d\n\n"
+             "Overall, %.1f%% of compared road directions closely matched the FDOT reference.\n\n"
+             "DATA COVERAGE\n"
+             "%.1f%% (%d of %d road directions) had an FDOT reference.\n"
+             "%d road directions were not compared. FDOT data primarily covers monitored and major roads, so missing neighborhood roads are expected."),
+        Summary.GoodEdges,
+        Summary.ReviewEdges,
+        Summary.PoorEdges,
+        Summary.MatchedEdges,
+        Summary.GoodPercent,
+        Summary.CoveragePercent,
+        Summary.MatchedEdges,
+        Summary.TotalRoadDirections,
+        Summary.UnmatchedRoadDirections
+    );
+
+    if (!Summary.TopRoadDifferences.IsEmpty())
+    {
+        ResultText += TEXT("\n\nTOP ROAD DIFFERENCES");
+        for (int32 DifferenceIndex = 0; DifferenceIndex < Summary.TopRoadDifferences.Num(); ++DifferenceIndex)
+        {
+            const FTelemetryFDOTRoadDifference& Difference = Summary.TopRoadDifferences[DifferenceIndex];
+            const bool bHigher = Difference.PercentDifference >= 0.0f;
+            FString PlainResult = TEXT("Close match");
+            if (Difference.Result == TEXT("Poor"))
+            {
+                PlainResult = TEXT("Large difference");
+            }
+            else if (Difference.Result == TEXT("Review"))
+            {
+                PlainResult = TEXT("Needs review");
+            }
+
+            ResultText += FString::Printf(
+                TEXT("\n\n%d. %s\n"
+                     "RoadMap: %.0f veh/hr  |  FDOT: %.0f veh/hr\n"
+                     "RoadMap is %.1f%% %s  |  %s\n"
+                     "Technical: GEH %.2f"),
+                DifferenceIndex + 1,
+                *Difference.RoadName,
+                Difference.SimulationFlowVehPerHour,
+                Difference.FDOTFlowVehPerHour,
+                FMath::Abs(Difference.PercentDifference),
+                bHigher ? TEXT("higher") : TEXT("lower"),
+                *PlainResult,
+                Difference.GEHScore
+            );
+        }
+    }
+
+    ResultText += FString::Printf(
+        TEXT("\n\nTECHNICAL DETAILS\n"
+             "Mean GEH: %.2f\n"
+             "GEH is a standard traffic-model comparison measure. Lower is better; a score under 5 generally indicates a close match."),
+        Summary.MeanGEH
+    );
+
+    if (Summary.bPreliminary)
+    {
+        ResultText += TEXT(
+            "\n\nPRELIMINARY RESULT\n"
+            "This simulation is shorter than the recommended 15 minutes. Use this result as an early indication, not a final validation."
+        );
+    }
+
+    if (FDOTValidationText)
+    {
+        FDOTValidationText->SetText(FText::FromString(ResultText));
+        FDOTValidationText->SetColorAndOpacity(FSlateColor(
+            Summary.bPreliminary ? AccentHover : Success
+        ));
+    }
+
+    SetStatus(TEXT("FDOT comparison completed. Results were saved with this run."));
+}
+
+// Opens the FDOT comparison map generated with the selected run's validation.
+void UTelemetryPanelWidget::HandleViewFDOTHeatmapClicked()
+{
+    if (!SavedRuns.IsValidIndex(SelectedRunIndex))
+    {
+        SetStatus(TEXT("Select a saved run before viewing its FDOT comparison map."), true);
+        return;
+    }
+
+    const FString PreviousMetric = SelectedMetric;
+    const FString PreviousFocus = SelectedFocus;
+    SelectedMetric = TEXT("fdot_geh_score");
+    SelectedFocus = TEXT("all");
+    HandleViewHeatmapClicked();
+    SelectedMetric = PreviousMetric;
+    SelectedFocus = PreviousFocus;
+}
+
+// Prefer the vector map but keep the PNG as a reliable fallback.
 void UTelemetryPanelWidget::HandleViewHeatmapClicked()
 {
     if (!SavedRuns.IsValidIndex(SelectedRunIndex))
@@ -924,9 +1304,15 @@ void UTelemetryPanelWidget::HandleViewHeatmapClicked()
         HeatmapSummaryBox->ClearChildren();
         HeatmapLegendTicks->ClearChildren();
 
-        HeatmapSummaryBox->AddChildToVerticalBox(
-            MakeText(TEXT("SIMULATION SUMMARY"), 13, TextPrimary, FName("Bold"), 60)
-        );
+        HeatmapSummaryBox->AddChildToVerticalBox(MakeText(
+            SelectedMetric == TEXT("fdot_geh_score")
+                ? TEXT("FDOT COMPARISON")
+                : TEXT("SIMULATION SUMMARY"),
+            13,
+            TextPrimary,
+            FName("Bold"),
+            60
+        ));
         for (const FTelemetryHeatmapSummaryRow& Row : DisplayInfo.SummaryRows)
         {
             UTextBlock* Label = MakeText(Row.Label, 10, TextSecondary, FName("Medium"));
@@ -990,7 +1376,6 @@ void UTelemetryPanelWidget::HandleViewHeatmapClicked()
     SetStatus(TEXT("Heatmap loaded."));
 }
 
-// Closes the large heatmap viewer without closing the telemetry panel.
 void UTelemetryPanelWidget::HandleCloseHeatmapClicked()
 {
     HeatmapViewer->SetVisibility(ESlateVisibility::Collapsed);

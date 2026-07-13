@@ -15,6 +15,7 @@ from src.fdot.fdot_vs_simulation import (
     classify_geh,
     compare_fdot_to_simulation,
     summarize_fdot_comparison,
+    top_road_differences,
 )
 
 
@@ -47,6 +48,18 @@ def make_saved_run(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
     sample_simulation_metrics().to_csv(run_folder / "edge_metrics.csv", index=False)
+    pd.DataFrame({
+        "edge_id": [1, 2, 3, 99],
+        "source": [1, 2, 3, 4],
+        "target": [2, 3, 4, 5],
+        "length": [100.0, 100.0, 100.0, 100.0],
+        "source_x": [0.0, 1.0, 2.0, 3.0],
+        "source_y": [0.0, 0.0, 0.0, 0.0],
+        "target_x": [1.0, 2.0, 3.0, 4.0],
+        "target_y": [0.0, 0.0, 0.0, 0.0],
+        "name": ["Exact Road", "Review Road", "Poor Road", "Unmapped Road"],
+        "highway": ["primary", "secondary", "tertiary", "residential"],
+    }).to_csv(run_folder / "network_graph.csv", index=False)
     (run_folder / "telemetry_summary.json").write_text(
         json.dumps({"simulation_duration_s": 60.0}),
         encoding="utf-8",
@@ -80,6 +93,23 @@ def test_build_comparison_calculates_expected_categories():
     assert summary["poor_edges"] == 1
     assert summary["k_factor_edges"] == 3
     assert summary["fallback_edges"] == 0
+    assert [item["road_name"] for item in summary["top_road_differences"]] == [
+        "Poor Road",
+        "Review Road",
+        "Exact Road",
+    ]
+
+
+def test_top_differences_consolidate_repeated_road_names():
+    mapping = sample_fdot_mapping()
+    mapping.loc[1, "fdot_roadway"] = "Poor Road"
+    comparison = build_fdot_comparison(mapping, sample_simulation_metrics())
+
+    top_roads = top_road_differences(comparison)
+
+    assert len([item for item in top_roads if item["road_name"] == "Poor Road"]) == 1
+    assert top_roads[0]["result"] == "Poor"
+    assert top_roads[0]["simulation_flow_veh_per_hr"] == pytest.approx(420.0)
 
 
 def test_missing_k_factor_uses_directional_average_hour_fallback():
@@ -176,9 +206,17 @@ def test_selected_run_stores_results_inside_run(tmp_path, monkeypatch):
     assert result["success"] is True
     assert (run_folder / "fdot" / "fdot_vs_simulation.csv").exists()
     assert (run_folder / "fdot" / "fdot_summary.json").exists()
+    assert (run_folder / "heatmaps" / "heatmap_fdot_geh_score.png").exists()
+    assert (run_folder / "heatmaps" / "heatmap_fdot_geh_score.svg").exists()
+    assert (run_folder / "heatmaps" / "heatmap_fdot_geh_score.json").exists()
+    assert result["heatmap_path"].endswith("heatmap_fdot_geh_score.png")
+    assert result["summary"]["total_road_directions"] == 4
+    assert result["summary"]["unmatched_road_directions"] == 1
+    assert result["summary"]["coverage_percent"] == pytest.approx(75.0)
 
     metadata = json.loads((run_folder / "run_metadata.json").read_text(encoding="utf-8"))
     assert metadata["fdot_validation"]["status"] == "complete"
     assert metadata["fdot_validation"]["summary"]["matched_edges"] == 3
+    assert metadata["fdot_validation"]["summary"]["coverage_percent"] == pytest.approx(75.0)
     assert metadata["fdot_validation"]["summary"]["simulation_duration_s"] == 60.0
     assert metadata["fdot_validation"]["summary"]["validation_warnings"]

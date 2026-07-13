@@ -135,6 +135,45 @@ def build_fdot_comparison(
     return comparison.sort_values("geh_score", ascending=False, na_position="last")
 
 
+def _road_label(row: pd.Series) -> str:
+    """Choose a readable OSM/FDOT label for one compared road direction."""
+    for column in ("name", "ref", "road_label", "fdot_roadway"):
+        value = row.get(column)
+        if value is None or pd.isna(value):
+            continue
+        text = str(value).strip()
+        if text and text.lower() not in {"none", "nan", "unknown road", "unnamed road"}:
+            return text
+    return f"Road edge {int(row['EdgeID'])}"
+
+
+def top_road_differences(comparison: pd.DataFrame, limit: int = 5) -> list[dict]:
+    """Return the worst distinct road labels with plain and technical values."""
+    ranked = comparison.dropna(subset=["geh_score"]).sort_values("geh_score", ascending=False)
+    results = []
+    seen_labels = set()
+
+    for _, row in ranked.iterrows():
+        road_name = _road_label(row)
+        normalized_label = road_name.casefold()
+        if normalized_label in seen_labels:
+            continue
+        seen_labels.add(normalized_label)
+
+        results.append({
+            "road_name": road_name,
+            "simulation_flow_veh_per_hr": round(float(row["estimated_flow_veh_per_hr"]), 1),
+            "fdot_flow_veh_per_hr": round(float(row["fdot_estimated_veh_per_hr"]), 1),
+            "percent_difference": round(float(row["percent_error_per_hr"]), 1),
+            "geh_score": round(float(row["geh_score"]), 2),
+            "result": str(row["geh_result"]),
+        })
+        if len(results) >= limit:
+            break
+
+    return results
+
+
 def summarize_fdot_comparison(
     comparison: pd.DataFrame,
     simulation_duration_seconds: float | None = None,
@@ -185,6 +224,7 @@ def summarize_fdot_comparison(
             "Neutral 50/50 directional split because the FDOT peak-direction orientation is not available."
         ),
         "validation_warnings": warnings,
+        "top_road_differences": top_road_differences(comparison),
     }
 
 

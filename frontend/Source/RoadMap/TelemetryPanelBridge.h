@@ -5,18 +5,15 @@
 #include "Engine/Texture2D.h"
 #include "TelemetryPanelBridge.generated.h"
 
-// Stores the basic information for one saved telemetry run.
-// Blueprint can use this struct to create readable run entries in the telemetry panel.
+// Basic information used to build one row in the saved-runs list.
 USTRUCT(BlueprintType)
 struct FTelemetryRunInfo
 {
     GENERATED_BODY()
 
-    // Unique folder/run name used to identify this saved simulation run.
     UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
     FString RunId;
 
-    // Current processing status of the saved telemetry run.
     UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
     FString Status;
 
@@ -26,62 +23,49 @@ struct FTelemetryRunInfo
     UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
     FString MapId;
 
-    // Date and time when the telemetry run was created.
     UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
     FString CreatedAt;
 
-    // Total number of vehicles recorded during the simulation.
     UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
     int32 TotalVehicles = 0;
 
-    // Average vehicle speed recorded during the simulation.
     UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
     float AverageSpeedMph = 0.0f;
 };
 
-// Stores the detailed telemetry summary for one selected simulation run.
+// Detailed values shown on the Overview tab for the selected run.
 USTRUCT(BlueprintType)
 struct FTelemetryRunDetails
 {
     GENERATED_BODY()
 
-    // Internal ID used to locate the saved run folder.
     UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
     FString RunId;
 
-    // Current processing status for the saved run.
     UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
     FString Status;
 
-    // Number of vehicles recorded during the simulation.
     UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
     int32 TotalVehicles = 0;
 
-    // Length of the recorded simulation in seconds.
     UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
     float SimulationDurationSeconds = 0.0f;
 
-    // Number of road edges used by at least one vehicle.
     UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
     int32 EdgesUsed = 0;
 
-    // Average speed across the simulation.
     UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
     float AverageSpeedMph = 0.0f;
 
-    // Total additional waiting time recorded across all vehicles.
     UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
     float TotalWaitAddedSeconds = 0.0f;
 
-    // Longest individual vehicle wait recorded during the run.
     UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
     float MaximumWaitSeconds = 0.0f;
 
-    // Readable road name for the highest-ranked bottleneck.
     UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
     FString WorstBottleneckRoad;
 
-    // Calculated bottleneck score for the worst-ranked road.
     UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
     float WorstBottleneckScore = 0.0f;
 };
@@ -121,6 +105,77 @@ struct FTelemetryHeatmapDisplayInfo
     TArray<FTelemetryHeatmapSummaryRow> SummaryRows;
 };
 
+// Stores one high-priority road difference from an FDOT validation.
+USTRUCT(BlueprintType)
+struct FTelemetryFDOTRoadDifference
+{
+    GENERATED_BODY()
+
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
+    FString RoadName;
+
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
+    float SimulationFlowVehPerHour = 0.0f;
+
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
+    float FDOTFlowVehPerHour = 0.0f;
+
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
+    float PercentDifference = 0.0f;
+
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
+    float GEHScore = 0.0f;
+
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
+    FString Result;
+};
+
+// Stores the compact FDOT validation summary shown for one selected run.
+USTRUCT(BlueprintType)
+struct FTelemetryFDOTValidationSummary
+{
+    GENERATED_BODY()
+
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
+    int32 MatchedEdges = 0;
+
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
+    int32 GoodEdges = 0;
+
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
+    int32 ReviewEdges = 0;
+
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
+    int32 PoorEdges = 0;
+
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
+    float GoodPercent = 0.0f;
+
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
+    float MeanGEH = 0.0f;
+
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
+    float SimulationDurationSeconds = 0.0f;
+
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
+    int32 TotalRoadDirections = 0;
+
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
+    int32 UnmatchedRoadDirections = 0;
+
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
+    float CoveragePercent = 0.0f;
+
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
+    bool bPreliminary = false;
+
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
+    FString Warning;
+
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
+    TArray<FTelemetryFDOTRoadDifference> TopRoadDifferences;
+};
+
 UCLASS()
 class ROADMAP_API UTelemetryPanelBridge : public UBlueprintFunctionLibrary
 {
@@ -136,7 +191,7 @@ public:
         FString& OutError
     );
 
-        // Gets one saved run and converts its JSON summary into a Blueprint-friendly struct.
+    // Gets one saved run and converts its JSON summary into a Blueprint-friendly struct.
     UFUNCTION(BlueprintCallable, Category = "RoadMap Telemetry")
     static bool GetSavedRunDetails(
         const FString& RunId,
@@ -169,13 +224,21 @@ public:
         FString& OutError
     );
 
-    // Runs generate_selected_heatmap.py for one run and metric.
+    // Generates one metric and road-focus combination for a saved run.
     UFUNCTION(BlueprintCallable, Category = "RoadMap Telemetry")
     static bool GenerateSelectedHeatmap(
         const FString& RunId,
         const FString& Metric,
         const FString& Focus,
         FString& OutJson
+    );
+
+    // Compares one saved run with its map-specific FDOT design-hour targets.
+    UFUNCTION(BlueprintCallable, Category = "RoadMap Telemetry")
+    static bool CompareSelectedRunWithFDOT(
+        const FString& RunId,
+        FTelemetryFDOTValidationSummary& OutSummary,
+        FString& OutError
     );
 
 private:
@@ -186,6 +249,6 @@ private:
     // Finds the packaged telemetry EXE inside Content/ThirdParty.
     static FString GetTelemetryExePath();
 
-    // Runs one telemetry Python script and returns anything printed by Python.
-    static bool RunTelemetryScript(const FString& RelativeScriptPath, const TArray<FString>& Arguments, FString& OutJson);
+    // Sends one command to the packaged telemetry executable.
+    static bool RunTelemetryCommand(const FString& Command, const TArray<FString>& Arguments, FString& OutJson);
 };

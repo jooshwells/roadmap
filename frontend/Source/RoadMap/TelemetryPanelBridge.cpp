@@ -10,6 +10,24 @@
 
 namespace
 {
+    FString FindLastJsonLine(const FString& ProcessOutput)
+    {
+        FString JsonLine = ProcessOutput.TrimStartAndEnd();
+        TArray<FString> OutputLines;
+        ProcessOutput.ParseIntoArrayLines(OutputLines, true);
+
+        for (int32 LineIndex = OutputLines.Num() - 1; LineIndex >= 0; --LineIndex)
+        {
+            const FString Candidate = OutputLines[LineIndex].TrimStartAndEnd();
+            if (Candidate.StartsWith(TEXT("{")) && Candidate.EndsWith(TEXT("}")))
+            {
+                return Candidate;
+            }
+        }
+
+        return JsonLine;
+    }
+
     FString FindTelemetryRunFolder(const FString& RunsDirectory, const FString& RunId)
     {
         const FString LegacyPath = FPaths::Combine(RunsDirectory, RunId);
@@ -70,8 +88,7 @@ FString UTelemetryPanelBridge::GetTelemetryRunsPath()
     );
 }
 
-// Runs one telemetry panel command through the packaged telemetry EXE.
-bool UTelemetryPanelBridge::RunTelemetryScript(const FString& RelativeScriptPath, const TArray<FString>& Arguments, FString& OutJson)
+bool UTelemetryPanelBridge::RunTelemetryCommand(const FString& Command, const TArray<FString>& Arguments, FString& OutJson)
 {
     OutJson.Empty();
 
@@ -89,23 +106,16 @@ bool UTelemetryPanelBridge::RunTelemetryScript(const FString& RelativeScriptPath
         return false;
     }
 
-    // Tell the packaged telemetry EXE that this request came from the telemetry panel.
-    FString Params = TEXT("--panel-command ");
-
-    // Convert the old script path into the matching command inside run_pipeline.exe.
-    if (RelativeScriptPath.Contains(TEXT("generate_selected_heatmap.py")))
-    {
-        Params += TEXT("generate-heatmap");
-    }
-    else
+    if (Command != TEXT("generate-heatmap") && Command != TEXT("compare-fdot"))
     {
         OutJson = FString::Printf(
-            TEXT("{\"success\":false,\"error\":\"Unknown telemetry panel script.\",\"script\":\"%s\"}"),
-            *RelativeScriptPath
+            TEXT("{\"success\":false,\"error\":\"Unknown telemetry panel command.\",\"command\":\"%s\"}"),
+            *Command
         );
-
         return false;
     }
+
+    FString Params = FString::Printf(TEXT("--panel-command %s"), *Command);
 
     for (const FString& Arg : Arguments)
     {
@@ -131,18 +141,23 @@ bool UTelemetryPanelBridge::RunTelemetryScript(const FString& RelativeScriptPath
         return false;
     }
 
+    OutJson = StdOut.TrimStartAndEnd();
     if (ReturnCode != 0)
     {
-        OutJson = FString::Printf(
-            TEXT("{\"success\":false,\"error\":\"Telemetry EXE command failed.\",\"return_code\":%d,\"stderr\":\"%s\"}"),
-            ReturnCode,
-            *StdErr.ReplaceCharWithEscapedChar()
-        );
+        // The pipeline normally prints a structured error to stdout. Keep it so
+        // the panel can show the real problem instead of a generic failure.
+        if (OutJson.IsEmpty())
+        {
+            OutJson = FString::Printf(
+                TEXT("{\"success\":false,\"error\":\"Telemetry command failed.\",\"return_code\":%d,\"stderr\":\"%s\"}"),
+                ReturnCode,
+                *StdErr.ReplaceCharWithEscapedChar()
+            );
+        }
 
         return false;
     }
 
-    OutJson = StdOut.TrimStartAndEnd();
     return true;
 }
 
@@ -782,7 +797,6 @@ UTexture2D* UTelemetryPanelBridge::LoadHeatmapTexture(
     return LoadedTexture;
 }
 
-// Runs generate_selected_heatmap.py for one run and metric.
 bool UTelemetryPanelBridge::GenerateSelectedHeatmap(
     const FString& RunId,
     const FString& Metric,
@@ -790,8 +804,8 @@ bool UTelemetryPanelBridge::GenerateSelectedHeatmap(
     FString& OutJson
 )
 {
-    return RunTelemetryScript(
-        TEXT("src/heatmaps/generate_selected_heatmap.py"),
+    return RunTelemetryCommand(
+        TEXT("generate-heatmap"),
         {
             FString::Printf(TEXT("--run-id \"%s\""), *RunId),
             FString::Printf(TEXT("--metric \"%s\""), *Metric),
@@ -799,4 +813,158 @@ bool UTelemetryPanelBridge::GenerateSelectedHeatmap(
         },
         OutJson
     );
+}
+
+// Runs the packaged FDOT comparison and converts its JSON response for the native UI.
+bool UTelemetryPanelBridge::CompareSelectedRunWithFDOT(
+    const FString& RunId,
+    FTelemetryFDOTValidationSummary& OutSummary,
+    FString& OutError
+)
+{
+    OutSummary = FTelemetryFDOTValidationSummary();
+    OutError.Empty();
+
+    if (RunId.IsEmpty() ||
+        RunId.Contains(TEXT("..")) ||
+        RunId.Contains(TEXT("/")) ||
+        RunId.Contains(TEXT("\\")))
+    {
+        OutError = TEXT("The selected run ID is invalid.");
+        return false;
+    }
+
+    FString ResultJson;
+    if (!RunTelemetryCommand(
+            TEXT("compare-fdot"),
+            {TEXT("--run-id"), RunId},
+            ResultJson
+        ))
+    {
+        TSharedPtr<FJsonObject> ErrorObject;
+        const TSharedRef<TJsonReader<>> ErrorReader = TJsonReaderFactory<>::Create(FindLastJsonLine(ResultJson));
+        if (!FJsonSerializer::Deserialize(ErrorReader, ErrorObject) ||
+            !ErrorObject.IsValid() ||
+            !ErrorObject->TryGetStringField(TEXT("error"), OutError))
+        {
+            OutError = TEXT("FDOT comparison failed. Check that this map has an FDOT edge mapping.");
+        }
+        return false;
+    }
+
+    // Heatmap rendering writes human-readable progress lines before the panel
+    // command prints its final JSON response.
+    const FString JsonPayload = FindLastJsonLine(ResultJson);
+
+    TSharedPtr<FJsonObject> ResultObject;
+    const TSharedRef<TJsonReader<>> ResultReader = TJsonReaderFactory<>::Create(JsonPayload);
+    if (!FJsonSerializer::Deserialize(ResultReader, ResultObject) || !ResultObject.IsValid())
+    {
+        OutError = TEXT("FDOT comparison returned an unreadable response.");
+        return false;
+    }
+
+    bool bSuccess = false;
+    ResultObject->TryGetBoolField(TEXT("success"), bSuccess);
+    if (!bSuccess)
+    {
+        if (!ResultObject->TryGetStringField(TEXT("error"), OutError))
+        {
+            OutError = TEXT("FDOT comparison did not complete.");
+        }
+        return false;
+    }
+
+    const TSharedPtr<FJsonObject>* SummaryObject = nullptr;
+    if (!ResultObject->TryGetObjectField(TEXT("summary"), SummaryObject) ||
+        SummaryObject == nullptr || !SummaryObject->IsValid())
+    {
+        OutError = TEXT("FDOT comparison response did not include a summary.");
+        return false;
+    }
+
+    double MatchedEdges = 0.0;
+    double GoodEdges = 0.0;
+    double ReviewEdges = 0.0;
+    double PoorEdges = 0.0;
+    double GoodPercent = 0.0;
+    double MeanGEH = 0.0;
+    double DurationSeconds = 0.0;
+    double MinimumDurationSeconds = 0.0;
+    double TotalRoadDirections = 0.0;
+    double UnmatchedRoadDirections = 0.0;
+    double CoveragePercent = 0.0;
+
+    (*SummaryObject)->TryGetNumberField(TEXT("matched_edges"), MatchedEdges);
+    (*SummaryObject)->TryGetNumberField(TEXT("good_edges"), GoodEdges);
+    (*SummaryObject)->TryGetNumberField(TEXT("review_edges"), ReviewEdges);
+    (*SummaryObject)->TryGetNumberField(TEXT("poor_edges"), PoorEdges);
+    (*SummaryObject)->TryGetNumberField(TEXT("good_percent"), GoodPercent);
+    (*SummaryObject)->TryGetNumberField(TEXT("mean_geh"), MeanGEH);
+    (*SummaryObject)->TryGetNumberField(TEXT("simulation_duration_s"), DurationSeconds);
+    (*SummaryObject)->TryGetNumberField(TEXT("minimum_recommended_duration_s"), MinimumDurationSeconds);
+    (*SummaryObject)->TryGetNumberField(TEXT("total_road_directions"), TotalRoadDirections);
+    (*SummaryObject)->TryGetNumberField(TEXT("unmatched_road_directions"), UnmatchedRoadDirections);
+    (*SummaryObject)->TryGetNumberField(TEXT("coverage_percent"), CoveragePercent);
+
+    OutSummary.MatchedEdges = static_cast<int32>(MatchedEdges);
+    OutSummary.GoodEdges = static_cast<int32>(GoodEdges);
+    OutSummary.ReviewEdges = static_cast<int32>(ReviewEdges);
+    OutSummary.PoorEdges = static_cast<int32>(PoorEdges);
+    OutSummary.GoodPercent = static_cast<float>(GoodPercent);
+    OutSummary.MeanGEH = static_cast<float>(MeanGEH);
+    OutSummary.SimulationDurationSeconds = static_cast<float>(DurationSeconds);
+    OutSummary.TotalRoadDirections = static_cast<int32>(TotalRoadDirections);
+    OutSummary.UnmatchedRoadDirections = static_cast<int32>(UnmatchedRoadDirections);
+    OutSummary.CoveragePercent = static_cast<float>(CoveragePercent);
+    OutSummary.bPreliminary = MinimumDurationSeconds > 0.0 && DurationSeconds < MinimumDurationSeconds;
+
+    const TArray<TSharedPtr<FJsonValue>>* WarningValues = nullptr;
+    if ((*SummaryObject)->TryGetArrayField(TEXT("validation_warnings"), WarningValues) && WarningValues)
+    {
+        TArray<FString> Warnings;
+        for (const TSharedPtr<FJsonValue>& WarningValue : *WarningValues)
+        {
+            FString Warning;
+            if (WarningValue.IsValid() && WarningValue->TryGetString(Warning) && !Warning.IsEmpty())
+            {
+                Warnings.Add(Warning);
+            }
+        }
+        OutSummary.Warning = FString::Join(Warnings, TEXT("\n"));
+    }
+
+    const TArray<TSharedPtr<FJsonValue>>* DifferenceValues = nullptr;
+    if ((*SummaryObject)->TryGetArrayField(TEXT("top_road_differences"), DifferenceValues) && DifferenceValues)
+    {
+        for (const TSharedPtr<FJsonValue>& DifferenceValue : *DifferenceValues)
+        {
+            const TSharedPtr<FJsonObject>* DifferenceObject = nullptr;
+            if (!DifferenceValue.IsValid() ||
+                !DifferenceValue->TryGetObject(DifferenceObject) ||
+                DifferenceObject == nullptr || !DifferenceObject->IsValid())
+            {
+                continue;
+            }
+
+            FTelemetryFDOTRoadDifference Difference;
+            double SimulationFlow = 0.0;
+            double FDOTFlow = 0.0;
+            double PercentDifference = 0.0;
+            double GEHScore = 0.0;
+            (*DifferenceObject)->TryGetStringField(TEXT("road_name"), Difference.RoadName);
+            (*DifferenceObject)->TryGetStringField(TEXT("result"), Difference.Result);
+            (*DifferenceObject)->TryGetNumberField(TEXT("simulation_flow_veh_per_hr"), SimulationFlow);
+            (*DifferenceObject)->TryGetNumberField(TEXT("fdot_flow_veh_per_hr"), FDOTFlow);
+            (*DifferenceObject)->TryGetNumberField(TEXT("percent_difference"), PercentDifference);
+            (*DifferenceObject)->TryGetNumberField(TEXT("geh_score"), GEHScore);
+            Difference.SimulationFlowVehPerHour = static_cast<float>(SimulationFlow);
+            Difference.FDOTFlowVehPerHour = static_cast<float>(FDOTFlow);
+            Difference.PercentDifference = static_cast<float>(PercentDifference);
+            Difference.GEHScore = static_cast<float>(GEHScore);
+            OutSummary.TopRoadDifferences.Add(Difference);
+        }
+    }
+
+    return true;
 }

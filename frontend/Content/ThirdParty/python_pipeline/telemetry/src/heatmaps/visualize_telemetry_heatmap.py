@@ -34,7 +34,6 @@ import matplotlib.backends.backend_svg
 import matplotlib.colors as colors
 import matplotlib.patheffects as path_effects
 from matplotlib.collections import LineCollection
-from matplotlib.lines import Line2D
 from matplotlib.patches import FancyBboxPatch, Rectangle, Circle, Polygon
 
 
@@ -201,11 +200,6 @@ def get_road_label(row):
     if name:
         return name
     return None
-
-
-# Check if a road is one of the major road classes.
-def is_major_road(row):
-    return get_highway_type(row) in MAJOR_ROAD_TYPES
 
 
 # Decide if this road type should get a label on the map.
@@ -504,6 +498,7 @@ def metric_display_name(metric: str) -> str:
         "total_wait_added_s": "Total Wait Added",
         "estimated_flow_veh_per_hr": "Estimated Flow",
         "avg_speed_mph": "Average Speed",
+        "fdot_geh_score": "FDOT Match Quality",
     }
     return names.get(metric, metric.replace("_", " ").title())
 
@@ -535,6 +530,8 @@ def metric_value_unit(metric: str) -> str:
         return "sec"
     if metric == "bottleneck_score":
         return "index"
+    if metric == "fdot_geh_score":
+        return "GEH"
     return ""
 
 
@@ -587,30 +584,6 @@ def nice_round_up(value):
     return nice * base
 
 
-# Round color scale minimums down to cleaner values.
-def nice_round_down(value):
-    """Round the bottom of the color scale to a cleaner number."""
-    if value is None or pd.isna(value):
-        return value
-
-    value = float(value)
-    if value <= 0:
-        return 0.0
-
-    exponent = math.floor(math.log10(value))
-    base = 10 ** exponent
-    scaled = value / base
-
-    if scaled >= 5:
-        nice = 5
-    elif scaled >= 2:
-        nice = 2
-    else:
-        nice = 1
-
-    return nice * base
-
-
 # Pick color scale limits that work for both short and long simulation runs.
 def choose_visual_range(values: pd.Series, metric: str):
     """Pick a color scale that still works for short and long simulations."""
@@ -621,6 +594,11 @@ def choose_visual_range(values: pd.Series, metric: str):
     if metric == "avg_speed_mph":
         # Keep speed maps consistent between runs. Anything over 80 mph is just drawn as the top green color.
         return 0.0, 80.0
+
+    if metric == "fdot_geh_score":
+        # GEH thresholds have stable meanings. Clip extreme outliers at 20 so
+        # the useful close/review/large-difference range stays readable.
+        return 0.0, 20.0
 
     vmin = 0.0
 
@@ -669,6 +647,8 @@ def metric_extreme_label(metric: str) -> str:
         return "Longest Wait Road"
     if metric == "bottleneck_score":
         return "Most Congested Road"
+    if metric == "fdot_geh_score":
+        return "Largest Difference Road"
     return "Most Extreme Road"
 
 
@@ -701,6 +681,22 @@ def summary_rows_for_metric(metric, heat_values, background_count, heat_count, m
     """Build the lines shown in the summary card."""
     values = pd.Series(heat_values)
     unit = metric_value_unit(metric)
+
+    if metric == "fdot_geh_score":
+        valid = merged_df.dropna(subset=[metric]).copy()
+        results = valid.get("geh_result", pd.Series(dtype=str)).value_counts()
+        good = int(results.get("Good", 0))
+        review = int(results.get("Review", 0))
+        poor = int(results.get("Poor", 0))
+        compared = len(valid)
+        good_percent = (good / compared * 100.0) if compared else 0.0
+        return [
+            ("Compared Road Directions", f"{compared:,}"),
+            ("Close Matches (GEH < 5)", f"{good:,}"),
+            ("Needs Review (GEH 5-10)", f"{review:,}"),
+            ("Large Differences (GEH 10+)", f"{poor:,}"),
+            ("Close Match Rate", f"{good_percent:.1f}%"),
+        ]
 
     # A zero-only bottleneck run has no meaningful extreme road or hotspots.
     if metric == "bottleneck_score" and (values.empty or values.abs().max() <= 1e-9):
@@ -981,6 +977,9 @@ def choose_color_settings(metric: str):
     if metric == "bottleneck_score":
         return make_roadmap_traffic_cmap(high_values_are_bad=True), "Bottleneck score", True
 
+    if metric == "fdot_geh_score":
+        return make_roadmap_traffic_cmap(high_values_are_bad=True), "FDOT match difference (GEH)", True
+
     return make_roadmap_traffic_cmap(high_values_are_bad=True), metric, True
 
 
@@ -1115,11 +1114,15 @@ def save_heatmap_display_info(output_path, metric, title, colorbar_label, vmin, 
     else:
         colors_top_to_bottom = ["#D73027", "#FC8D59", "#FFFFBF", "#91CF60", "#1A9850"]
 
+    tick_labels = [compact_axis_number(tick) for tick in reversed(ticks)]
+    if metric == "fdot_geh_score":
+        tick_labels = ["20+", "15", "10 - Large", "5 - Review", "0 - Close"]
+
     display_info = {
         "metric": metric,
         "title": title,
         "legend_label": colorbar_label,
-        "legend_ticks_top_to_bottom": [compact_axis_number(tick) for tick in reversed(ticks)],
+        "legend_ticks_top_to_bottom": tick_labels,
         "legend_colors_top_to_bottom": colors_top_to_bottom,
         "summary_rows": [{"label": label, "value": value} for label, value in rows],
     }
@@ -1335,6 +1338,7 @@ def plot_heatmap(
         "total_wait_added_s": "Total Vehicle Wait Time",
         "estimated_flow_veh_per_hr": "Estimated Traffic Flow",
         "avg_speed_mph": "Average Road Speed",
+        "fdot_geh_score": "FDOT Traffic Comparison",
     }
 
     title = friendly_titles.get(metric, metric)
@@ -1411,39 +1415,6 @@ def plot_heatmap(
 
     print(f"Saved heatmap to: {output_path}")
     print(f"Saved vector heatmap to: {svg_output_path}")
-
-# Old speed legend helper kept in case we want it later.
-def add_speed_legend(ax):
-    """Old speed legend helper. The colorbar is used now, but this is left here just in case."""
-    legend_items = [
-        ("0 – 15", "#d7191c"),
-        ("15 – 25", "#fdae61"),
-        ("25 – 35", "#ffffbf"),
-        ("35 – 45", "#a6d96a"),
-        ("45 – 70", "#1a9641"),
-    ]
-
-    handles = [
-        Line2D([0], [0], color=color, lw=3, label=label)
-        for label, color in legend_items
-    ]
-
-    legend = ax.legend(
-        handles=handles,
-        title="Speed (mph)",
-        loc="upper left",
-        bbox_to_anchor=(0.02, 0.98),
-        frameon=True,
-        facecolor="#070B10",
-        edgecolor="#777777",
-        fontsize=8,
-        title_fontsize=9,
-    )
-
-    legend.get_title().set_color("white")
-
-    for text in legend.get_texts():
-        text.set_color("white")
 
 # Draw simple route shields for common roads like I-4, 50, 417, and 528.
 def add_route_shields(ax, network_df: pd.DataFrame):
