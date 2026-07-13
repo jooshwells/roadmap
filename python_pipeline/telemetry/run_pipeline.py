@@ -7,6 +7,7 @@ import shutil
 from src.telemetry.telemetry_analysis import run_analysis
 from src.telemetry.run_manager import create_run_folder
 from src.heatmaps.visualize_telemetry_heatmap import load_files, plot_heatmap
+from src.fdot.fdot_vs_simulation import compare_fdot_to_simulation
 # Builds the heatmap-ready network graph from active roadmap JSONL files.
 from src.heatmaps.build_network_graph_with_geometry import build_network_graph
 
@@ -668,6 +669,108 @@ def generate_single_heatmap(run_id: str, metric: str, focus: str = "all") -> dic
     }
 
 
+def get_fdot_mapping_candidates(run_folder: Path, metadata: dict) -> list[Path]:
+    """Return map-specific mapping locations in preferred lookup order."""
+    map_id = get_run_map_id(run_folder, metadata)
+    candidates = [
+        run_folder / "fdot" / "fdot_edge_mapping.csv",
+        run_folder / "fdot" / "fdot_edge_mapping_option_a.csv",
+    ]
+
+    if map_id:
+        candidates.extend([
+            TELEMETRY_DIR / "data" / "fdot" / map_id / "fdot_edge_mapping.csv",
+            TELEMETRY_DIR / "data" / "fdot" / map_id / "fdot_edge_mapping_option_a.csv",
+        ])
+
+    candidates.extend([
+        TELEMETRY_DIR / "data" / "fdot" / "fdot_edge_mapping.csv",
+        TELEMETRY_DIR / "data" / "fdot" / "fdot_edge_mapping_option_a.csv",
+    ])
+    return candidates
+
+
+def get_run_map_id(run_folder: Path, metadata: dict) -> str:
+    """Return a real map ID without treating the legacy runs folder as a map."""
+    metadata_map_id = str(metadata.get("map_id") or "").strip()
+    if metadata_map_id:
+        return metadata_map_id
+    if run_folder.parent == get_runs_dir():
+        return "unknown-map"
+    return run_folder.parent.name
+
+
+def compare_run_with_fdot(run_id: str, mapping_path: str | None = None) -> dict:
+    """Compare a selected saved run and store all results inside its fdot folder."""
+    run_folder = find_run_folder(run_id)
+    if run_folder is None:
+        return {
+            "success": False,
+            "error": "Run folder not found.",
+            "run_id": run_id,
+        }
+
+    edge_metrics_path = run_folder / "edge_metrics.csv"
+    if not edge_metrics_path.exists():
+        return {
+            "success": False,
+            "error": "edge_metrics.csv not found for this run.",
+            "run_id": run_id,
+            "edge_metrics_path": str(edge_metrics_path),
+        }
+
+    metadata_path = run_folder / "run_metadata.json"
+    metadata = load_json_file(metadata_path)
+    candidates = get_fdot_mapping_candidates(run_folder, metadata)
+
+    if mapping_path:
+        selected_mapping = Path(mapping_path).expanduser()
+    else:
+        selected_mapping = next((path for path in candidates if path.exists()), None)
+
+    if selected_mapping is None or not selected_mapping.exists():
+        return {
+            "success": False,
+            "error": (
+                "No FDOT edge mapping is available for this map. Generate or copy a mapping "
+                "for the selected map before running FDOT comparison."
+            ),
+            "run_id": run_id,
+            "map_id": get_run_map_id(run_folder, metadata),
+            "searched_paths": [str(path) for path in candidates],
+        }
+
+    fdot_folder = run_folder / "fdot"
+    comparison_path = fdot_folder / "fdot_vs_simulation.csv"
+    summary_path = fdot_folder / "fdot_summary.json"
+
+    summary = compare_fdot_to_simulation(
+        selected_mapping,
+        edge_metrics_path,
+        comparison_path,
+        summary_path,
+    )
+
+    metadata["fdot_folder"] = "fdot"
+    metadata["fdot_validation"] = {
+        "status": "complete",
+        "mapping_path": str(selected_mapping),
+        "comparison_path": comparison_path.relative_to(run_folder).as_posix(),
+        "summary_path": summary_path.relative_to(run_folder).as_posix(),
+        "summary": summary,
+    }
+    metadata_path.write_text(json.dumps(metadata, indent=4), encoding="utf-8")
+
+    return {
+        "success": True,
+        "run_id": run_id,
+        "map_id": get_run_map_id(run_folder, metadata),
+        "comparison_path": str(comparison_path),
+        "summary_path": str(summary_path),
+        "summary": summary,
+    }
+
+
 # Handles commands from the Unreal telemetry panel.
 # This must run before the normal simulation CSV path check.
 def handle_panel_command(argv: list[str]) -> int:
@@ -736,6 +839,17 @@ def handle_panel_command(argv: list[str]) -> int:
                 }
             else:
                 result = generate_single_heatmap(run_id, metric, focus)
+
+        elif command == "compare-fdot":
+            run_id = get_arg_value("--run-id")
+            mapping_path = get_arg_value("--mapping-path")
+            if not run_id:
+                result = {
+                    "success": False,
+                    "error": "Missing --run-id.",
+                }
+            else:
+                result = compare_run_with_fdot(run_id, mapping_path)
 
         else:
             result = {
