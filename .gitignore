@@ -152,8 +152,6 @@ DerivedDataCache/*
 
 .vscode
 
-sim/simulation_output.csv
-
 # Python virtual environments
 .venv/
 **/.venv/
@@ -164,9 +162,18 @@ __pycache__/
 *.pyc
 .pytest_cache/
 
-# Telemetry generated outputs
-roadmap/python_pipeline/telemetry/outputs/
-roadmap/python_pipeline/telemetry/telemetry_done.txt
+# --- Cross-component generated artifacts (scripts/build_all.ps1) ---
+# NOTE: .venv/ (any location) is already ignored above.
 
-# Optional generated simulation CSV
-roadmap/frontend/simulation_output.csv
+# PyInstaller outputs (telemetry run_pipeline.exe build)
+python_pipeline/telemetry/build/
+python_pipeline/telemetry/dist/
+
+# Generated telemetry outputs
+python_pipeline/telemetry/outputs/
+frontend/Content/ThirdParty/python_pipeline/telemetry/outputs/
+
+# Generated sim/telemetry run artifacts (any location, incl. frontend copies)
+simulation_output.csv
+telemetry_done.txt
+network_graph_active.csv

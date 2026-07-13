@@ -493,6 +493,27 @@ void PhysicsProcessor::update(float dt)
     vehiclesToRemove.clear();
 }
 
+void PhysicsProcessor::despawnVehicle(VehicleState* vhcl)
+{
+    if (!vhcl) return;
+
+    for (VehicleState* other : vehicleList)
+    {
+        if (other && other->getLeader() == vhcl) other->setLeader(nullptr);
+    }
+
+    // Callers despawn before mutating the graph, so currentEdge is still a
+    // valid pointer here and the volume counter can be balanced.
+    if (vhcl->getCurrentEdge()) vhcl->getCurrentEdge()->removeVehicle();
+
+    vehicleList.erase(
+        std::remove(vehicleList.begin(), vehicleList.end(), vhcl),
+        vehicleList.end()
+    );
+
+    delete vhcl;
+}
+
 float PhysicsProcessor::IDM(VehicleState* vhcl, VehicleState* leader, bool mobil )
 {
     if (vhcl == nullptr || vhcl->isMarkedForDeletion) return 0.0f;
