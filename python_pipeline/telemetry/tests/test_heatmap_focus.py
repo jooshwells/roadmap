@@ -7,7 +7,11 @@ import pytest
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.heatmaps.visualize_telemetry_heatmap import filter_metrics_for_focus, normalize_focus
+from src.heatmaps.visualize_telemetry_heatmap import (
+    build_interactive_road_data,
+    filter_metrics_for_focus,
+    normalize_focus,
+)
 
 
 def sample_metrics():
@@ -38,3 +42,48 @@ def test_speed_focus_keeps_slowest_values():
 def test_unknown_focus_is_rejected():
     with pytest.raises(ValueError):
         normalize_focus("worst_3")
+
+
+def test_interactive_roads_are_normalized_and_keep_important_direction():
+    merged = pd.DataFrame([
+        {
+            "EdgeID": 10,
+            "source_x": 0.0,
+            "source_y": 0.0,
+            "target_x": 10.0,
+            "target_y": 5.0,
+            "geometry_xy": None,
+            "name": "Test Avenue",
+            "ref": "SR 10",
+            "highway": "primary",
+            "bottleneck_score": 0.25,
+        },
+        {
+            "EdgeID": 11,
+            "source_x": 10.0,
+            "source_y": 5.0,
+            "target_x": 0.0,
+            "target_y": 0.0,
+            "geometry_xy": None,
+            "name": "Test Avenue",
+            "ref": "SR 10",
+            "highway": "primary",
+            "bottleneck_score": 0.75,
+        },
+    ])
+
+    roads = build_interactive_road_data(
+        merged,
+        "bottleneck_score",
+        (-1.0, 11.0, -1.0, 6.0),
+    )
+
+    assert len(roads) == 1
+    assert roads[0]["edge_id"] == 11
+    assert roads[0]["name"] == "Test Avenue"
+    assert roads[0]["route_ref"] == "SR 10"
+    assert roads[0]["value"] == 0.75
+    assert roads[0]["points"] == [
+        [0.916667, 0.857143],
+        [0.083333, 0.142857],
+    ]

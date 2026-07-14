@@ -1106,8 +1106,62 @@ def draw_geojson_polygons(ax, geojson_path, facecolor, edgecolor, alpha, zorder)
 
     print(f"Optional layer drawn: {geojson_path.name} polygons={drawn}")
 
-# Save the text and legend values that Unreal draws around the vector map.
-def save_heatmap_display_info(output_path, metric, title, colorbar_label, vmin, vmax, rows):
+# Build compact road geometry for Unreal's hover and click interaction.
+def build_interactive_road_data(merged_df, metric, map_bounds):
+    """Normalize analyzed road shapes into the map area stored in the SVG."""
+    min_x, max_x, min_y, max_y = map_bounds
+    width = max(max_x - min_x, 1e-9)
+    height = max(max_y - min_y, 1e-9)
+    roads_by_geometry = {}
+
+    for _, row in merged_df.iterrows():
+        if metric not in row.index or pd.isna(row.get(metric)):
+            continue
+        if any(pd.isna(row.get(column)) for column in ("source_x", "source_y", "target_x", "target_y")):
+            continue
+
+        segment = get_segment_from_row(row)
+        key = canonical_segment_key(segment)
+        value = float(row[metric])
+        existing = roads_by_geometry.get(key)
+
+        # Two directions often share one shape. Match the value used to color it.
+        if existing is not None:
+            old_value = existing["value"]
+            use_new_value = value < old_value if metric == "avg_speed_mph" else value > old_value
+            if not use_new_value:
+                continue
+
+        name = get_road_label(row)
+        route_ref = simplify_osm_value(row.get("ref"))
+        edge_id = int(row["EdgeID"])
+        roads_by_geometry[key] = {
+            "edge_id": edge_id,
+            "name": name or route_ref or f"Road edge {edge_id}",
+            "route_ref": route_ref or "",
+            "highway": get_highway_type(row) or "road",
+            "value": value,
+            "points": [
+                [round((x - min_x) / width, 6), round((y - min_y) / height, 6)]
+                for x, y in segment
+            ],
+        }
+
+    return list(roads_by_geometry.values())
+
+
+# Save the text, legend, and optional road hit data used by Unreal's native viewer.
+def save_heatmap_display_info(
+    output_path,
+    metric,
+    title,
+    colorbar_label,
+    vmin,
+    vmax,
+    rows,
+    interactive_roads=None,
+    map_rect=None,
+):
     ticks = [vmin + (vmax - vmin) * i / 4 for i in range(5)]
     if metric == "avg_speed_mph":
         colors_top_to_bottom = ["#1A9850", "#91CF60", "#FFFFBF", "#FC8D59", "#D73027"]
@@ -1125,6 +1179,8 @@ def save_heatmap_display_info(output_path, metric, title, colorbar_label, vmin, 
         "legend_ticks_top_to_bottom": tick_labels,
         "legend_colors_top_to_bottom": colors_top_to_bottom,
         "summary_rows": [{"label": label, "value": value} for label, value in rows],
+        "map_rect": map_rect or {"left": 0.0, "top": 0.0, "width": 1.0, "height": 1.0},
+        "roads": interactive_roads or [],
     }
 
     with output_path.with_suffix(".json").open("w", encoding="utf-8") as file:
@@ -1370,7 +1426,31 @@ def plot_heatmap(
         merged_df=labeled_network_df,
         focus=focus,
     )
-    save_heatmap_display_info(output_path, metric, title, colorbar_label, vmin, vmax, rows)
+    min_x, max_x = ax.get_xlim()
+    min_y, max_y = ax.get_ylim()
+    interactive_roads = build_interactive_road_data(
+        labeled_network_df,
+        metric,
+        (min_x, max_x, min_y, max_y),
+    )
+    axes_position = ax.get_position()
+    map_rect = {
+        "left": round(float(axes_position.x0), 6),
+        "top": round(float(1.0 - axes_position.y1), 6),
+        "width": round(float(axes_position.width), 6),
+        "height": round(float(axes_position.height), 6),
+    }
+    save_heatmap_display_info(
+        output_path,
+        metric,
+        title,
+        colorbar_label,
+        vmin,
+        vmax,
+        rows,
+        interactive_roads,
+        map_rect,
+    )
 
     # Add the full title, summary, and colorbar to the PNG fallback/export image.
     add_stats_card(

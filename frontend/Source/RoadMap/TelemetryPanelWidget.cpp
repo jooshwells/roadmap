@@ -23,6 +23,7 @@
 #include "Components/VerticalBoxSlot.h"
 #include "Components/WidgetSwitcher.h"
 #include "Engine/Texture2D.h"
+#include "InputCoreTypes.h"
 #include "Misc/Paths.h"
 #include "RoadmapGameInstance.h"
 #include "Styling/CoreStyle.h"
@@ -55,6 +56,9 @@ namespace TelemetryPalette
     const FLinearColor TextOnAccent = Hex(TEXT("17130A"));
     const FLinearColor ErrorColor = Hex(TEXT("FF7A66"));
     const FLinearColor Success = Hex(TEXT("70D6A3"));
+    constexpr float MinimumHeatmapZoom = 1.0f;
+    constexpr float MaximumHeatmapZoom = 5.0f;
+    constexpr float HeatmapZoomStep = 0.25f;
 
     // Creates a reusable rounded brush with an optional outline.
     FSlateBrush RoundedBrush(
@@ -156,6 +160,113 @@ bool UTelemetryPanelWidget::Initialize()
 
     RefreshRunList();
     return true;
+}
+
+FReply UTelemetryPanelWidget::NativeOnMouseWheel(
+    const FGeometry& InGeometry,
+    const FPointerEvent& InMouseEvent
+)
+{
+    const FVector2D ScreenPosition = InMouseEvent.GetScreenSpacePosition();
+    if (!IsPointerOverHeatmap(ScreenPosition))
+    {
+        return Super::NativeOnMouseWheel(InGeometry, InMouseEvent);
+    }
+
+    SetHeatmapZoom(
+        HeatmapZoom + InMouseEvent.GetWheelDelta() * HeatmapZoomStep,
+        &ScreenPosition
+    );
+    UpdateHeatmapRoadHover(ScreenPosition);
+    return FReply::Handled();
+}
+
+FReply UTelemetryPanelWidget::NativeOnMouseButtonDown(
+    const FGeometry& InGeometry,
+    const FPointerEvent& InMouseEvent
+)
+{
+    if (InMouseEvent.GetEffectingButton() != EKeys::LeftMouseButton ||
+        !IsPointerOverHeatmap(InMouseEvent.GetScreenSpacePosition()))
+    {
+        return Super::NativeOnMouseButtonDown(InGeometry, InMouseEvent);
+    }
+
+    bHeatmapPointerPressed = true;
+    bHeatmapDragMoved = false;
+    bIsHeatmapPanning = HeatmapZoom > MinimumHeatmapZoom;
+    HeatmapPointerDownScreenPosition = InMouseEvent.GetScreenSpacePosition();
+    LastPanPointerScreenPosition = HeatmapPointerDownScreenPosition;
+    UpdateHeatmapRoadHover(HeatmapPointerDownScreenPosition);
+    return FReply::Handled().CaptureMouse(TakeWidget());
+}
+
+FReply UTelemetryPanelWidget::NativeOnMouseButtonUp(
+    const FGeometry& InGeometry,
+    const FPointerEvent& InMouseEvent
+)
+{
+    if (!bHeatmapPointerPressed || InMouseEvent.GetEffectingButton() != EKeys::LeftMouseButton)
+    {
+        return Super::NativeOnMouseButtonUp(InGeometry, InMouseEvent);
+    }
+
+    if (!bHeatmapDragMoved && HoveredHeatmapRoadIndex != INDEX_NONE)
+    {
+        if (PinnedHeatmapRoadIndex == HoveredHeatmapRoadIndex)
+        {
+            PinnedHeatmapRoadIndex = INDEX_NONE;
+            ShowHeatmapRoadDetails(HoveredHeatmapRoadIndex, false);
+        }
+        else
+        {
+            PinnedHeatmapRoadIndex = HoveredHeatmapRoadIndex;
+            PinnedRoadNormalizedPoint = HoveredRoadNormalizedPoint;
+            ShowHeatmapRoadDetails(PinnedHeatmapRoadIndex, true);
+        }
+        UpdateHeatmapRoadMarker();
+    }
+    else if (!bHeatmapDragMoved && HoveredHeatmapRoadIndex == INDEX_NONE)
+    {
+        PinnedHeatmapRoadIndex = INDEX_NONE;
+        ClearHeatmapRoadInteraction();
+    }
+
+    bHeatmapPointerPressed = false;
+    bIsHeatmapPanning = false;
+    return FReply::Handled().ReleaseMouseCapture();
+}
+
+FReply UTelemetryPanelWidget::NativeOnMouseMove(
+    const FGeometry& InGeometry,
+    const FPointerEvent& InMouseEvent
+)
+{
+    const FVector2D ScreenPosition = InMouseEvent.GetScreenSpacePosition();
+    LastHeatmapPointerScreenPosition = ScreenPosition;
+
+    if (!bHeatmapPointerPressed)
+    {
+        UpdateHeatmapRoadHover(ScreenPosition);
+        return Super::NativeOnMouseMove(InGeometry, InMouseEvent);
+    }
+
+    if (FVector2D::Distance(ScreenPosition, HeatmapPointerDownScreenPosition) > 4.0f)
+    {
+        bHeatmapDragMoved = true;
+    }
+
+    if (bIsHeatmapPanning && bHeatmapDragMoved)
+    {
+        HeatmapPan = ClampHeatmapPan(
+            HeatmapPan + ScreenPosition - LastPanPointerScreenPosition
+        );
+        ApplyHeatmapViewTransform();
+    }
+
+    LastPanPointerScreenPosition = ScreenPosition;
+    UpdateHeatmapRoadHover(ScreenPosition);
+    return FReply::Handled();
 }
 
 UTextBlock* UTelemetryPanelWidget::MakeText(
@@ -573,6 +684,47 @@ void UTelemetryPanelWidget::BuildWidgetTree()
         TitleSlot->SetVerticalAlignment(VAlign_Center);
     }
 
+    HeatmapInteractionHint = MakeText(
+        TEXT("SCROLL TO ZOOM  |  DRAG TO PAN"),
+        9,
+        TextSecondary,
+        FName("Medium"),
+        80
+    );
+    if (UHorizontalBoxSlot* HintSlot = ViewerHeader->AddChildToHorizontalBox(HeatmapInteractionHint))
+    {
+        HintSlot->SetPadding(FMargin(0.0f, 0.0f, 14.0f, 0.0f));
+        HintSlot->SetVerticalAlignment(VAlign_Center);
+    }
+
+    UButton* ZoomOutButton = MakeActionButton(TEXT("-"), false);
+    ZoomOutButton->OnClicked.AddDynamic(this, &UTelemetryPanelWidget::HandleZoomOutClicked);
+    ViewerHeader->AddChildToHorizontalBox(ZoomOutButton);
+
+    HeatmapZoomText = MakeText(TEXT("100%"), 11, TextPrimary, FName("Bold"));
+    HeatmapZoomText->SetJustification(ETextJustify::Center);
+    USizeBox* ZoomTextSizer = WidgetTree->ConstructWidget<USizeBox>();
+    ZoomTextSizer->SetWidthOverride(58.0f);
+    ZoomTextSizer->SetContent(HeatmapZoomText);
+    if (UHorizontalBoxSlot* ZoomTextSlot = ViewerHeader->AddChildToHorizontalBox(ZoomTextSizer))
+    {
+        ZoomTextSlot->SetVerticalAlignment(VAlign_Center);
+    }
+
+    UButton* ZoomInButton = MakeActionButton(TEXT("+"), false);
+    ZoomInButton->OnClicked.AddDynamic(this, &UTelemetryPanelWidget::HandleZoomInClicked);
+    if (UHorizontalBoxSlot* ZoomInSlot = ViewerHeader->AddChildToHorizontalBox(ZoomInButton))
+    {
+        ZoomInSlot->SetPadding(FMargin(0.0f, 0.0f, 10.0f, 0.0f));
+    }
+
+    UButton* ResetViewButton = MakeActionButton(TEXT("Reset View"), false);
+    ResetViewButton->OnClicked.AddDynamic(this, &UTelemetryPanelWidget::HandleResetHeatmapViewClicked);
+    if (UHorizontalBoxSlot* ResetSlot = ViewerHeader->AddChildToHorizontalBox(ResetViewButton))
+    {
+        ResetSlot->SetPadding(FMargin(0.0f, 0.0f, 10.0f, 0.0f));
+    }
+
     UButton* CloseViewerButton = MakeActionButton(TEXT("Close Viewer"), false);
     CloseViewerButton->OnClicked.AddDynamic(this, &UTelemetryPanelWidget::HandleCloseHeatmapClicked);
     ViewerHeader->AddChildToHorizontalBox(CloseViewerButton);
@@ -608,6 +760,8 @@ void UTelemetryPanelWidget::BuildWidgetTree()
     UBorder* ImageFrame = WidgetTree->ConstructWidget<UBorder>();
     ImageFrame->SetBrush(RoundedBrush(Hex(TEXT("05080D")), 8.0f));
     ImageFrame->SetPadding(FMargin(10.0f));
+    ImageFrame->SetClipping(EWidgetClipping::ClipToBounds);
+    HeatmapViewport = ImageFrame;
 
     // Limit the displayed PNG so Unreal does not spread it across the full viewport.
     USizeBox* ImageSizer = WidgetTree->ConstructWidget<USizeBox>();
@@ -621,13 +775,69 @@ void UTelemetryPanelWidget::BuildWidgetTree()
         ImageFrameSlot->SetVerticalAlignment(VAlign_Center);
     }
 
+    UOverlay* HeatmapCanvas = WidgetTree->ConstructWidget<UOverlay>();
+    HeatmapCanvas->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+    ImageFrame->SetContent(HeatmapCanvas);
+
     UScaleBox* HeatmapScaleBox = WidgetTree->ConstructWidget<UScaleBox>();
     HeatmapScaleBox->SetStretch(EStretch::ScaleToFit);
     HeatmapScaleBox->SetStretchDirection(EStretchDirection::Both);
-    ImageFrame->SetContent(HeatmapScaleBox);
+    if (UOverlaySlot* ScaleSlot = HeatmapCanvas->AddChildToOverlay(HeatmapScaleBox))
+    {
+        ScaleSlot->SetHorizontalAlignment(HAlign_Fill);
+        ScaleSlot->SetVerticalAlignment(VAlign_Fill);
+    }
 
     HeatmapImage = WidgetTree->ConstructWidget<UImage>();
     HeatmapScaleBox->SetContent(HeatmapImage);
+
+    // Slate displays the SVG as one brush, so road feedback is a native overlay.
+    HeatmapMarkerLayer = WidgetTree->ConstructWidget<UCanvasPanel>();
+    HeatmapMarkerLayer->SetVisibility(ESlateVisibility::HitTestInvisible);
+    if (UOverlaySlot* MarkerLayerSlot = HeatmapCanvas->AddChildToOverlay(HeatmapMarkerLayer))
+    {
+        MarkerLayerSlot->SetHorizontalAlignment(HAlign_Fill);
+        MarkerLayerSlot->SetVerticalAlignment(VAlign_Fill);
+    }
+
+    USizeBox* MarkerSizer = WidgetTree->ConstructWidget<USizeBox>();
+    MarkerSizer->SetWidthOverride(18.0f);
+    MarkerSizer->SetHeightOverride(18.0f);
+    UBorder* Marker = WidgetTree->ConstructWidget<UBorder>();
+    Marker->SetBrush(RoundedBrush(AccentSoft, 9.0f, Accent, 2.0f));
+    MarkerSizer->SetContent(Marker);
+    MarkerSizer->SetVisibility(ESlateVisibility::Collapsed);
+    HeatmapRoadMarker = MarkerSizer;
+    if (UCanvasPanelSlot* MarkerSlot = HeatmapMarkerLayer->AddChildToCanvas(MarkerSizer))
+    {
+        MarkerSlot->SetAutoSize(true);
+        MarkerSlot->SetZOrder(5);
+    }
+
+    HeatmapRoadCard = WidgetTree->ConstructWidget<UBorder>();
+    HeatmapRoadCard->SetBrush(RoundedBrush(Hex(TEXT("0B1220"), 0.97f), 8.0f, Accent, 1.0f));
+    HeatmapRoadCard->SetPadding(FMargin(14.0f, 11.0f));
+    HeatmapRoadCard->SetVisibility(ESlateVisibility::Collapsed);
+    UVerticalBox* RoadCardContent = WidgetTree->ConstructWidget<UVerticalBox>();
+    HeatmapRoadCard->SetContent(RoadCardContent);
+    HeatmapRoadNameText = MakeText(TEXT("Road"), 13, TextPrimary, FName("Bold"));
+    RoadCardContent->AddChildToVerticalBox(HeatmapRoadNameText);
+    HeatmapRoadDetailsText = MakeText(TEXT("Metric"), 11, TextSecondary, FName("Medium"));
+    if (UVerticalBoxSlot* DetailsSlot = RoadCardContent->AddChildToVerticalBox(HeatmapRoadDetailsText))
+    {
+        DetailsSlot->SetPadding(FMargin(0.0f, 4.0f, 0.0f, 0.0f));
+    }
+    HeatmapRoadPinText = MakeText(TEXT("Click to pin"), 9, Accent, FName("Medium"), 50);
+    if (UVerticalBoxSlot* PinSlot = RoadCardContent->AddChildToVerticalBox(HeatmapRoadPinText))
+    {
+        PinSlot->SetPadding(FMargin(0.0f, 7.0f, 0.0f, 0.0f));
+    }
+    if (UOverlaySlot* RoadCardSlot = HeatmapCanvas->AddChildToOverlay(HeatmapRoadCard))
+    {
+        RoadCardSlot->SetPadding(FMargin(14.0f));
+        RoadCardSlot->SetHorizontalAlignment(HAlign_Left);
+        RoadCardSlot->SetVerticalAlignment(VAlign_Bottom);
+    }
 
     UBorder* LegendCard = WidgetTree->ConstructWidget<UBorder>();
     LegendCard->SetBrush(RoundedBrush(Hex(TEXT("0B1220")), 8.0f, Outline, 1.0f));
@@ -929,6 +1139,282 @@ void UTelemetryPanelWidget::UpdateHeatmapLegendGradient(const TArray<FString>& C
     LoadedLegendTexture->SRGB = true;
     LoadedLegendTexture->UpdateResource();
     HeatmapLegendGradient->SetBrushFromTexture(LoadedLegendTexture, true);
+}
+
+void UTelemetryPanelWidget::ApplyHeatmapViewTransform()
+{
+    if (HeatmapImage)
+    {
+        HeatmapImage->SetRenderTransformPivot(FVector2D(0.5f, 0.5f));
+        HeatmapImage->SetRenderScale(FVector2D(HeatmapZoom, HeatmapZoom));
+        HeatmapImage->SetRenderTranslation(HeatmapPan);
+    }
+
+    if (HeatmapZoomText)
+    {
+        HeatmapZoomText->SetText(FText::FromString(FString::Printf(
+            TEXT("%d%%"),
+            FMath::RoundToInt(HeatmapZoom * 100.0f)
+        )));
+    }
+
+    UpdateHeatmapRoadMarker();
+}
+
+void UTelemetryPanelWidget::SetHeatmapZoom(
+    float NewZoom,
+    const FVector2D* CursorScreenPosition
+)
+{
+    const float ClampedZoom = FMath::Clamp(
+        NewZoom,
+        MinimumHeatmapZoom,
+        MaximumHeatmapZoom
+    );
+    if (FMath::IsNearlyEqual(ClampedZoom, HeatmapZoom))
+    {
+        return;
+    }
+
+    if (CursorScreenPosition && HeatmapViewport)
+    {
+        const FGeometry ViewportGeometry = HeatmapViewport->GetCachedGeometry();
+        const FVector2D CursorLocal = ViewportGeometry.AbsoluteToLocal(*CursorScreenPosition);
+        const FVector2D CursorFromCenter = CursorLocal - ViewportGeometry.GetLocalSize() * 0.5f;
+        const float ZoomRatio = ClampedZoom / HeatmapZoom;
+
+        // Adjust the translation so the point below the cursor stays in place.
+        HeatmapPan = CursorFromCenter - (CursorFromCenter - HeatmapPan) * ZoomRatio;
+    }
+
+    HeatmapZoom = ClampedZoom;
+    HeatmapPan = ClampHeatmapPan(HeatmapPan);
+    ApplyHeatmapViewTransform();
+}
+
+void UTelemetryPanelWidget::ResetHeatmapView()
+{
+    bIsHeatmapPanning = false;
+    bHeatmapPointerPressed = false;
+    bHeatmapDragMoved = false;
+    HeatmapZoom = MinimumHeatmapZoom;
+    HeatmapPan = FVector2D::ZeroVector;
+    ClearHeatmapRoadInteraction();
+    ApplyHeatmapViewTransform();
+}
+
+FVector2D UTelemetryPanelWidget::ClampHeatmapPan(const FVector2D& RequestedPan) const
+{
+    if (!HeatmapViewport || HeatmapZoom <= MinimumHeatmapZoom)
+    {
+        return FVector2D::ZeroVector;
+    }
+
+    const FVector2D ViewportSize = HeatmapViewport->GetCachedGeometry().GetLocalSize();
+    const FVector2D MaximumPan = ViewportSize * 0.5f * (HeatmapZoom - MinimumHeatmapZoom);
+    return FVector2D(
+        FMath::Clamp(RequestedPan.X, -MaximumPan.X, MaximumPan.X),
+        FMath::Clamp(RequestedPan.Y, -MaximumPan.Y, MaximumPan.Y)
+    );
+}
+
+bool UTelemetryPanelWidget::IsPointerOverHeatmap(const FVector2D& ScreenPosition) const
+{
+    return HeatmapViewer &&
+        HeatmapViewer->IsVisible() &&
+        HeatmapViewport &&
+        HeatmapViewport->GetCachedGeometry().IsUnderLocation(ScreenPosition);
+}
+
+bool UTelemetryPanelWidget::FindNearestHeatmapRoad(
+    const FVector2D& ScreenPosition,
+    int32& OutRoadIndex,
+    FVector2D& OutClosestNormalizedPoint
+) const
+{
+    OutRoadIndex = INDEX_NONE;
+    OutClosestNormalizedPoint = FVector2D::ZeroVector;
+    if (!HeatmapImage || CurrentHeatmapDisplayInfo.Roads.IsEmpty())
+    {
+        return false;
+    }
+
+    const FGeometry ImageGeometry = HeatmapImage->GetCachedGeometry();
+    const FVector2D ImageSize = ImageGeometry.GetLocalSize();
+    if (ImageSize.X <= 0.0f || ImageSize.Y <= 0.0f)
+    {
+        return false;
+    }
+
+    const FVector4 Rect = CurrentHeatmapDisplayInfo.MapRect;
+    float BestDistanceSquared = FMath::Square(16.0f);
+
+    for (int32 RoadIndex = 0; RoadIndex < CurrentHeatmapDisplayInfo.Roads.Num(); ++RoadIndex)
+    {
+        const FTelemetryHeatmapRoad& Road = CurrentHeatmapDisplayInfo.Roads[RoadIndex];
+        for (int32 PointIndex = 1; PointIndex < Road.Points.Num(); ++PointIndex)
+        {
+            const FVector2D FirstNormalized = Road.Points[PointIndex - 1];
+            const FVector2D SecondNormalized = Road.Points[PointIndex];
+            const FVector2D FirstLocal(
+                (Rect.X + FirstNormalized.X * Rect.Z) * ImageSize.X,
+                (Rect.Y + (1.0f - FirstNormalized.Y) * Rect.W) * ImageSize.Y
+            );
+            const FVector2D SecondLocal(
+                (Rect.X + SecondNormalized.X * Rect.Z) * ImageSize.X,
+                (Rect.Y + (1.0f - SecondNormalized.Y) * Rect.W) * ImageSize.Y
+            );
+            const FVector2D FirstScreen = ImageGeometry.LocalToAbsolute(FirstLocal);
+            const FVector2D SecondScreen = ImageGeometry.LocalToAbsolute(SecondLocal);
+            const FVector2D Segment = SecondScreen - FirstScreen;
+            const float SegmentLengthSquared = Segment.SizeSquared();
+            const float Along = SegmentLengthSquared > KINDA_SMALL_NUMBER
+                ? FMath::Clamp(FVector2D::DotProduct(ScreenPosition - FirstScreen, Segment) /
+                    SegmentLengthSquared, 0.0f, 1.0f)
+                : 0.0f;
+            const FVector2D ClosestScreen = FirstScreen + Segment * Along;
+            const float DistanceSquared = FVector2D::DistSquared(ScreenPosition, ClosestScreen);
+            if (DistanceSquared < BestDistanceSquared)
+            {
+                BestDistanceSquared = DistanceSquared;
+                OutRoadIndex = RoadIndex;
+                OutClosestNormalizedPoint = FMath::Lerp(FirstNormalized, SecondNormalized, Along);
+            }
+        }
+    }
+
+    return OutRoadIndex != INDEX_NONE;
+}
+
+void UTelemetryPanelWidget::UpdateHeatmapRoadHover(const FVector2D& ScreenPosition)
+{
+    LastHeatmapPointerScreenPosition = ScreenPosition;
+    int32 RoadIndex = INDEX_NONE;
+    FVector2D ClosestPoint = FVector2D::ZeroVector;
+    if (IsPointerOverHeatmap(ScreenPosition) &&
+        FindNearestHeatmapRoad(ScreenPosition, RoadIndex, ClosestPoint))
+    {
+        HoveredHeatmapRoadIndex = RoadIndex;
+        HoveredRoadNormalizedPoint = ClosestPoint;
+        if (PinnedHeatmapRoadIndex == INDEX_NONE)
+        {
+            ShowHeatmapRoadDetails(RoadIndex, false);
+        }
+    }
+    else
+    {
+        HoveredHeatmapRoadIndex = INDEX_NONE;
+        if (PinnedHeatmapRoadIndex == INDEX_NONE)
+        {
+            if (HeatmapRoadCard)
+            {
+                HeatmapRoadCard->SetVisibility(ESlateVisibility::Collapsed);
+            }
+        }
+    }
+
+    UpdateHeatmapRoadMarker();
+}
+
+FString UTelemetryPanelWidget::FormatHeatmapRoadValue(const FTelemetryHeatmapRoad& Road) const
+{
+    if (CurrentHeatmapMetric == TEXT("avg_speed_mph"))
+    {
+        return FString::Printf(TEXT("%.1f mph"), Road.MetricValue);
+    }
+    if (CurrentHeatmapMetric == TEXT("estimated_flow_veh_per_hr"))
+    {
+        return FString::Printf(TEXT("%.0f vehicles/hour"), Road.MetricValue);
+    }
+    if (CurrentHeatmapMetric == TEXT("total_wait_added_s"))
+    {
+        return FString::Printf(TEXT("%.1f seconds"), Road.MetricValue);
+    }
+    if (CurrentHeatmapMetric == TEXT("fdot_geh_score"))
+    {
+        return FString::Printf(TEXT("%.1f GEH"), Road.MetricValue);
+    }
+    return FString::Printf(TEXT("%.2f"), Road.MetricValue);
+}
+
+void UTelemetryPanelWidget::ShowHeatmapRoadDetails(int32 RoadIndex, bool bPinned)
+{
+    if (!CurrentHeatmapDisplayInfo.Roads.IsValidIndex(RoadIndex) ||
+        !HeatmapRoadCard || !HeatmapRoadNameText || !HeatmapRoadDetailsText || !HeatmapRoadPinText)
+    {
+        return;
+    }
+
+    const FTelemetryHeatmapRoad& Road = CurrentHeatmapDisplayInfo.Roads[RoadIndex];
+    HeatmapRoadNameText->SetText(FText::FromString(Road.RoadName));
+
+    FString Details;
+    if (!Road.RouteRef.IsEmpty() && !Road.RoadName.Equals(Road.RouteRef, ESearchCase::IgnoreCase))
+    {
+        Details += Road.RouteRef + TEXT("  |  ");
+    }
+    FString RoadType = Road.HighwayType.Replace(TEXT("_"), TEXT(" ")).ToUpper();
+    Details += RoadType;
+    Details += FString::Printf(
+        TEXT("\n%s: %s\nEdge %d"),
+        *GetMetricDisplayName(CurrentHeatmapMetric),
+        *FormatHeatmapRoadValue(Road),
+        Road.EdgeId
+    );
+    HeatmapRoadDetailsText->SetText(FText::FromString(Details));
+    HeatmapRoadPinText->SetText(FText::FromString(
+        bPinned ? TEXT("PINNED  |  Click road again to unpin") : TEXT("Click road to pin")
+    ));
+    HeatmapRoadCard->SetVisibility(ESlateVisibility::HitTestInvisible);
+}
+
+void UTelemetryPanelWidget::UpdateHeatmapRoadMarker()
+{
+    if (!HeatmapRoadMarker || !HeatmapMarkerLayer || !HeatmapImage)
+    {
+        return;
+    }
+
+    const int32 RoadIndex = PinnedHeatmapRoadIndex != INDEX_NONE
+        ? PinnedHeatmapRoadIndex
+        : HoveredHeatmapRoadIndex;
+    if (!CurrentHeatmapDisplayInfo.Roads.IsValidIndex(RoadIndex))
+    {
+        HeatmapRoadMarker->SetVisibility(ESlateVisibility::Collapsed);
+        return;
+    }
+
+    const FVector2D NormalizedPoint = PinnedHeatmapRoadIndex != INDEX_NONE
+        ? PinnedRoadNormalizedPoint
+        : HoveredRoadNormalizedPoint;
+    const FGeometry ImageGeometry = HeatmapImage->GetCachedGeometry();
+    const FVector2D ImageSize = ImageGeometry.GetLocalSize();
+    const FVector4 Rect = CurrentHeatmapDisplayInfo.MapRect;
+    const FVector2D ImageLocal(
+        (Rect.X + NormalizedPoint.X * Rect.Z) * ImageSize.X,
+        (Rect.Y + (1.0f - NormalizedPoint.Y) * Rect.W) * ImageSize.Y
+    );
+    const FVector2D ScreenPosition = ImageGeometry.LocalToAbsolute(ImageLocal);
+    const FVector2D MarkerLocal = HeatmapMarkerLayer->GetCachedGeometry().AbsoluteToLocal(ScreenPosition);
+    if (UCanvasPanelSlot* MarkerSlot = Cast<UCanvasPanelSlot>(HeatmapRoadMarker->Slot))
+    {
+        MarkerSlot->SetPosition(MarkerLocal - FVector2D(9.0f, 9.0f));
+    }
+    HeatmapRoadMarker->SetVisibility(ESlateVisibility::HitTestInvisible);
+}
+
+void UTelemetryPanelWidget::ClearHeatmapRoadInteraction()
+{
+    HoveredHeatmapRoadIndex = INDEX_NONE;
+    PinnedHeatmapRoadIndex = INDEX_NONE;
+    if (HeatmapRoadMarker)
+    {
+        HeatmapRoadMarker->SetVisibility(ESlateVisibility::Collapsed);
+    }
+    if (HeatmapRoadCard)
+    {
+        HeatmapRoadCard->SetVisibility(ESlateVisibility::Collapsed);
+    }
 }
 
 // Shows one focused workspace instead of displaying every telemetry control at once.
@@ -1430,10 +1916,13 @@ void UTelemetryPanelWidget::HandleViewHeatmapClicked()
     FString DisplayInfoError;
     const bool bUseHybridViewer = FPaths::FileExists(SvgPath) &&
         UTelemetryPanelBridge::GetHeatmapDisplayInfo(HeatmapPath, DisplayInfo, DisplayInfoError);
+    CurrentHeatmapMetric = SelectedMetric;
+    CurrentHeatmapDisplayInfo = FTelemetryHeatmapDisplayInfo();
 
     // Prefer the crisp vector map when its native Unreal display information is available.
     if (bUseHybridViewer)
     {
+        CurrentHeatmapDisplayInfo = DisplayInfo;
         LoadedHeatmapTexture = nullptr;
         const FSlateVectorImageBrush SvgBrush(
             SvgPath,
@@ -1493,6 +1982,15 @@ void UTelemetryPanelWidget::HandleViewHeatmapClicked()
                 TickSlot->SetSize(FSlateChildSize(ESlateSizeRule::Automatic));
             }
         }
+
+        if (HeatmapInteractionHint)
+        {
+            HeatmapInteractionHint->SetText(FText::FromString(
+                DisplayInfo.Roads.IsEmpty()
+                    ? TEXT("SCROLL TO ZOOM  |  DRAG TO PAN  |  REGENERATE FOR ROAD DETAILS")
+                    : TEXT("HOVER ROAD  |  CLICK TO PIN  |  SCROLL TO ZOOM  |  DRAG TO PAN")
+            ));
+        }
     }
     else
     {
@@ -1506,6 +2004,10 @@ void UTelemetryPanelWidget::HandleViewHeatmapClicked()
         HeatmapImage->SetBrushFromTexture(LoadedHeatmapTexture, true);
         HeatmapSummaryCard->SetVisibility(ESlateVisibility::Collapsed);
         HeatmapLegendCard->SetVisibility(ESlateVisibility::Collapsed);
+        if (HeatmapInteractionHint)
+        {
+            HeatmapInteractionHint->SetText(FText::FromString(TEXT("SCROLL TO ZOOM  |  DRAG TO PAN")));
+        }
     }
 
     HeatmapTitleText->SetText(FText::FromString(FString::Printf(
@@ -1514,11 +2016,28 @@ void UTelemetryPanelWidget::HandleViewHeatmapClicked()
         *GetFocusDisplayName(SelectedFocus),
         *SavedRuns[SelectedRunIndex].CreatedAt
     )));
+    ResetHeatmapView();
     HeatmapViewer->SetVisibility(ESlateVisibility::Visible);
     SetStatus(TEXT("Heatmap loaded."));
 }
 
 void UTelemetryPanelWidget::HandleCloseHeatmapClicked()
 {
+    ResetHeatmapView();
     HeatmapViewer->SetVisibility(ESlateVisibility::Collapsed);
+}
+
+void UTelemetryPanelWidget::HandleZoomInClicked()
+{
+    SetHeatmapZoom(HeatmapZoom + HeatmapZoomStep);
+}
+
+void UTelemetryPanelWidget::HandleZoomOutClicked()
+{
+    SetHeatmapZoom(HeatmapZoom - HeatmapZoomStep);
+}
+
+void UTelemetryPanelWidget::HandleResetHeatmapViewClicked()
+{
+    ResetHeatmapView();
 }

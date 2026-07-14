@@ -739,6 +739,74 @@ bool UTelemetryPanelBridge::GetHeatmapDisplayInfo(
         }
     }
 
+    const TSharedPtr<FJsonObject>* MapRectObject = nullptr;
+    if (RootObject->TryGetObjectField(TEXT("map_rect"), MapRectObject) &&
+        MapRectObject && MapRectObject->IsValid())
+    {
+        double Left = 0.0;
+        double Top = 0.0;
+        double Width = 1.0;
+        double Height = 1.0;
+        (*MapRectObject)->TryGetNumberField(TEXT("left"), Left);
+        (*MapRectObject)->TryGetNumberField(TEXT("top"), Top);
+        (*MapRectObject)->TryGetNumberField(TEXT("width"), Width);
+        (*MapRectObject)->TryGetNumberField(TEXT("height"), Height);
+        OutInfo.MapRect = FVector4(Left, Top, Width, Height);
+    }
+
+    // Road interaction data is optional so heatmaps generated before this feature still open.
+    const TArray<TSharedPtr<FJsonValue>>* RoadValues = nullptr;
+    if (RootObject->TryGetArrayField(TEXT("roads"), RoadValues))
+    {
+        for (const TSharedPtr<FJsonValue>& RoadValue : *RoadValues)
+        {
+            const TSharedPtr<FJsonObject> RoadObject = RoadValue.IsValid()
+                ? RoadValue->AsObject()
+                : nullptr;
+            if (!RoadObject.IsValid())
+            {
+                continue;
+            }
+
+            FTelemetryHeatmapRoad Road;
+            double EdgeId = INDEX_NONE;
+            double MetricValue = 0.0;
+            RoadObject->TryGetNumberField(TEXT("edge_id"), EdgeId);
+            RoadObject->TryGetStringField(TEXT("name"), Road.RoadName);
+            RoadObject->TryGetStringField(TEXT("route_ref"), Road.RouteRef);
+            RoadObject->TryGetStringField(TEXT("highway"), Road.HighwayType);
+            RoadObject->TryGetNumberField(TEXT("value"), MetricValue);
+            Road.EdgeId = FMath::RoundToInt(EdgeId);
+            Road.MetricValue = static_cast<float>(MetricValue);
+
+            const TArray<TSharedPtr<FJsonValue>>* PointValues = nullptr;
+            if (RoadObject->TryGetArrayField(TEXT("points"), PointValues))
+            {
+                for (const TSharedPtr<FJsonValue>& PointValue : *PointValues)
+                {
+                    const TArray<TSharedPtr<FJsonValue>>* Coordinates = nullptr;
+                    if (!PointValue.IsValid() || !PointValue->TryGetArray(Coordinates) ||
+                        !Coordinates || Coordinates->Num() < 2)
+                    {
+                        continue;
+                    }
+
+                    double X = 0.0;
+                    double Y = 0.0;
+                    if ((*Coordinates)[0]->TryGetNumber(X) && (*Coordinates)[1]->TryGetNumber(Y))
+                    {
+                        Road.Points.Add(FVector2D(X, Y));
+                    }
+                }
+            }
+
+            if (Road.Points.Num() >= 2)
+            {
+                OutInfo.Roads.Add(MoveTemp(Road));
+            }
+        }
+    }
+
     if (OutInfo.SummaryRows.IsEmpty() || OutInfo.LegendTicksTopToBottom.IsEmpty())
     {
         OutError = TEXT("Heatmap display information is incomplete. Regenerate this heatmap first.");

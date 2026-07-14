@@ -7,6 +7,8 @@
 #include "TelemetryPanelWidget.generated.h"
 
 class UComboBoxString;
+class UBorder;
+class UCanvasPanel;
 class UImage;
 class UOverlay;
 class UScrollBox;
@@ -49,6 +51,10 @@ class ROADMAP_API UTelemetryPanelWidget : public UUserWidget
 
 public:
     virtual bool Initialize() override;
+    virtual FReply NativeOnMouseWheel(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
+    virtual FReply NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
+    virtual FReply NativeOnMouseButtonUp(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
+    virtual FReply NativeOnMouseMove(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
 
 private:
     // Panel setup and shared styling helpers.
@@ -85,6 +91,23 @@ private:
 
     // Builds a smooth native legend texture from the metric's ordered colors.
     void UpdateHeatmapLegendGradient(const TArray<FString>& ColorsTopToBottom);
+
+    // Applies the current zoom and pan without changing the widget's layout.
+    void ApplyHeatmapViewTransform();
+    void SetHeatmapZoom(float NewZoom, const FVector2D* CursorScreenPosition = nullptr);
+    void ResetHeatmapView();
+    FVector2D ClampHeatmapPan(const FVector2D& RequestedPan) const;
+    bool IsPointerOverHeatmap(const FVector2D& ScreenPosition) const;
+    void UpdateHeatmapRoadHover(const FVector2D& ScreenPosition);
+    bool FindNearestHeatmapRoad(
+        const FVector2D& ScreenPosition,
+        int32& OutRoadIndex,
+        FVector2D& OutClosestNormalizedPoint
+    ) const;
+    void ShowHeatmapRoadDetails(int32 RoadIndex, bool bPinned);
+    void ClearHeatmapRoadInteraction();
+    void UpdateHeatmapRoadMarker();
+    FString FormatHeatmapRoadValue(const FTelemetryHeatmapRoad& Road) const;
 
     // Switches the right-side workspace while keeping the selected run active.
     void SetWorkspaceTab(int32 TabIndex);
@@ -147,13 +170,36 @@ private:
     UFUNCTION()
     void HandleCloseHeatmapClicked();
 
+    UFUNCTION()
+    void HandleZoomInClicked();
+
+    UFUNCTION()
+    void HandleZoomOutClicked();
+
+    UFUNCTION()
+    void HandleResetHeatmapViewClicked();
+
     TArray<FTelemetryRunInfo> SavedRuns;
     int32 SelectedRunIndex = INDEX_NONE;
     FString SelectedMetric = TEXT("bottleneck_score");
     FString SelectedFocus = TEXT("all");
+    FString CurrentHeatmapMetric;
     FString ActiveMapName;
     int32 ActiveWorkspaceTab = 0;
     bool bTelemetryTaskRunning = false;
+    bool bIsHeatmapPanning = false;
+    bool bHeatmapPointerPressed = false;
+    bool bHeatmapDragMoved = false;
+    float HeatmapZoom = 1.0f;
+    FVector2D HeatmapPan = FVector2D::ZeroVector;
+    FVector2D LastPanPointerScreenPosition = FVector2D::ZeroVector;
+    FVector2D HeatmapPointerDownScreenPosition = FVector2D::ZeroVector;
+    FVector2D LastHeatmapPointerScreenPosition = FVector2D::ZeroVector;
+    FVector2D HoveredRoadNormalizedPoint = FVector2D::ZeroVector;
+    FVector2D PinnedRoadNormalizedPoint = FVector2D::ZeroVector;
+    int32 HoveredHeatmapRoadIndex = INDEX_NONE;
+    int32 PinnedHeatmapRoadIndex = INDEX_NONE;
+    FTelemetryHeatmapDisplayInfo CurrentHeatmapDisplayInfo;
 
     UPROPERTY()
     TObjectPtr<UVerticalBox> RunListBox;
@@ -208,6 +254,33 @@ private:
 
     UPROPERTY()
     TObjectPtr<UImage> HeatmapImage;
+
+    UPROPERTY()
+    TObjectPtr<UWidget> HeatmapViewport;
+
+    UPROPERTY()
+    TObjectPtr<UTextBlock> HeatmapZoomText;
+
+    UPROPERTY()
+    TObjectPtr<UTextBlock> HeatmapInteractionHint;
+
+    UPROPERTY()
+    TObjectPtr<UCanvasPanel> HeatmapMarkerLayer;
+
+    UPROPERTY()
+    TObjectPtr<UWidget> HeatmapRoadMarker;
+
+    UPROPERTY()
+    TObjectPtr<UBorder> HeatmapRoadCard;
+
+    UPROPERTY()
+    TObjectPtr<UTextBlock> HeatmapRoadNameText;
+
+    UPROPERTY()
+    TObjectPtr<UTextBlock> HeatmapRoadDetailsText;
+
+    UPROPERTY()
+    TObjectPtr<UTextBlock> HeatmapRoadPinText;
 
     UPROPERTY()
     TObjectPtr<UTextBlock> HeatmapTitleText;

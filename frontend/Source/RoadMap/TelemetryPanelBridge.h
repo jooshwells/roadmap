@@ -83,6 +83,31 @@ struct FTelemetryHeatmapSummaryRow
     FString Value;
 };
 
+// One analyzed road and its normalized shape for native hover/click hit testing.
+USTRUCT(BlueprintType)
+struct FTelemetryHeatmapRoad
+{
+    GENERATED_BODY()
+
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
+    int32 EdgeId = INDEX_NONE;
+
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
+    FString RoadName;
+
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
+    FString RouteRef;
+
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
+    FString HighwayType;
+
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
+    float MetricValue = 0.0f;
+
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
+    TArray<FVector2D> Points;
+};
+
 // Stores display information that Unreal draws around the vector road map.
 USTRUCT(BlueprintType)
 struct FTelemetryHeatmapDisplayInfo
@@ -103,6 +128,13 @@ struct FTelemetryHeatmapDisplayInfo
 
     UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
     TArray<FTelemetryHeatmapSummaryRow> SummaryRows;
+
+    // Position of Matplotlib's map axes inside the fixed SVG canvas.
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
+    FVector4 MapRect = FVector4(0.0f, 0.0f, 1.0f, 1.0f);
+
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
+    TArray<FTelemetryHeatmapRoad> Roads;
 };
 
 // Stores one high-priority road difference from an FDOT validation.
