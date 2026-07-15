@@ -384,8 +384,21 @@ void Network::visualizeNetworkForPython(const std::string& outputPath) {
 // than 3 distinct neighbors are dead ends or mid-road continuation nodes, not
 // intersections, and must stay PASS_THROUGH or the yield downgrade would brake
 // traffic mid-road. Explicit values from the data (signal/stop/yield) win.
+//
+// All-way stops are a low-speed device, so 4-way intersections where two
+// *crossing* approaches are both high-speed default to TRAFFIC_LIGHT instead.
+// Both must be fast: a fast road over a slow one is realistically a two-way
+// stop on the minor road, not a signal. Crossing-ness is judged by approach
+// bearing, since the two opposing legs of one arterial are distinct neighbor
+// nodes and would otherwise count as two fast "roads" and signalize every
+// arterial's side-street crossings.
 void Network::applyDefaultTrafficControls()
 {
+    // Approach speed (m/s, ~45 mph) above which an all-way stop is
+    // unrealistic and a crossing of two such roads gets a signal.
+    constexpr double SIGNAL_SPEED_THRESHOLD_MPS = 20.1;
+    constexpr double PI = 3.14159265358979323846;
+
     for (auto& pair : nodes)
     {
         Node& node = pair.second;
@@ -398,9 +411,60 @@ void Network::applyDefaultTrafficControls()
             neighbors.insert(edge.getDest());
         }
 
-        if (neighbors.size() >= 3)
+        if (neighbors.size() < 3) continue;
+
+        node.type = Node::FOUR_WAY_STOP;
+
+        // Signal upgrade only applies to true 4-way crossings.
+        if (neighbors.size() < 4) continue;
+
+        // Bearing (radians) and speed limit of each incoming approach.
+        struct Approach { double bearing; double speed; };
+        std::vector<Approach> approaches;
+        for (uint64_t incomingId : node.incomingEdgeNodeIds)
         {
-            node.type = Node::FOUR_WAY_STOP;
+            Node* predNode = getNode(incomingId);
+            if (!predNode) continue;
+
+            double approachSpeed = 0.0;
+            for (const Road& edge : predNode->outgoingEdges)
+            {
+                if (edge.getDest() == node.getId() && edge.getSpeedLimit() > approachSpeed)
+                {
+                    approachSpeed = edge.getSpeedLimit();
+                }
+            }
+
+            double dx = node.getX() - predNode->getX();
+            double dy = node.getY() - predNode->getY();
+            if (approachSpeed <= 0.0 || (dx == 0.0 && dy == 0.0)) continue;
+
+            approaches.push_back({std::atan2(dy, dx), approachSpeed});
+        }
+
+        const Approach* fastest = nullptr;
+        for (const Approach& a : approaches)
+        {
+            if (!fastest || a.speed > fastest->speed) fastest = &a;
+        }
+        if (!fastest || fastest->speed < SIGNAL_SPEED_THRESHOLD_MPS) continue;
+
+        // Fastest approach that actually crosses the fastest road: bearing
+        // separation folded to [0, 90] degrees must exceed 45, so opposing
+        // legs of the same arterial (separation ~180 -> folds to ~0) and
+        // shallow merges don't count.
+        for (const Approach& a : approaches)
+        {
+            if (&a == fastest || a.speed < SIGNAL_SPEED_THRESHOLD_MPS) continue;
+
+            double diff = std::fabs(a.bearing - fastest->bearing);
+            diff = std::fmod(diff, PI);                  // fold to [0, 180)
+            if (diff > PI / 2.0) diff = PI - diff;       // fold to [0, 90]
+            if (diff > PI / 4.0)
+            {
+                node.type = Node::TRAFFIC_LIGHT;
+                break;
+            }
         }
     }
 }
@@ -468,15 +532,110 @@ void Network::calculateIntersectionPriorities()
     }
 }
 
-// Most OSM edges arrive with a null turn:lanes tag, and with no turn map a
-// car will happily hook a right from the leftmost lane. Fill the gap with
+namespace
+{
+    // Fill every unmarked lane (mask 0) with the movements that exist past
+    // the destination node, leaving OSM-marked lanes untouched. Filled lanes
+    // carry TurnLane::Inferred so a later pass can redo them when the
+    // intersection changes. Conventions: every unmarked lane goes through,
+    // the leftmost/rightmost unmarked lane picks up a left/right turn no
+    // marked lane already covers, and an approach with no through movement
+    // (T-stem) splits its unmarked lanes between the two turns. Finally,
+    // never feed the through road more lanes than it has: while the through
+    // count exceeds 'throughCapacity', filled lanes that also carry a turn
+    // drop their through bit, outermost first, so "left||" into a 1-lane
+    // road becomes "left|through|right" instead of "left|through|through;right".
+    void fillUnmarkedLanes(std::vector<uint8_t>& masks,
+                           bool hasLeft, bool hasThrough, bool hasRight,
+                           int throughCapacity)
+    {
+        std::vector<int> unmarked;
+        for (int i = 0; i < static_cast<int>(masks.size()); i++)
+            if (masks[i] == 0) unmarked.push_back(i);
+        if (unmarked.empty()) return;
+
+        if (!hasLeft && !hasThrough && !hasRight)
+        {
+            // Dead end: nothing to restrict.
+            for (int i : unmarked) masks[i] = TurnLane::Through | TurnLane::Inferred;
+            return;
+        }
+
+        bool coveredLeft = false, coveredRight = false;
+        for (uint8_t m : masks)
+        {
+            coveredLeft  |= (m & TurnLane::Left) != 0;
+            coveredRight |= (m & TurnLane::Right) != 0;
+        }
+        const bool needLeft  = hasLeft && !coveredLeft;
+        const bool needRight = hasRight && !coveredRight;
+
+        if (!hasThrough && needLeft && needRight)
+        {
+            // T-junction stem: left half of the unmarked lanes turns left,
+            // right half right, the middle of an odd count may do either.
+            const int n = static_cast<int>(unmarked.size());
+            for (int k = 0; k < n; k++)
+            {
+                uint8_t m = TurnLane::Inferred;
+                if (k < (n + 1) / 2) m |= TurnLane::Left;
+                if (k >= n / 2)      m |= TurnLane::Right;
+                masks[unmarked[k]] = m;
+            }
+            return;
+        }
+
+        for (int i : unmarked)
+            masks[i] = TurnLane::Inferred | (hasThrough ? TurnLane::Through : 0);
+        if (needLeft)  masks[unmarked.front()] |= TurnLane::Left;
+        if (needRight) masks[unmarked.back()]  |= TurnLane::Right;
+
+        // A lane can still end up with no movement when everything available
+        // is already covered by marked lanes (e.g. "left||right" at a
+        // T-stem): fail open with whatever the intersection offers.
+        for (int i : unmarked)
+        {
+            if (masks[i] != TurnLane::Inferred) continue;
+            if (hasLeft)  masks[i] |= TurnLane::Left;
+            if (hasRight) masks[i] |= TurnLane::Right;
+        }
+
+        if (!hasThrough || throughCapacity <= 0) return;
+        int throughCount = 0;
+        for (uint8_t m : masks) throughCount += (m & TurnLane::Through) ? 1 : 0;
+
+        // Trim overflow through lanes, right-turn lanes from the right first,
+        // then left-turn lanes from the left. Only filled lanes give up their
+        // through bit, and only when a turn keeps the lane usable.
+        for (auto it = unmarked.rbegin(); it != unmarked.rend() && throughCount > throughCapacity; ++it)
+        {
+            uint8_t& m = masks[*it];
+            if ((m & TurnLane::Right) && (m & TurnLane::Through))
+            {
+                m &= static_cast<uint8_t>(~TurnLane::Through);
+                throughCount--;
+            }
+        }
+        for (auto it = unmarked.begin(); it != unmarked.end() && throughCount > throughCapacity; ++it)
+        {
+            uint8_t& m = masks[*it];
+            if ((m & TurnLane::Left) && (m & TurnLane::Through))
+            {
+                m &= static_cast<uint8_t>(~TurnLane::Through);
+                throughCount--;
+            }
+        }
+    }
+}
+
+// Most OSM edges arrive with a null turn:lanes tag -- or a partial one like
+// "left||" where only the turn pocket is painted -- and with no turn map a
+// car will happily hook a right from the leftmost lane. Fill the gaps with
 // standard road-marking conventions: look at which movements geometrically
-// exist at the edge's destination (left / through / right, U-turns excluded),
-// then give every lane through, the leftmost lane the left turn, and the
-// rightmost lane the right turn. Approaches with no through movement (T-stem)
-// split their lanes between the two turns instead. Edges whose map came from
-// real OSM data are left untouched; inferred maps are recomputed from scratch
-// each call so runtime road edits stay consistent.
+// exist at the edge's destination (left / through / right, U-turns excluded)
+// and hand the lane list to fillUnmarkedLanes above. Lanes explicitly marked
+// in real OSM data are never touched; inferred lanes are recomputed from
+// scratch each call so runtime road edits stay consistent.
 void Network::assignInferredTurnLanes()
 {
     for (auto& pair : nodes)
@@ -484,18 +643,36 @@ void Network::assignInferredTurnLanes()
         Node& from = pair.second;
         for (Road& edge : from.outgoingEdges)
         {
-            if (edge.isLaneTurnsFromOsm()) continue;
+            const int lanes = edge.getLanes();
+            if (lanes <= 0) continue;
+
+            // OSM-marked lanes are authoritative; only unmarked tokens
+            // (mask 0) and lanes a previous pass filled are ours to set.
+            std::vector<uint8_t> masks;
+            if (edge.isLaneTurnsFromOsm())
+            {
+                masks = edge.getLaneTurns();
+                bool anyUnmarked = false;
+                for (uint8_t& m : masks)
+                {
+                    if (m & TurnLane::Inferred) m = 0; // recompute below
+                    anyUnmarked |= (m == 0);
+                }
+                if (!anyUnmarked) continue; // fully tagged
+            }
+            else
+            {
+                masks.assign(lanes, 0);
+            }
 
             Node* dest = getNode(edge.getDest());
             if (!dest) continue;
-
-            const int lanes = edge.getLanes();
-            if (lanes <= 0) continue;
 
             const double inX = dest->getX() - from.getX();
             const double inY = dest->getY() - from.getY();
 
             bool hasLeft = false, hasThrough = false, hasRight = false;
+            int throughCapacity = 0; // lane count of the road(s) straight ahead
             for (const Road& out : dest->outgoingEdges)
             {
                 if (out.getDest() == edge.getOriginId()) continue; // U-turn
@@ -506,42 +683,15 @@ void Network::assignInferredTurnLanes()
                     inX, inY, outDest->getX() - dest->getX(), outDest->getY() - dest->getY()))
                 {
                     case RoadIntersectionUtil::TurnDir::Left:    hasLeft = true;    break;
-                    case RoadIntersectionUtil::TurnDir::Through: hasThrough = true; break;
+                    case RoadIntersectionUtil::TurnDir::Through: hasThrough = true;
+                                                                 throughCapacity += out.getLanes(); break;
                     case RoadIntersectionUtil::TurnDir::Right:   hasRight = true;   break;
                 }
             }
 
-            std::vector<uint8_t> masks(lanes, 0);
-            if (!hasLeft && !hasThrough && !hasRight)
-            {
-                // Dead end: nothing to restrict.
-                for (uint8_t& m : masks) m |= TurnLane::Through;
-            }
-            else if (!hasThrough && hasLeft && hasRight)
-            {
-                // T-junction stem: left half turns left, right half right,
-                // middle lane of an odd count may do either.
-                for (int i = 0; i < (lanes + 1) / 2; i++) masks[i] |= TurnLane::Left;
-                for (int i = lanes / 2; i < lanes; i++)   masks[i] |= TurnLane::Right;
-            }
-            else
-            {
-                if (hasThrough)
-                    for (uint8_t& m : masks) m |= TurnLane::Through;
+            fillUnmarkedLanes(masks, hasLeft, hasThrough, hasRight, throughCapacity);
 
-                if (hasLeft)
-                {
-                    if (hasThrough) masks[0] |= TurnLane::Left;
-                    else            for (uint8_t& m : masks) m |= TurnLane::Left;
-                }
-                if (hasRight)
-                {
-                    if (hasThrough) masks[lanes - 1] |= TurnLane::Right;
-                    else            for (uint8_t& m : masks) m |= TurnLane::Right;
-                }
-            }
-
-            edge.setLaneTurns(std::move(masks), false);
+            edge.setLaneTurns(std::move(masks), edge.isLaneTurnsFromOsm());
         }
     }
 }

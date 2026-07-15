@@ -115,6 +115,8 @@ private:
     UPROPERTY() UEditableTextBox* LanesBox = nullptr;
     UPROPERTY() UEditableTextBox* SpeedBox = nullptr; // shown in mph
     UPROPERTY() UComboBoxString* LayerCombo = nullptr; // elevation
+    // Section label above the per-lane dropdowns; flags inferred values.
+    UPROPERTY() UTextBlock* TurnLanesHeader = nullptr;
     UPROPERTY() UVerticalBox* TurnLaneRows = nullptr;
     UPROPERTY() TArray<UComboBoxString*> TurnLaneCombos;
     UPROPERTY() UCheckBox* BothDirectionsCheck = nullptr;

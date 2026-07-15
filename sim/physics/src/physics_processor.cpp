@@ -179,6 +179,10 @@ void PhysicsProcessor::update(float dt)
     // ==========================================
     // PASS 0: MOBIL & LANE CHANGING
     // ==========================================
+    // Changes committed earlier in this same pass are invisible to the
+    // spatial hash (rebuilt at frame start), so track them here: two cars
+    // flanking the same gap must not both converge into it in one frame.
+    std::vector<VehicleState*> startedThisPass;
     for (VehicleState* vhcl : vehicleList)
     {
         Road* currentEdge = vhcl->getCurrentEdge();
@@ -226,6 +230,21 @@ void PhysicsProcessor::update(float dt)
                 haveGuidance = true;
             }
         }
+        // Queued at a controlled intersection: a stopped or creeping car
+        // waiting on a signal/stop it cannot enter gains nothing from
+        // jockeying into the adjacent queue, and the lateral slide would
+        // play out at zero speed exactly where cars are packed tightest.
+        // Suppress discretionary changes; guidance toward a lane the
+        // upcoming movement requires stays enabled.
+        bool queuedAtControl = false;
+        if (vhcl->getSpeed() < 2.0f && network != nullptr) {
+            Node* destNode = network->getNode(currentEdge->getDest());
+            if (destNode != nullptr && !canVehicleEnter(vhcl, destNode)) {
+                queuedAtControl = true;
+            }
+        }
+        if (queuedAtControl && guidedLane == currentLane) continue;
+
         float urgency = 100.0f + std::max(0.0f, 150.0f - distanceToIntersection);
 
         // Bias a candidate lane change toward the guided lane; when already
@@ -248,7 +267,7 @@ void PhysicsProcessor::update(float dt)
         float bestIncentive = threshold;
 
         //check left
-        if (currentLane > 0) {
+        if (currentLane > 0 && (!queuedAtControl || guidedLane < currentLane)) {
             float leftIncentive = applyGuidance(MOBIL(vhcl, currentLane - 1), currentLane - 1);
             if (leftIncentive > bestIncentive) {
                bestLane = currentLane - 1;
@@ -257,7 +276,7 @@ void PhysicsProcessor::update(float dt)
        }
 
        //check right
-       if (currentLane < totalLanes - 1) {
+       if (currentLane < totalLanes - 1 && (!queuedAtControl || guidedLane > currentLane)) {
             float rightIncentive = applyGuidance(MOBIL(vhcl, currentLane + 1), currentLane + 1);
             if (rightIncentive > bestIncentive) {
                bestLane = currentLane + 1;
@@ -267,7 +286,20 @@ void PhysicsProcessor::update(float dt)
         // take lane with best MOBIL incentive; the change plays out over a
         // politeness-scaled interval rather than snapping instantly
        if (bestLane != currentLane) {
-           vhcl->startLaneChange(bestLane);
+           bool conflict = false;
+           for (VehicleState* other : startedThisPass) {
+               if (other->getCurrentEdge() != currentEdge || other->getLane() != bestLane) continue;
+               bool otherAhead = other->getPos() >= vhcl->getPos();
+               float gap = otherAhead
+                   ? other->getPos() - vhcl->getPos() - other->getLength()
+                   : vhcl->getPos() - other->getPos() - vhcl->getLength();
+               float required = otherAhead ? vhcl->getMinGap() : other->getMinGap();
+               if (gap < required) { conflict = true; break; }
+           }
+           if (!conflict) {
+               vhcl->startLaneChange(bestLane);
+               startedThisPass.push_back(vhcl);
+           }
        }
     }
     vehicleUpdates.clear();
@@ -417,20 +449,20 @@ void PhysicsProcessor::update(float dt)
                                 
                                 vhcl->setCurrentEdge(&edge);
 
-                                // Land in the lane the movement arrives in:
-                                // right turns enter the rightmost lane, left
-                                // turns the leftmost, through keeps its lane
-                                // (clamped to the new road's width). The
-                                // renderer picks the same lane for its blend
-                                // target, so the sweep and the physics agree.
+                                // Land in the lane the movement arrives in
+                                // (GetArrivalLane: right turns enter the
+                                // rightmost lane, left turns the leftmost,
+                                // through keeps its lane clamped to the new
+                                // road's width). The spatial hash sensors and
+                                // the renderer's blend target use the same
+                                // rule, so what the car braked for is what it
+                                // lands behind.
                                 std::string turnMade = getTurnDirectionAt(vhcl, vhcl->currentRouteIndex);
-                                if (turnMade == "right") {
-                                    vhcl->setLane(edge.getLanes() - 1);
-                                } else if (turnMade == "left") {
-                                    vhcl->setLane(0);
-                                } else if (vhcl->getLane() >= edge.getLanes()) {
-                                    vhcl->setLane(edge.getLanes() - 1);
-                                }
+                                RoadIntersectionUtil::TurnDir dir =
+                                      (turnMade == "right") ? RoadIntersectionUtil::TurnDir::Right
+                                    : (turnMade == "left")  ? RoadIntersectionUtil::TurnDir::Left
+                                                            : RoadIntersectionUtil::TurnDir::Through;
+                                vhcl->setLane(RoadIntersectionUtil::GetArrivalLane(dir, vhcl->getLane(), edge.getLanes()));
 
                                 break;
                             }
@@ -641,6 +673,15 @@ float  PhysicsProcessor::MOBIL(VehicleState* vhcl, int targetLane)
         if (newFollowerAccel < -safeBrake) { //note accel is negative for braking
             return -999.0f; // not safe to change
         }
+    }
+
+    // Leader-side crash veto, symmetric with the follower check: sliding in
+    // behind a leader with no physical gap is a collision, and it must come
+    // back as -999 (not merely a bad accel gain) because the intersection
+    // guidance bias can outweigh any finite incentive.
+    if (newLeader != nullptr &&
+        calculateTrueGap(vhcl, newLeader) < 0.5f * vhcl->getMinGap()) {
+        return -999.0f; // not safe to change
     }
 
     // incentive criterion, acceralation gained
@@ -947,12 +988,73 @@ void PhysicsProcessor::applyJunctionTargetSpeed(VehicleState* vhcl)
     vhcl->setDesiredSpeed(static_cast<float>(currentEdge->getSpeedLimit()));
 }
 
+// True when the lane vhcl will land in on its exit edge out of destNode has
+// space for the whole car beyond the junction box: the queue tail's rear must
+// sit past the box edge by at least a car length plus minGap, so the arrival
+// clears the box instead of stopping inside it (or on top of the tail). Cars
+// with no further edge (destination at/next node) always pass.
+bool PhysicsProcessor::exitLaneHasRoom(VehicleState* vhcl, Node* destNode)
+{
+    const size_t i = vhcl->currentRouteIndex;
+    if (i + 2 >= vhcl->currentRoute.size()) return true;
+
+    Road* exitEdge = nullptr;
+    for (Road& edge : destNode->outgoingEdges) {
+        if (edge.getDest() == vhcl->currentRoute[i + 2]) {
+            exitEdge = &edge;
+            break;
+        }
+    }
+    if (!exitEdge) return true;
+
+    // Lane the edge transition will seat the car in.
+    std::string turnMade = getTurnDirectionAt(vhcl, i + 1);
+    RoadIntersectionUtil::TurnDir dir =
+          (turnMade == "right") ? RoadIntersectionUtil::TurnDir::Right
+        : (turnMade == "left")  ? RoadIntersectionUtil::TurnDir::Left
+                                : RoadIntersectionUtil::TurnDir::Through;
+    int landingLane = RoadIntersectionUtil::GetArrivalLane(dir, vhcl->getLane(), exitEdge->getLanes());
+
+    // Arc position on the exit edge where the junction box ends.
+    float sbStart = RoadIntersectionUtil::GetNodeSetbackMeters(
+        network, *destNode, RoadIntersectionUtil::MedianGapMeters);
+    float sbEnd = 0.0f;
+    Node* exitDestNode = network->getNode(exitEdge->getDest());
+    if (exitDestNode) {
+        sbEnd = RoadIntersectionUtil::GetNodeSetbackMeters(
+            network, *exitDestNode, RoadIntersectionUtil::MedianGapMeters);
+    }
+    RoadIntersectionUtil::ClampSetbacksToLength(
+        static_cast<float>(exitEdge->getLength()), sbStart, sbEnd);
+
+    // Rear of the nearest car in the landing lane (queue tail).
+    float nearestRear = std::numeric_limits<float>::max();
+    for (VehicleState* other : spatialHash->getVehiclesOnRoad(exitEdge)) {
+        if (other == nullptr || other == vhcl || other->isMarkedForDeletion) continue;
+        if (other->getLane() != landingLane) continue;
+        nearestRear = std::min(nearestRear, other->getPos() - other->getLength());
+    }
+
+    return nearestRear >= sbStart + vhcl->getLength() + vhcl->getMinGap();
+}
+
 bool PhysicsProcessor::canVehicleEnter(VehicleState* vhcl, Node* destNode)
-{   
+{
     // destNode represents intersection at end of a road
-    if (destNode == nullptr || destNode->type == Node::PASS_THROUGH) return true;
-    
-    uint64_t nodeId = destNode->getId(); 
+    if (destNode == nullptr) return true;
+
+    // Don't-block-the-box: whatever the signal or right-of-way says, a car
+    // may only enter the junction when the lane it lands in has room for the
+    // whole car past the box exit. Without this, congested turns keep being
+    // granted and each new arrival crosses the box straight into the queue
+    // tail spilling back to the intersection.
+    if (RoadIntersectionUtil::IsIntersectionNode(*destNode) && !exitLaneHasRoom(vhcl, destNode)) {
+        return false;
+    }
+
+    if (destNode->type == Node::PASS_THROUGH) return true;
+
+    uint64_t nodeId = destNode->getId();
     IntersectionState& state = intersections[nodeId];
 
     // four way stop

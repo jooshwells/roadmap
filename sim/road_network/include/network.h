@@ -41,7 +41,8 @@ class Network {
         // 'laneTurns' is the optional per-lane turn map parsed from OSM
         // turn:lanes (TurnLane flags, one entry per lane, left to right);
         // pass empty when the tag is null and assignInferredTurnLanes will
-        // fill the gap.
+        // fill the gap. Individual 0 entries are unmarked lanes ("left||"),
+        // which the same pass completes from the downstream intersection.
         void addDirectedEdge(uint64_t fromId, uint64_t toId, double dist, double speedLimit, int lanes,
                              std::vector<RoadGeomPoint> geometry = {}, int layer = 0,
                              std::vector<uint8_t> laneTurns = {});

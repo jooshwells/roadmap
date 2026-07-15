@@ -31,8 +31,9 @@ namespace RoadIntersectionUtil
     // lane a turning car sweeps into -- if these disagreed, a car could be
     // steered into a lane its rendered turn never reaches. Vectors are
     // normalized so edge length doesn't matter; anything within ~20 degrees
-    // of straight ahead is a through movement. Positive cross = left, per
-    // the sim's node coordinate convention.
+    // of straight ahead is a through movement. Node coords store y negated
+    // from the geographic source (see NetworkBuilder), which flips the cross
+    // product's handedness: positive cross = right turn here.
     inline TurnDir ClassifyTurn(double v1x, double v1y, double v2x, double v2y)
     {
         const double len1 = std::sqrt(v1x * v1x + v1y * v1y);
@@ -44,7 +45,29 @@ namespace RoadIntersectionUtil
 
         constexpr double SinThroughLimit = 0.342; // sin(20 deg)
         if (cosTheta > 0.0 && std::abs(sinTheta) < SinThroughLimit) return TurnDir::Through;
-        return sinTheta > 0.0 ? TurnDir::Left : TurnDir::Right;
+        return sinTheta > 0.0 ? TurnDir::Right : TurnDir::Left;
+    }
+
+    // Movement made at route node Curr, entering from Prev and leaving toward
+    // Next. Convenience wrapper so route walkers don't hand-roll the chords.
+    inline TurnDir ClassifyTurnAtNode(const Node& Prev, const Node& Curr, const Node& Next)
+    {
+        return ClassifyTurn(Curr.getX() - Prev.getX(), Curr.getY() - Prev.getY(),
+                            Next.getX() - Curr.getX(), Next.getY() - Curr.getY());
+    }
+
+    // Lane a movement lands in on its destination edge: right turns enter the
+    // rightmost lane, left turns the leftmost, through keeps its lane clamped
+    // to the new road's width. Single source of truth shared by the physics
+    // edge transition and the spatial hash's route-following sensors -- if
+    // they disagreed, a car could clear one lane with its sensor and then be
+    // seated in another on top of a queue it never saw.
+    inline int GetArrivalLane(TurnDir Turn, int FromLane, int DestLanes)
+    {
+        if (DestLanes <= 0) return 0;
+        if (Turn == TurnDir::Right) return DestLanes - 1;
+        if (Turn == TurnDir::Left)  return 0;
+        return std::clamp(FromLane, 0, DestLanes - 1);
     }
 
     // Keep in sync with the 350 cm lane width used by the road HISM scaling.

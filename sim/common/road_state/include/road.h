@@ -2,6 +2,7 @@
 #define ROAD_H
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 // Per-lane permitted movements through the intersection at the end of an
@@ -11,6 +12,24 @@ namespace TurnLane {
     constexpr uint8_t Left    = 1 << 0;
     constexpr uint8_t Through = 1 << 1;
     constexpr uint8_t Right   = 1 << 2;
+    // Set on lanes whose movement bits were filled by
+    // Network::assignInferredTurnLanes rather than parsed from the tag, so
+    // a later pass may recompute them when the intersection changes. Lanes
+    // that came from the tag itself never carry it.
+    constexpr uint8_t Inferred = 1 << 3;
+
+    // Parse an OSM turn:lanes value ("left|through|through;right") into
+    // per-lane masks, tokens left to right. Empty and "none" tokens are
+    // unmarked lanes and parse to 0 -- no movement data, which
+    // Network::assignInferredTurnLanes fills from the downstream
+    // intersection. Returns empty when the tag does not describe exactly
+    // 'lanes' lanes -- a desynced map is worse than none, since the
+    // inference pass covers the gap.
+    std::vector<uint8_t> fromOsmString(const std::string& spec, int lanes);
+
+    // Format per-lane masks back into that syntax ("left;through|right").
+    // Lanes with an empty mask become empty tokens (OSM "no restriction").
+    std::string toOsmString(const std::vector<uint8_t>& masks);
 }
 
 // One vertex of an edge's real-world centerline polyline (OSM geometry_xy),
@@ -58,10 +77,14 @@ class Road {
         inline void setLength(double le)     { length = le; }
 
         // Per-lane turn permissions (TurnLane flags, index 0 = leftmost lane).
-        // Empty = no data: every movement is allowed from every lane. Masks
-        // parsed from OSM turn:lanes are authoritative; inferred ones may be
+        // Empty = no data: every movement is allowed from every lane. Lanes
+        // parsed from OSM turn:lanes are authoritative; lanes carrying
+        // TurnLane::Inferred (and whole maps with fromOsm=false) may be
         // recomputed whenever the network changes.
         void setLaneTurns(std::vector<uint8_t> turns, bool fromOsm);
+        // Drops the turn map entirely (e.g. the user cleared an explicit
+        // value) so the next assignInferredTurnLanes pass owns this edge.
+        inline void clearLaneTurns() { laneTurns.clear(); laneTurnsFromOsm = false; }
         inline const std::vector<uint8_t>& getLaneTurns() const { return laneTurns; }
         inline bool hasLaneTurnData() const { return !laneTurns.empty(); }
         inline bool isLaneTurnsFromOsm() const { return laneTurnsFromOsm; }

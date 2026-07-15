@@ -7,6 +7,7 @@
 #include "HAL/FileManager.h"
 #include "PythonBridge.h"
 #include "RoadmapGameInstance.h"
+#include "RoadTurnLaneOptions.h"
 #include "MapPlayerController.h"
 #include "Kismet/GameplayStatics.h"
 
@@ -617,11 +618,15 @@ void ASimulationManager::SplitBackendEdge(int64 U, int64 V, int64 NewNodeId, FVe
     }
 }
 
-void ASimulationManager::UpdateBackendRoad(int64 U, int64 V, int32 Lanes, float SpeedMps, bool bBothDirections)
+void ASimulationManager::UpdateBackendRoad(int64 U, int64 V, int32 Lanes, float SpeedMps, const FString& TurnLanes, bool bBothDirections)
 {
     if (TrafficSimEngine)
     {
-        TrafficSimEngine->UpdateRuntimeRoad(U, V, Lanes, SpeedMps, bBothDirections);
+        // turn:lanes is ordered in the direction of travel, so the V->U edge
+        // gets the mirrored string.
+        const std::string Fwd = TCHAR_TO_UTF8(*TurnLanes);
+        const std::string Rev = TCHAR_TO_UTF8(*RoadTurnLaneOptions::MirrorTurnLanes(TurnLanes));
+        TrafficSimEngine->UpdateRuntimeRoad(U, V, Lanes, SpeedMps, bBothDirections, Fwd, Rev);
     }
 }
 

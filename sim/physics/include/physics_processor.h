@@ -86,6 +86,10 @@ class PhysicsProcessor
         std::map<std::pair<Road*, int>, VehicleState*> ghostVehicles; // ghost vehicles for each lane in intersection
         
         bool canVehicleEnter(VehicleState* vhcl, Node* destNode);
+        // True when the lane vhcl lands in on its exit edge out of destNode
+        // has room for the whole car beyond the junction box -- the
+        // don't-block-the-box gate inside canVehicleEnter.
+        bool exitLaneHasRoom(VehicleState* vhcl, Node* destNode);
         // Sets the frame's desired speed: the next road's speed limit while
         // crossing a junction box (scaled down for turning movements, so a
         // turn onto a fast arterial sweeps faster than one into a side

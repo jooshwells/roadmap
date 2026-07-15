@@ -30,6 +30,12 @@ struct FRoadEdgeInfo
     UPROPERTY(BlueprintReadWrite, Category = "Road Edit") float SpeedLimitMps = 20.0f;
     UPROPERTY(BlueprintReadWrite, Category = "Road Edit") FString TurnLanes;
 
+    // True when TurnLanes did not come from an explicit tag in the edge data
+    // but from the network's inference over the movements available at the
+    // destination node (see Network::assignInferredTurnLanes). Lets the UI
+    // label the value as a suggestion rather than surveyed OSM data.
+    UPROPERTY(BlueprintReadOnly, Category = "Road Edit") bool bTurnLanesInferred = false;
+
     // OSM vertical layer: 0 ground, +1 overpass, -1 underpass. Editing it
     // re-runs the elevation pass, so a ground road becomes a bridge in place.
     UPROPERTY(BlueprintReadWrite, Category = "Road Edit") int32 Layer = 0;

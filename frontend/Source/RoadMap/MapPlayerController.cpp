@@ -284,7 +284,7 @@ bool AMapPlayerController::ApplyRoadEdit(const FRoadEdgeInfo& EditedInfo, bool b
 	AActor* SimManagerActor = UGameplayStatics::GetActorOfClass(GetWorld(), ASimulationManager::StaticClass());
 	if (ASimulationManager* SimManager = Cast<ASimulationManager>(SimManagerActor))
 	{
-		SimManager->UpdateBackendRoad(EditedInfo.NodeU, EditedInfo.NodeV, EditedInfo.Lanes, EditedInfo.SpeedLimitMps, bBothDirections);
+		SimManager->UpdateBackendRoad(EditedInfo.NodeU, EditedInfo.NodeV, EditedInfo.Lanes, EditedInfo.SpeedLimitMps, EditedInfo.TurnLanes, bBothDirections);
 
 		FVector ULoc, VLoc;
 		if (Visualizer->GetNodeLocation(EditedInfo.NodeU, ULoc) && Visualizer->GetNodeLocation(EditedInfo.NodeV, VLoc))

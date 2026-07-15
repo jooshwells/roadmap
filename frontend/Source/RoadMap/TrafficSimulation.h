@@ -80,9 +80,14 @@ public:
     void DeleteRuntimeEdge(uint64_t u, uint64_t v, bool bBothDirections);
 
     // Update the live edge(s) between u and v with new lane count / speed
-    // limit. Vehicles already on the edge adopt the new speed and get their
-    // lane clamped if lanes were removed.
-    void UpdateRuntimeRoad(uint64_t u, uint64_t v, int lanes, float speedMps, bool bBothDirections);
+    // limit / per-lane turn map. Vehicles already on the edge adopt the new
+    // speed and get their lane clamped if lanes were removed. The turn
+    // strings are OSM turn:lanes syntax in each edge's own direction of
+    // travel (the caller mirrors the reverse one); empty clears the explicit
+    // map and hands the edge back to assignInferredTurnLanes.
+    void UpdateRuntimeRoad(uint64_t u, uint64_t v, int lanes, float speedMps, bool bBothDirections,
+                           const std::string& turnLanesFwd = std::string(),
+                           const std::string& turnLanesRev = std::string());
 
     // Queue route replans for vehicles whose remaining route passes within
     // radiusMeters of map point (x, y). Routes are only computed at spawn, so

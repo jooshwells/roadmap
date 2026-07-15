@@ -129,9 +129,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Simulation")
 	void SplitBackendEdge(int64 U, int64 V, int64 NewNodeId, FVector SplitUnrealLoc);
 
-	// Pushes edited lane count / speed limit to the live sim's edge(s).
+	// Pushes edited lane count / speed limit / turn lanes to the live sim's
+	// edge(s). TurnLanes is OSM turn:lanes syntax for the U->V direction (the
+	// V->U edge gets the mirrored string); empty means no explicit data and
+	// the sim re-infers a per-lane map from the intersection layout.
 	UFUNCTION(BlueprintCallable, Category = "Simulation")
-	void UpdateBackendRoad(int64 U, int64 V, int32 Lanes, float SpeedMps, bool bBothDirections);
+	void UpdateBackendRoad(int64 U, int64 V, int32 Lanes, float SpeedMps, const FString& TurnLanes, bool bBothDirections);
 
 	// Deletes edge U->V (and V->U when bBothDirections) from the live sim.
 	// Vehicles on the road are despawned; routes through it are repaired.

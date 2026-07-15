@@ -1182,10 +1182,10 @@ int64 ARoadNetworkVisualizer::ExportNewRoadSegment(int64 StartNodeId, int64 EndN
         EdgeObj->SetStringField(Layer > 0 ? TEXT("bridge") : TEXT("tunnel"), TEXT("yes"));
     }
 
-    // turn lanes if needed
+    // turn lanes if needed ("turn_lanes" is the key NetworkBuilder reads)
     if (!TurnLanes.IsEmpty())
     {
-        EdgeObj->SetStringField(TEXT("turn:lanes"), TurnLanes);
+        EdgeObj->SetStringField(TEXT("turn_lanes"), TurnLanes);
     }
 
     // Create geometry_xy array representing the straight line
@@ -1227,7 +1227,12 @@ int64 ARoadNetworkVisualizer::ExportNewRoadSegment(int64 StartNodeId, int64 EndN
             { EndJsonCoords.X,   -EndJsonCoords.Y,   0.0 }
         };
         CachedNetwork->addDirectedEdge(StartNodeId, FinalEndNodeId, LengthMeters, SpeedLimit, Lanes,
-            std::move(Centerline), Layer);
+            std::move(Centerline), Layer,
+            TurnLane::fromOsmString(TCHAR_TO_UTF8(*TurnLanes), Lanes));
+
+        // The new edge adds a movement at both endpoints, which changes what
+        // the neighbouring approaches' inferred turn maps should say.
+        CachedNetwork->assignInferredTurnLanes();
     }
 
     return FinalEndNodeId;
@@ -1619,6 +1624,10 @@ bool ARoadNetworkVisualizer::SplitEdgeForNewNode(int64 U, int64 V, int64 NewNode
     if (bFwd) SplitEdgeInFile(U, V, NewNodeId, JsonCoords);
     if (bRev) SplitEdgeInFile(V, U, NewNodeId, JsonCoords);
 
+    // The halves ending at the new mid-node face different movements than
+    // the original edge did, so refresh the inferred turn maps.
+    CachedNetwork->assignInferredTurnLanes();
+
     return true;
 }
 
@@ -1683,11 +1692,32 @@ bool ARoadNetworkVisualizer::GetEdgeInfo(int64 EdgeId, FRoadEdgeInfo& OutInfo)
         }
     }
 
-    // Turn lanes only live in the JSONL record, not the network.
+    // Turn lanes: prefer the explicit tag in the JSONL record (the datasets
+    // use "turn_lanes"; "turn:lanes" is what older editor builds wrote). Most
+    // OSM edges carry null there, so fall back to the per-lane map the
+    // network inferred from the movements available at the destination node.
     OutInfo.TurnLanes.Empty();
+    OutInfo.bTurnLanesInferred = false;
     if (TSharedPtr<FJsonObject> EdgeJson = FindEdgeJson(OutInfo.NodeU, OutInfo.NodeV))
     {
-        EdgeJson->TryGetStringField(TEXT("turn:lanes"), OutInfo.TurnLanes);
+        for (const TCHAR* Key : { TEXT("turn_lanes"), TEXT("turn_lanes_forward"), TEXT("turn:lanes") })
+        {
+            if (EdgeJson->TryGetStringField(Key, OutInfo.TurnLanes) && !OutInfo.TurnLanes.IsEmpty()) break;
+        }
+    }
+    if (Edge->hasLaneTurnData())
+    {
+        // A partial tag like "left||" has its unmarked lanes completed by
+        // the network (flagged TurnLane::Inferred); show the completed map
+        // rather than the raw tag, and label it inferred so the user knows
+        // some of it is a suggestion, not surveyed data.
+        bool bAnyFilled = false;
+        for (uint8_t Mask : Edge->getLaneTurns()) bAnyFilled |= (Mask & TurnLane::Inferred) != 0;
+        if (OutInfo.TurnLanes.IsEmpty() || bAnyFilled)
+        {
+            OutInfo.TurnLanes = UTF8_TO_TCHAR(TurnLane::toOsmString(Edge->getLaneTurns()).c_str());
+            OutInfo.bTurnLanesInferred = !Edge->isLaneTurnsFromOsm() || bAnyFilled;
+        }
     }
 
     return true;
@@ -1720,13 +1750,19 @@ bool ARoadNetworkVisualizer::UpdateEdgeInFile(int64 U, int64 V, int32 Lanes, flo
 
         Obj->SetNumberField(TEXT("lanes"), Lanes);
         Obj->SetNumberField(TEXT("speed_mps"), SpeedMps);
+        // "turn_lanes" is the key the datasets and NetworkBuilder read;
+        // scrub the alternate spellings so one authoritative value remains.
+        // An empty edit clears the tag entirely, handing the edge back to
+        // assignInferredTurnLanes.
+        Obj->RemoveField(TEXT("turn:lanes"));
+        Obj->RemoveField(TEXT("turn_lanes_forward"));
         if (TurnLanes.IsEmpty())
         {
-            Obj->RemoveField(TEXT("turn:lanes"));
+            Obj->RemoveField(TEXT("turn_lanes"));
         }
         else
         {
-            Obj->SetStringField(TEXT("turn:lanes"), TurnLanes);
+            Obj->SetStringField(TEXT("turn_lanes"), TurnLanes);
         }
 
         // Always written explicitly: parseEdgeLayer prefers "layer" over the
@@ -1834,6 +1870,10 @@ bool ARoadNetworkVisualizer::DeleteRoad(int64 U, int64 V, bool bBothDirections)
         }
     }
 
+    // Removing a movement changes what the surviving approaches at both
+    // endpoints may do, so refresh the inferred turn maps.
+    CachedNetwork->assignInferredTurnLanes();
+
     // Full rebuild also refreshes junction pavement and tapers at both ends
     // and drops the deleted edge from the hit-test / edit maps.
     RefreshRoadVisuals();
@@ -1848,7 +1888,7 @@ bool ARoadNetworkVisualizer::UpdateRoadProperties(int64 U, int64 V, int32 Lanes,
     const float SafeSpeed = FMath::Max(0.5f, SpeedMps);
     const int32 SafeLayer = FMath::Clamp(Layer, -5, 5); // same range parseEdgeLayer accepts
 
-    auto ApplyToNetwork = [&](int64 A, int64 B) -> bool
+    auto ApplyToNetwork = [&](int64 A, int64 B, const FString& DirTurnLanes) -> bool
     {
         Node* From = CachedNetwork->getNode(static_cast<uint64_t>(A));
         if (!From) return false;
@@ -1859,28 +1899,41 @@ bool ARoadNetworkVisualizer::UpdateRoadProperties(int64 U, int64 V, int32 Lanes,
                 E.setLanes(SafeLanes);
                 E.setSpeedLimit(SafeSpeed);
                 E.setLayer(SafeLayer);
+                // Explicit turn lanes are authoritative; an empty edit hands
+                // the edge back to the inference pass below.
+                if (DirTurnLanes.IsEmpty())
+                    E.clearLaneTurns();
+                else
+                    E.setLaneTurns(TurnLane::fromOsmString(TCHAR_TO_UTF8(*DirTurnLanes), SafeLanes), true);
                 return true;
             }
         }
         return false;
     };
 
+    // turn:lanes is ordered in the direction of travel, so the opposite
+    // edge gets the mirrored string, not a verbatim copy.
+    const FString MirroredTurnLanes = RoadTurnLaneOptions::MirrorTurnLanes(TurnLanes);
+
     bool bAny = false;
-    if (ApplyToNetwork(U, V))
+    if (ApplyToNetwork(U, V, TurnLanes))
     {
         bAny = true;
         UpdateEdgeInFile(U, V, SafeLanes, SafeSpeed, TurnLanes, SafeLayer);
     }
-    if (bBothDirections && ApplyToNetwork(V, U))
+    if (bBothDirections && ApplyToNetwork(V, U, MirroredTurnLanes))
     {
         bAny = true;
-        // turn:lanes is ordered in the direction of travel, so the opposite
-        // edge gets the mirrored string, not a verbatim copy.
-        UpdateEdgeInFile(V, U, SafeLanes, SafeSpeed, RoadTurnLaneOptions::MirrorTurnLanes(TurnLanes), SafeLayer);
+        UpdateEdgeInFile(V, U, SafeLanes, SafeSpeed, MirroredTurnLanes, SafeLayer);
     }
 
     if (bAny)
     {
+        // Lane-count and turn edits invalidate the inferred maps on this
+        // edge and its neighbouring approaches; recompute them (explicit
+        // maps set above are untouched).
+        CachedNetwork->assignInferredTurnLanes();
+
         // Lane count changes road width and the layer changes elevation, so
         // rebuild (re-runs the elevation pass and refreshes tapers and
         // junction pavement at both ends).

@@ -402,6 +402,12 @@ std::vector<VehicleRenderState> TrafficSimulation::GetVehicleRenderStates()
         state.yaw = p.yaw;
         state.pitch = p.pitch;
         state.id = v->getId();
+
+        renderStates.push_back(state);
+    }
+
+    return renderStates;
+}
 void TrafficSimulation::AddRuntimeRoad(uint64_t startNodeId, uint64_t endNodeId, double destX, double destY, double lengthMeters, int lanes, float speedLimit) {
     if (!orlandoMap) return;
 
@@ -454,6 +460,10 @@ void TrafficSimulation::SplitRuntimeEdge(uint64_t u, uint64_t v, uint64_t newNod
             }
         }
     }
+
+    // The halves ending at the new mid-node face different movements than
+    // the original edge did, so refresh the inferred turn maps.
+    orlandoMap->assignInferredTurnLanes();
 
     RefreshVehicleEdgePointers();
 }
@@ -572,19 +582,24 @@ void TrafficSimulation::DeleteRuntimeEdge(uint64_t u, uint64_t v, bool bBothDire
         }
     }
 
+    // Removing a movement changes what the surviving approaches at both
+    // endpoints may do, so refresh the inferred turn maps.
+    orlandoMap->assignInferredTurnLanes();
+
     // removeDirectedEdge shifts the surviving Roads inside outgoingEdges, so
     // every cached currentEdge pointer must be re-resolved.
     RefreshVehicleEdgePointers();
 }
 
-void TrafficSimulation::UpdateRuntimeRoad(uint64_t u, uint64_t v, int lanes, float speedMps, bool bBothDirections)
+void TrafficSimulation::UpdateRuntimeRoad(uint64_t u, uint64_t v, int lanes, float speedMps, bool bBothDirections,
+                                          const std::string& turnLanesFwd, const std::string& turnLanesRev)
 {
     if (!orlandoMap) return;
 
     const int safeLanes = std::max(1, lanes);
     const float safeSpeed = std::max(0.5f, speedMps);
 
-    auto Apply = [&](uint64_t a, uint64_t b)
+    auto Apply = [&](uint64_t a, uint64_t b, const std::string& turnSpec)
     {
         Node* from = orlandoMap->getNode(a);
         if (!from) return;
@@ -594,13 +609,24 @@ void TrafficSimulation::UpdateRuntimeRoad(uint64_t u, uint64_t v, int lanes, flo
             {
                 e.setLanes(safeLanes);
                 e.setSpeedLimit(safeSpeed);
+                // Explicit turn lanes are authoritative; empty hands the
+                // edge back to the inference pass below.
+                if (turnSpec.empty())
+                    e.clearLaneTurns();
+                else
+                    e.setLaneTurns(TurnLane::fromOsmString(turnSpec, safeLanes), true);
                 break;
             }
         }
     };
 
-    Apply(u, v);
-    if (bBothDirections) Apply(v, u);
+    Apply(u, v, turnLanesFwd);
+    if (bBothDirections) Apply(v, u, turnLanesRev);
+
+    // A lane-count change wipes the edge's turn map and an explicit edit may
+    // have cleared it; recompute the inferred maps so nothing drives on a
+    // stale or missing one (explicit maps set above stay put).
+    orlandoMap->assignInferredTurnLanes();
 
     // Vehicles already driving the edited edge adopt the new speed limit and
     // get pulled out of lanes that no longer exist.
