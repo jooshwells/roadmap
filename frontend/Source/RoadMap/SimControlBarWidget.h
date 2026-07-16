@@ -16,17 +16,24 @@ class UWidgetSwitcher;
 // main menu's asphalt-and-amber palette. AMapPlayerController spawns it at
 // BeginPlay (unless bUseBuiltInSimControlBar is off).
 //
-//   [play/pause]  [stop]  |  0.5x 1x 2x 4x  |  status
+//   [play/pause]  [stop]  |  0.5x 1x 2x 4x  |  status  |  menu
 //
 // Play starts the sim, or resumes it when paused; pause freezes stepping in
 // place; stop is the full ASimulationManager::StopSimulation reset (telemetry
 // pipeline included). The speed pills set the sim's playback rate and may be
 // picked before starting. The bar re-polls the manager every tick, so it stays
-// in sync no matter what else starts or stops the simulation.
+// in sync no matter what else starts or stops the simulation. Menu stops any
+// running sim the same way, then returns to the main menu level.
 UCLASS()
 class ROADMAP_API USimControlBarWidget : public UUserWidget
 {
 	GENERATED_BODY()
+
+public:
+	// Level opened by the menu button. Matches GameDefaultMap in
+	// DefaultEngine.ini so the MainMenuGameMode picks it up by prefix.
+	UPROPERTY(EditDefaultsOnly, Category = "Sim Control Bar")
+	FName MainMenuLevelName = TEXT("MainMenu");
 
 protected:
 	virtual TSharedRef<SWidget> RebuildWidget() override;
@@ -39,6 +46,9 @@ private:
 
 	UFUNCTION()
 	void HandleStopClicked();
+
+	UFUNCTION()
+	void HandleMenuClicked();
 
 	void HandleSpeedSelected(int32 PresetIndex);
 
@@ -59,6 +69,7 @@ private:
 	UPROPERTY() UButton* StopButton = nullptr;
 	UPROPERTY() UBorder* StopIcon = nullptr;
 	UPROPERTY() UTextBlock* StatusText = nullptr;
+	UPROPERTY() UButton* MenuButton = nullptr;
 	UPROPERTY() TArray<URoadmapRowButton*> SpeedButtons;
 
 	// Last state pushed into the widgets (see RefreshVisuals).
