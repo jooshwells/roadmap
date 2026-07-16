@@ -5,9 +5,10 @@ import pandas as pd
 import shutil
 
 from src.telemetry.telemetry_analysis import run_analysis
-from src.telemetry.run_manager import create_run_folder
+from src.telemetry.run_manager import create_run_folder, make_map_id
 from src.heatmaps.visualize_telemetry_heatmap import load_files, plot_heatmap
 from src.fdot.fdot_vs_simulation import compare_fdot_to_simulation
+from src.fdot.fdot_option_a_matcher import DEFAULT_FDOT_FILE, ensure_fdot_mapping
 # Builds the heatmap-ready network graph from active roadmap JSONL files.
 from src.heatmaps.build_network_graph_with_geometry import build_network_graph
 
@@ -723,6 +724,7 @@ def record_saved_run_inputs(
     edges_jsonl_path: Path | None,
     source_network_graph_path: Path,
     source_edges_jsonl_path: Path,
+    fdot_mapping_status: dict | None = None,
 ) -> None:
     metadata_path = run_folder / "run_metadata.json"
     metadata = load_json_file(metadata_path)
@@ -739,6 +741,9 @@ def record_saved_run_inputs(
     if edges_jsonl_path is not None:
         metadata["edges_jsonl_path"] = edges_jsonl_path.name
         metadata["source_edges_jsonl_path"] = str(source_edges_jsonl_path)
+
+    if fdot_mapping_status is not None:
+        metadata["fdot_mapping"] = fdot_mapping_status
 
     with metadata_path.open("w", encoding="utf-8") as file:
         json.dump(metadata, file, indent=4)
@@ -829,6 +834,29 @@ def main() -> int:
     else:
         print(f"WARNING: Edge JSONL was not found and was not saved: {edge_jsonl_path}")
 
+    # FDOT mappings use this run's exact EdgeIDs. A fingerprinted cache avoids
+    # repeating the spatial match unless the map graph or FDOT dataset changed.
+    fdot_mapping_status = None
+    if saved_network_graph is not None and nodes_jsonl_path is not None:
+        try:
+            map_id = make_map_id(map_name)
+            fdot_mapping_status = ensure_fdot_mapping(
+                network_path=saved_network_graph,
+                nodes_path=nodes_jsonl_path,
+                fdot_path=DEFAULT_FDOT_FILE,
+                cache_dir=OUTPUT_DIR / "fdot_mappings" / map_id,
+                run_mapping_path=run_folder / "fdot" / "fdot_edge_mapping.csv",
+                map_id=map_id,
+            )
+            print(f"FDOT mapping status: {fdot_mapping_status['status']}")
+        except Exception as error:
+            fdot_mapping_status = {
+                "status": "failed",
+                "reason": str(error),
+            }
+            # Telemetry and heatmaps are still useful if optional FDOT matching fails.
+            print(f"WARNING: FDOT mapping could not be prepared: {error}")
+
     # Run the telemetry analysis and keep the returned results.
     # We use the summary values from this result to build the dashboard JSON.
     analysis_results = run_analysis(
@@ -849,6 +877,7 @@ def main() -> int:
         edges_jsonl_path=saved_edges_jsonl,
         source_network_graph_path=nodes_jsonl_path,
         source_edges_jsonl_path=edge_jsonl_path,
+        fdot_mapping_status=fdot_mapping_status,
     )
 
     done_file = TELEMETRY_DIR / "telemetry_done.txt"
