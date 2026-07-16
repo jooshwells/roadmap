@@ -14,9 +14,6 @@ struct IDMParameters {
     float safeTimeHeadway;
     float length;
     float politeness;      // MOBIL p: 0 = selfish, 1 = selfless
-    // Defaulted so existing positional braced-inits keep compiling.
-    float speedFactor = 1.0f; // desiredSpeed = speedFactor * edge speed limit
-    float bSafeMobil  = 2.0f; // MOBIL b_safe: max decel imposed on a new follower
 };
 
 class VehicleState {
@@ -63,20 +60,11 @@ class VehicleState {
         inline float getMaxAccel() const          { return maxAccel; }
         inline float getLength() const            { return m_length;}
         inline float getPoliteness() const        { return politeness; }
-        inline float getSpeedFactor() const       { return m_speedFactor; }
-        inline float getSafeBrakeMobil() const    { return m_bSafeMobil; }
-        // Profile desiredSpeed doubles as a hard vehicle cap (truck governor):
-        // speed-limit tracking never pushes desiredSpeed above this.
-        inline float getDesiredSpeedCap() const   { return m_desiredSpeedCap; }
 
         // Lane transition state (m_lane is always the committed target lane)
         inline bool  isChangingLanes() const      { return m_laneChangeElapsed < m_laneChangeDuration; }
         inline int   getPreviousLane() const      { return m_laneFrom; }
         inline bool  canStartLaneChange() const   { return !isChangingLanes() && m_laneChangeCooldown <= 0.0f; }
-        // True while the car's body still physically overlaps `lane` — the
-        // committed lane always, plus the vacated lane until the slide has
-        // progressed far enough that the body has cleared it.
-        bool occupiesLane(int lane) const;
         // Continuous lane position for rendering: eases from the old lane to
         // the new one (smoothstep) over the transition interval.
         float getRenderLane() const;
@@ -120,9 +108,6 @@ class VehicleState {
         float safeTimeHeadway;
         float m_length;
         float politeness;
-        float m_speedFactor;
-        float m_bSafeMobil;
-        float m_desiredSpeedCap;
 
         Road* currentEdge = nullptr; 
     

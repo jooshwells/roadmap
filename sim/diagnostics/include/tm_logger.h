@@ -72,8 +72,7 @@ class TelemetryLogger
             if (outFile.is_open()) 
             {
                 outFile << "Time,VehicleID,EdgeID,LaneIndex,Speed_mps,Accel_mps2,"
-                        << "Pos_m,RouteIndex,WaitTime_s,OriginID,DestID,"
-                        << "Length_m,DesiredSpeed_mps\n";
+                        << "Pos_m,RouteIndex,WaitTime_s,OriginID,DestID\n";
             }
             
             // Start the background thread
@@ -123,9 +122,7 @@ class TelemetryLogger
                        << vhcl->currentRouteIndex << ","
                        << vhcl->getWaitTime() << ","
                        << vhcl->getOrigin() << ","
-                       << vhcl->getDestination() << ","
-                       << vhcl->getLength() << ","        // 18.0 uniquely marks trucks
-                       << vhcl->getDesiredSpeed() << "\n";
+                       << vhcl->getDestination() << "\n";
             }
 
             frameCount++;

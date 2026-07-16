@@ -330,7 +330,6 @@ std::vector<VehicleRenderState> TrafficSimulation::GetVehicleRenderStates()
         state.z = static_cast<float>(p.z);
         state.yaw = p.yaw;
         state.pitch = p.pitch;
-        state.length = v->getLength();
         state.id = v->getId();
 
         renderStates.push_back(state);
@@ -549,10 +548,7 @@ void TrafficSimulation::UpdateRuntimeRoad(uint64_t u, uint64_t v, int lanes, flo
         if (!onFwd && !onRev) continue;
 
         if (veh->getLane() >= safeLanes) veh->setLane(safeLanes - 1);
-        // Same compliance-scaled, governor-capped tracking the sim applies at
-        // edge transitions.
-        veh->setDesiredSpeed(std::min(safeSpeed * veh->getSpeedFactor(),
-                                      veh->getDesiredSpeedCap()));
+        veh->setDesiredSpeed(safeSpeed);
     }
 }
 

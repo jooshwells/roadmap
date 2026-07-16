@@ -17,21 +17,13 @@ void VehicleSpatialHash::rebuild(const std::vector<VehicleState*>& activeVehicle
         if (edgeBuckets[currentRoad].size() <= lane) {
             edgeBuckets[currentRoad].resize(lane + 1);
         }
-
-        edgeBuckets[currentRoad][lane].push_back(v);
-
-        // While sliding between lanes the body still blocks the vacated lane,
-        // so register the car there too until it has physically cleared it.
-        // Lane-count guard: m_laneFrom indexed the OLD edge's lanes and may
-        // not exist after an edge transition mid-change.
-        int prevLane = v->getPreviousLane();
-        if (v->isChangingLanes() && prevLane != lane && prevLane >= 0
-            && prevLane < currentRoad->getLanes() && v->occupiesLane(prevLane)) {
-            if (edgeBuckets[currentRoad].size() <= prevLane) {
-                edgeBuckets[currentRoad].resize(prevLane + 1);
-            }
-            edgeBuckets[currentRoad][prevLane].push_back(v);
+        
+        // Ensure the 2D vector is sized correctly for the lanes on this road
+        if (edgeBuckets[currentRoad].size() <= lane) {
+            edgeBuckets[currentRoad].resize(lane + 1);
         }
+        
+        edgeBuckets[currentRoad][lane].push_back(v);
     }
 
     // Sort each lane's vehicles by position (distance along the edge)

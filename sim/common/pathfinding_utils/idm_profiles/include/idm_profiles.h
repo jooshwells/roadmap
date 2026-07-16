@@ -17,9 +17,7 @@ class IDM_Profiles
                 1.5f,       // safeBrakePower (b)
                 1.5f,       // safeTimeHeadway (T)
                 4.5f,       // car length
-                0.3f,       // politeness (p)
-                1.0f,       // speedFactor (jittered per driver at spawn)
-                2.0f        // bSafeMobil (comfortable b_safe, Kesting et al. 2007)
+                0.3f        // politeness (p)
             };
         }
         
@@ -34,9 +32,7 @@ class IDM_Profiles
                 2.5f,       // safeBrakePower
                 0.8f,       // safeTimeHeadway
                 4.5f,       // car lenght
-                0.05f,      // politeness (darts across lanes)
-                1.0f,       // speedFactor (jittered per driver at spawn)
-                3.0f        // bSafeMobil (forces harder braking on others)
+                0.05f       // politeness (darts across lanes)
             };
         }
 
@@ -51,9 +47,7 @@ class IDM_Profiles
                 1.0f,       // safeBrakePower
                 2.5f,       // safeTimeHeadway
                 18.0f,      // car length
-                0.6f,       // politeness (slow, deliberate merges)
-                1.0f,       // speedFactor (jittered per driver at spawn)
-                1.5f        // bSafeMobil (conservative merges)
+                0.6f        // politeness (slow, deliberate merges)
             };
         }
 };
