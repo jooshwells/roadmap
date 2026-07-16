@@ -78,6 +78,8 @@ private:
     void RefreshSelectedRunDetails();
 
     void RefreshRunRowStyles();
+    void RefreshComparisonOptions(int32 PreferredRunIndex = INDEX_NONE);
+    void RenderComparisonResult(const FTelemetryRunComparisonResult& Result);
 
     // Converts between UI labels and IDs used by the Python pipeline.
     FString GetMetricId(const FString& DisplayName) const;
@@ -128,6 +130,16 @@ private:
         const FString& ErrorMessage
     );
 
+    UFUNCTION()
+    UWidget* MakeComboEntry(FString Item);
+    void FinishRunComparison(
+        const FString& BaselineRunId,
+        const FString& ComparisonRunId,
+        bool bSucceeded,
+        const FTelemetryRunComparisonResult& Result,
+        const FString& ErrorMessage
+    );
+
     // Widget event handlers.
     void HandleRunSelected(int32 RunIndex);
 
@@ -145,6 +157,18 @@ private:
 
     UFUNCTION()
     void HandleFDOTTabClicked();
+
+    UFUNCTION()
+    void HandleCompareTabClicked();
+
+    UFUNCTION()
+    void HandleComparisonRunChanged(FString SelectedItem, ESelectInfo::Type SelectionType);
+
+    UFUNCTION()
+    void HandleCompareRunsClicked();
+
+    UFUNCTION()
+    void HandleSwapComparisonRunsClicked();
 
     UFUNCTION()
     void HandleMetricSelectionChanged(FString SelectedItem, ESelectInfo::Type SelectionType);
@@ -181,6 +205,8 @@ private:
 
     TArray<FTelemetryRunInfo> SavedRuns;
     int32 SelectedRunIndex = INDEX_NONE;
+    int32 ComparisonRunIndex = INDEX_NONE;
+    TArray<int32> ComparisonRunIndices;
     FString SelectedMetric = TEXT("bottleneck_score");
     FString SelectedFocus = TEXT("all");
     FString CurrentHeatmapMetric;
@@ -224,6 +250,24 @@ private:
 
     UPROPERTY()
     TObjectPtr<UButton> FDOTTabButton;
+
+    UPROPERTY()
+    TObjectPtr<UButton> CompareTabButton;
+
+    UPROPERTY()
+    TObjectPtr<UTextBlock> ComparisonBaselineText;
+
+    UPROPERTY()
+    TObjectPtr<UComboBoxString> ComparisonRunComboBox;
+
+    UPROPERTY()
+    TObjectPtr<UButton> CompareRunsButton;
+
+    UPROPERTY()
+    TObjectPtr<UButton> SwapComparisonRunsButton;
+
+    UPROPERTY()
+    TObjectPtr<UVerticalBox> ComparisonResultsBox;
 
     UPROPERTY()
     TObjectPtr<UComboBoxString> MetricComboBox;

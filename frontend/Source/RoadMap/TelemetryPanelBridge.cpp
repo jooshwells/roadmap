@@ -106,7 +106,9 @@ bool UTelemetryPanelBridge::RunTelemetryCommand(const FString& Command, const TA
         return false;
     }
 
-    if (Command != TEXT("generate-heatmap") && Command != TEXT("compare-fdot"))
+    if (Command != TEXT("generate-heatmap")
+        && Command != TEXT("compare-fdot")
+        && Command != TEXT("compare-runs"))
     {
         OutJson = FString::Printf(
             TEXT("{\"success\":false,\"error\":\"Unknown telemetry panel command.\",\"command\":\"%s\"}"),
@@ -881,6 +883,171 @@ bool UTelemetryPanelBridge::GenerateSelectedHeatmap(
         },
         OutJson
     );
+}
+
+bool UTelemetryPanelBridge::CompareSavedRuns(
+    const FString& BaselineRunId,
+    const FString& ComparisonRunId,
+    FTelemetryRunComparisonResult& OutResult,
+    FString& OutError
+)
+{
+    OutResult = FTelemetryRunComparisonResult();
+    OutError.Empty();
+
+    auto IsInvalidRunId = [](const FString& RunId)
+    {
+        return RunId.IsEmpty() || RunId.Contains(TEXT("..")) ||
+            RunId.Contains(TEXT("/")) || RunId.Contains(TEXT("\\"));
+    };
+    if (IsInvalidRunId(BaselineRunId) || IsInvalidRunId(ComparisonRunId))
+    {
+        OutError = TEXT("One of the selected run IDs is invalid.");
+        return false;
+    }
+
+    FString ResultJson;
+    if (!RunTelemetryCommand(
+            TEXT("compare-runs"),
+            {
+                TEXT("--baseline-run-id"), BaselineRunId,
+                TEXT("--comparison-run-id"), ComparisonRunId
+            },
+            ResultJson
+        ))
+    {
+        TSharedPtr<FJsonObject> ErrorObject;
+        const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(FindLastJsonLine(ResultJson));
+        if (!FJsonSerializer::Deserialize(Reader, ErrorObject) || !ErrorObject.IsValid() ||
+            !ErrorObject->TryGetStringField(TEXT("error"), OutError))
+        {
+            OutError = TEXT("Run comparison failed.");
+        }
+        return false;
+    }
+
+    TSharedPtr<FJsonObject> Root;
+    const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(FindLastJsonLine(ResultJson));
+    if (!FJsonSerializer::Deserialize(Reader, Root) || !Root.IsValid())
+    {
+        OutError = TEXT("Run comparison returned an unreadable response.");
+        return false;
+    }
+
+    bool bSuccess = false;
+    Root->TryGetBoolField(TEXT("success"), bSuccess);
+    if (!bSuccess)
+    {
+        if (!Root->TryGetStringField(TEXT("error"), OutError))
+        {
+            OutError = TEXT("Run comparison did not complete.");
+        }
+        return false;
+    }
+
+    const TSharedPtr<FJsonObject>* BaselineObject = nullptr;
+    const TSharedPtr<FJsonObject>* ComparisonObject = nullptr;
+    if (Root->TryGetObjectField(TEXT("baseline"), BaselineObject) && BaselineObject && BaselineObject->IsValid())
+    {
+        (*BaselineObject)->TryGetStringField(TEXT("run_id"), OutResult.BaselineRunId);
+        (*BaselineObject)->TryGetStringField(TEXT("created_at"), OutResult.BaselineCreatedAt);
+    }
+    if (Root->TryGetObjectField(TEXT("comparison"), ComparisonObject) && ComparisonObject && ComparisonObject->IsValid())
+    {
+        (*ComparisonObject)->TryGetStringField(TEXT("run_id"), OutResult.ComparisonRunId);
+        (*ComparisonObject)->TryGetStringField(TEXT("created_at"), OutResult.ComparisonCreatedAt);
+    }
+
+    Root->TryGetBoolField(TEXT("preliminary"), OutResult.bPreliminary);
+    const TSharedPtr<FJsonObject>* CoverageObject = nullptr;
+    if (Root->TryGetObjectField(TEXT("road_coverage"), CoverageObject) && CoverageObject && CoverageObject->IsValid())
+    {
+        double SharedRoads = 0.0;
+        double CoveragePercent = 0.0;
+        (*CoverageObject)->TryGetNumberField(TEXT("shared_roads"), SharedRoads);
+        (*CoverageObject)->TryGetNumberField(TEXT("shared_coverage_percent"), CoveragePercent);
+        OutResult.SharedRoads = static_cast<int32>(SharedRoads);
+        OutResult.SharedCoveragePercent = static_cast<float>(CoveragePercent);
+    }
+
+    const TArray<TSharedPtr<FJsonValue>>* WarningValues = nullptr;
+    if (Root->TryGetArrayField(TEXT("warnings"), WarningValues) && WarningValues)
+    {
+        for (const TSharedPtr<FJsonValue>& Value : *WarningValues)
+        {
+            FString Warning;
+            if (Value.IsValid() && Value->TryGetString(Warning))
+            {
+                OutResult.Warnings.Add(Warning);
+            }
+        }
+    }
+
+    const TArray<TSharedPtr<FJsonValue>>* MetricValues = nullptr;
+    if (Root->TryGetArrayField(TEXT("metrics"), MetricValues) && MetricValues)
+    {
+        for (const TSharedPtr<FJsonValue>& Value : *MetricValues)
+        {
+            const TSharedPtr<FJsonObject>* Object = nullptr;
+            if (!Value.IsValid() || !Value->TryGetObject(Object) || !Object || !Object->IsValid())
+            {
+                continue;
+            }
+            FTelemetryRunComparisonMetric Metric;
+            double Baseline = 0.0, Comparison = 0.0, Delta = 0.0, Percent = 0.0;
+            (*Object)->TryGetStringField(TEXT("label"), Metric.Label);
+            (*Object)->TryGetStringField(TEXT("unit"), Metric.Unit);
+            (*Object)->TryGetStringField(TEXT("status"), Metric.Status);
+            (*Object)->TryGetStringField(TEXT("explanation"), Metric.Explanation);
+            (*Object)->TryGetNumberField(TEXT("baseline"), Baseline);
+            (*Object)->TryGetNumberField(TEXT("comparison"), Comparison);
+            (*Object)->TryGetNumberField(TEXT("delta"), Delta);
+            Metric.bHasPercentChange = (*Object)->TryGetNumberField(TEXT("percent_change"), Percent);
+            Metric.BaselineValue = static_cast<float>(Baseline);
+            Metric.ComparisonValue = static_cast<float>(Comparison);
+            Metric.Delta = static_cast<float>(Delta);
+            Metric.PercentChange = static_cast<float>(Percent);
+            OutResult.Metrics.Add(Metric);
+        }
+    }
+
+    const TArray<TSharedPtr<FJsonValue>>* RoadValues = nullptr;
+    if (Root->TryGetArrayField(TEXT("top_road_changes"), RoadValues) && RoadValues)
+    {
+        for (const TSharedPtr<FJsonValue>& Value : *RoadValues)
+        {
+            const TSharedPtr<FJsonObject>* Object = nullptr;
+            if (!Value.IsValid() || !Value->TryGetObject(Object) || !Object || !Object->IsValid())
+            {
+                continue;
+            }
+            FTelemetryRunRoadChange Road;
+            double EdgeId = 0.0, BaselineSpeed = 0.0, ComparisonSpeed = 0.0;
+            double SpeedDelta = 0.0, BaselineWait = 0.0, ComparisonWait = 0.0;
+            double WaitDelta = 0.0, BottleneckDelta = 0.0;
+            (*Object)->TryGetNumberField(TEXT("edge_id"), EdgeId);
+            (*Object)->TryGetStringField(TEXT("road_name"), Road.RoadName);
+            (*Object)->TryGetStringField(TEXT("status"), Road.Status);
+            (*Object)->TryGetNumberField(TEXT("baseline_speed_mph"), BaselineSpeed);
+            (*Object)->TryGetNumberField(TEXT("comparison_speed_mph"), ComparisonSpeed);
+            (*Object)->TryGetNumberField(TEXT("speed_delta_mph"), SpeedDelta);
+            (*Object)->TryGetNumberField(TEXT("baseline_wait_s"), BaselineWait);
+            (*Object)->TryGetNumberField(TEXT("comparison_wait_s"), ComparisonWait);
+            (*Object)->TryGetNumberField(TEXT("wait_delta_s"), WaitDelta);
+            (*Object)->TryGetNumberField(TEXT("bottleneck_delta"), BottleneckDelta);
+            Road.EdgeId = static_cast<int32>(EdgeId);
+            Road.BaselineSpeedMph = static_cast<float>(BaselineSpeed);
+            Road.ComparisonSpeedMph = static_cast<float>(ComparisonSpeed);
+            Road.SpeedDeltaMph = static_cast<float>(SpeedDelta);
+            Road.BaselineWaitSeconds = static_cast<float>(BaselineWait);
+            Road.ComparisonWaitSeconds = static_cast<float>(ComparisonWait);
+            Road.WaitDeltaSeconds = static_cast<float>(WaitDelta);
+            Road.BottleneckDelta = static_cast<float>(BottleneckDelta);
+            OutResult.TopRoadChanges.Add(Road);
+        }
+    }
+
+    return true;
 }
 
 // Runs the packaged FDOT comparison and converts its JSON response for the native UI.

@@ -6,6 +6,7 @@ import shutil
 
 from src.telemetry.telemetry_analysis import run_analysis
 from src.telemetry.run_manager import create_run_folder, make_map_id
+from src.telemetry.run_comparison import compare_saved_runs
 from src.heatmaps.visualize_telemetry_heatmap import load_files, plot_heatmap
 from src.fdot.fdot_vs_simulation import compare_fdot_to_simulation
 from src.fdot.fdot_option_a_matcher import DEFAULT_FDOT_FILE, ensure_fdot_mapping
@@ -325,6 +326,22 @@ def get_run_details(run_id: str) -> dict:
         "metadata": metadata,
         "summary": summary,
     }
+
+
+def compare_runs(baseline_run_id: str, comparison_run_id: str) -> dict:
+    """Compare two saved runs after resolving their folders safely."""
+    if baseline_run_id == comparison_run_id:
+        return {"success": False, "error": "Choose two different runs to compare."}
+
+    baseline_folder = find_run_folder(baseline_run_id)
+    comparison_folder = find_run_folder(comparison_run_id)
+    if baseline_folder is None or comparison_folder is None:
+        return {"success": False, "error": "One or both saved run folders could not be found."}
+
+    try:
+        return compare_saved_runs(baseline_folder, comparison_folder)
+    except (FileNotFoundError, ValueError, KeyError, pd.errors.ParserError) as error:
+        return {"success": False, "error": str(error)}
 
 
 # Returns the expected heatmap PNG path for one run and metric.
@@ -662,6 +679,17 @@ def handle_panel_command(argv: list[str]) -> int:
                 }
             else:
                 result = get_run_details(run_id)
+
+        elif command == "compare-runs":
+            baseline_run_id = get_arg_value("--baseline-run-id")
+            comparison_run_id = get_arg_value("--comparison-run-id")
+            if not baseline_run_id or not comparison_run_id:
+                result = {
+                    "success": False,
+                    "error": "Missing --baseline-run-id or --comparison-run-id.",
+                }
+            else:
+                result = compare_runs(baseline_run_id, comparison_run_id)
 
         elif command == "get-heatmap-path":
             run_id = get_arg_value("--run-id")

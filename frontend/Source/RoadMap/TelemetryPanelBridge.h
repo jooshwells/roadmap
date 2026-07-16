@@ -83,6 +83,59 @@ struct FTelemetryHeatmapSummaryRow
     FString Value;
 };
 
+// One high-level value compared between a baseline and a second simulation run.
+USTRUCT(BlueprintType)
+struct FTelemetryRunComparisonMetric
+{
+    GENERATED_BODY()
+
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry") FString Label;
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry") FString Unit;
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry") FString Status;
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry") FString Explanation;
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry") float BaselineValue = 0.0f;
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry") float ComparisonValue = 0.0f;
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry") float Delta = 0.0f;
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry") float PercentChange = 0.0f;
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry") bool bHasPercentChange = false;
+};
+
+// One shared road with a notable change between the selected runs.
+USTRUCT(BlueprintType)
+struct FTelemetryRunRoadChange
+{
+    GENERATED_BODY()
+
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry") int32 EdgeId = INDEX_NONE;
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry") FString RoadName;
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry") FString Status;
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry") float BaselineSpeedMph = 0.0f;
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry") float ComparisonSpeedMph = 0.0f;
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry") float SpeedDeltaMph = 0.0f;
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry") float BaselineWaitSeconds = 0.0f;
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry") float ComparisonWaitSeconds = 0.0f;
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry") float WaitDeltaSeconds = 0.0f;
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry") float BottleneckDelta = 0.0f;
+};
+
+// Complete response used by the native run-comparison tab.
+USTRUCT(BlueprintType)
+struct FTelemetryRunComparisonResult
+{
+    GENERATED_BODY()
+
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry") FString BaselineRunId;
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry") FString ComparisonRunId;
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry") FString BaselineCreatedAt;
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry") FString ComparisonCreatedAt;
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry") int32 SharedRoads = 0;
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry") float SharedCoveragePercent = 0.0f;
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry") bool bPreliminary = false;
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry") TArray<FString> Warnings;
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry") TArray<FTelemetryRunComparisonMetric> Metrics;
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry") TArray<FTelemetryRunRoadChange> TopRoadChanges;
+};
+
 // One analyzed road and its normalized shape for native hover/click hit testing.
 USTRUCT(BlueprintType)
 struct FTelemetryHeatmapRoad
@@ -228,6 +281,14 @@ public:
     static bool GetSavedRunDetails(
         const FString& RunId,
         FTelemetryRunDetails& OutDetails,
+        FString& OutError
+    );
+
+    // Compares two saved runs from the same map using the packaged pipeline.
+    static bool CompareSavedRuns(
+        const FString& BaselineRunId,
+        const FString& ComparisonRunId,
+        FTelemetryRunComparisonResult& OutResult,
         FString& OutError
     );
 

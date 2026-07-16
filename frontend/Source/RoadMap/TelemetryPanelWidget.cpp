@@ -25,6 +25,7 @@
 #include "Engine/Texture2D.h"
 #include "InputCoreTypes.h"
 #include "Misc/Paths.h"
+#include "RoadPanelStyle.h"
 #include "RoadmapGameInstance.h"
 #include "Styling/CoreStyle.h"
 #include "Styling/SlateTypes.h"
@@ -286,6 +287,13 @@ UTextBlock* UTelemetryPanelWidget::MakeText(
     return Block;
 }
 
+UWidget* UTelemetryPanelWidget::MakeComboEntry(FString Item)
+{
+    UTextBlock* Entry = MakeText(Item, 11, RoadPanelStyle::ControlText);
+    Entry->SetAutoWrapText(false);
+    return Entry;
+}
+
 UButton* UTelemetryPanelWidget::MakeActionButton(const FString& Label, bool bPrimary)
 {
     UButton* Button = WidgetTree->ConstructWidget<UButton>();
@@ -469,6 +477,14 @@ void UTelemetryPanelWidget::BuildWidgetTree()
     if (UHorizontalBoxSlot* FDOTSlot = WorkspaceTabs->AddChildToHorizontalBox(FDOTTabButton))
     {
         FDOTSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+        FDOTSlot->SetPadding(FMargin(0.0f, 0.0f, 8.0f, 0.0f));
+    }
+
+    CompareTabButton = MakeActionButton(TEXT("Compare"), false);
+    CompareTabButton->OnClicked.AddDynamic(this, &UTelemetryPanelWidget::HandleCompareTabClicked);
+    if (UHorizontalBoxSlot* CompareSlot = WorkspaceTabs->AddChildToHorizontalBox(CompareTabButton))
+    {
+        CompareSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
     }
 
     WorkspaceSwitcher = WidgetTree->ConstructWidget<UWidgetSwitcher>();
@@ -529,6 +545,8 @@ void UTelemetryPanelWidget::BuildWidgetTree()
     }
 
     MetricComboBox = WidgetTree->ConstructWidget<UComboBoxString>();
+    RoadPanelStyle::StyleTurnLaneCombo(MetricComboBox);
+    MetricComboBox->OnGenerateWidgetEvent.BindUFunction(this, FName("MakeComboEntry"));
     MetricComboBox->AddOption(TEXT("Bottleneck Score"));
     MetricComboBox->AddOption(TEXT("Estimated Traffic Flow"));
     MetricComboBox->AddOption(TEXT("Average Speed"));
@@ -555,6 +573,8 @@ void UTelemetryPanelWidget::BuildWidgetTree()
     }
 
     FocusComboBox = WidgetTree->ConstructWidget<UComboBoxString>();
+    RoadPanelStyle::StyleTurnLaneCombo(FocusComboBox);
+    FocusComboBox->OnGenerateWidgetEvent.BindUFunction(this, FName("MakeComboEntry"));
     FocusComboBox->AddOption(TEXT("All Roads"));
     FocusComboBox->AddOption(TEXT("Worst 25%"));
     FocusComboBox->AddOption(TEXT("Worst 10%"));
@@ -635,6 +655,74 @@ void UTelemetryPanelWidget::BuildWidgetTree()
     {
         FDOTTextSlot->SetPadding(FMargin(0.0f, 18.0f, 0.0f, 0.0f));
         FDOTTextSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+    }
+
+    // Run comparison keeps the selected run as the baseline and explains each change.
+    UVerticalBox* ComparisonPanel = WidgetTree->ConstructWidget<UVerticalBox>();
+    WorkspaceSwitcher->AddChild(ComparisonPanel);
+    ComparisonPanel->AddChildToVerticalBox(
+        MakeText(TEXT("COMPARE SIMULATION RUNS"), 11, TextSecondary, FName("Medium"), 180)
+    );
+
+    UTextBlock* ComparisonHelp = MakeText(
+        TEXT("Use one run as the baseline, then see whether traffic conditions improved or worsened in another run from the same map."),
+        12,
+        TextFaint
+    );
+    ComparisonHelp->SetAutoWrapText(true);
+    if (UVerticalBoxSlot* HelpSlot = ComparisonPanel->AddChildToVerticalBox(ComparisonHelp))
+    {
+        HelpSlot->SetPadding(FMargin(0.0f, 7.0f, 0.0f, 14.0f));
+    }
+
+    ComparisonBaselineText = MakeText(TEXT("Baseline: Select a saved run"), 12, TextPrimary, FName("Medium"));
+    ComparisonBaselineText->SetAutoWrapText(true);
+    ComparisonPanel->AddChildToVerticalBox(ComparisonBaselineText);
+
+    UTextBlock* CompareWithLabel = MakeText(TEXT("COMPARE WITH"), 10, TextSecondary, FName("Medium"), 140);
+    if (UVerticalBoxSlot* LabelSlot = ComparisonPanel->AddChildToVerticalBox(CompareWithLabel))
+    {
+        LabelSlot->SetPadding(FMargin(0.0f, 14.0f, 0.0f, 7.0f));
+    }
+
+    ComparisonRunComboBox = WidgetTree->ConstructWidget<UComboBoxString>();
+    RoadPanelStyle::StyleTurnLaneCombo(ComparisonRunComboBox);
+    ComparisonRunComboBox->OnGenerateWidgetEvent.BindUFunction(this, FName("MakeComboEntry"));
+    ComparisonRunComboBox->OnSelectionChanged.AddDynamic(
+        this,
+        &UTelemetryPanelWidget::HandleComparisonRunChanged
+    );
+    ComparisonPanel->AddChildToVerticalBox(ComparisonRunComboBox);
+
+    UHorizontalBox* ComparisonActions = WidgetTree->ConstructWidget<UHorizontalBox>();
+    if (UVerticalBoxSlot* ActionSlot = ComparisonPanel->AddChildToVerticalBox(ComparisonActions))
+    {
+        ActionSlot->SetPadding(FMargin(0.0f, 12.0f, 0.0f, 0.0f));
+    }
+    CompareRunsButton = MakeActionButton(TEXT("Compare Runs"), true);
+    CompareRunsButton->OnClicked.AddDynamic(this, &UTelemetryPanelWidget::HandleCompareRunsClicked);
+    if (UHorizontalBoxSlot* CompareButtonSlot = ComparisonActions->AddChildToHorizontalBox(CompareRunsButton))
+    {
+        CompareButtonSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+        CompareButtonSlot->SetPadding(FMargin(0.0f, 0.0f, 8.0f, 0.0f));
+    }
+    SwapComparisonRunsButton = MakeActionButton(TEXT("Swap"), false);
+    SwapComparisonRunsButton->OnClicked.AddDynamic(this, &UTelemetryPanelWidget::HandleSwapComparisonRunsClicked);
+    if (UHorizontalBoxSlot* SwapSlot = ComparisonActions->AddChildToHorizontalBox(SwapComparisonRunsButton))
+    {
+        SwapSlot->SetSize(FSlateChildSize(ESlateSizeRule::Automatic));
+    }
+
+    UScrollBox* ComparisonScrollBox = WidgetTree->ConstructWidget<UScrollBox>();
+    ComparisonResultsBox = WidgetTree->ConstructWidget<UVerticalBox>();
+    ComparisonScrollBox->AddChild(ComparisonResultsBox);
+    ComparisonResultsBox->AddChildToVerticalBox(
+        MakeText(TEXT("Select a baseline and another run to see the differences."), 12, TextSecondary)
+    );
+    if (UVerticalBoxSlot* ResultsSlot = ComparisonPanel->AddChildToVerticalBox(ComparisonScrollBox))
+    {
+        ResultsSlot->SetPadding(FMargin(0.0f, 16.0f, 0.0f, 0.0f));
+        ResultsSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
     }
 
     SetWorkspaceTab(0);
@@ -891,6 +979,24 @@ void UTelemetryPanelWidget::RefreshRunList()
     RunRows.Empty();
     SavedRuns.Empty();
     SelectedRunIndex = INDEX_NONE;
+    ComparisonRunIndex = INDEX_NONE;
+    ComparisonRunIndices.Empty();
+    if (ComparisonRunComboBox)
+    {
+        ComparisonRunComboBox->ClearOptions();
+    }
+    if (ComparisonBaselineText)
+    {
+        ComparisonBaselineText->SetText(FText::FromString(TEXT("Baseline: Select a saved run")));
+    }
+    if (CompareRunsButton)
+    {
+        CompareRunsButton->SetIsEnabled(false);
+    }
+    if (SwapComparisonRunsButton)
+    {
+        SwapComparisonRunsButton->SetIsEnabled(false);
+    }
     RefreshHeatmapActionState();
 
     if (FDOTValidationText)
@@ -944,6 +1050,8 @@ void UTelemetryPanelWidget::RefreshRunList()
             RowSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 9.0f));
         }
     }
+
+    RefreshComparisonOptions();
 
     RunDetailsText->SetText(FText::FromString(TEXT("Select a saved run to view its telemetry summary.")));
     SetStatus(FString::Printf(
@@ -1004,6 +1112,164 @@ void UTelemetryPanelWidget::RefreshRunRowStyles()
         {
             RunRows[RowIndex]->SetStyle(RunRowStyle(RowIndex == SelectedRunIndex));
         }
+    }
+}
+
+void UTelemetryPanelWidget::RefreshComparisonOptions(int32 PreferredRunIndex)
+{
+    ComparisonRunIndices.Empty();
+    ComparisonRunIndex = INDEX_NONE;
+    if (!ComparisonRunComboBox)
+    {
+        return;
+    }
+
+    ComparisonRunComboBox->ClearOptions();
+    if (SavedRuns.IsValidIndex(SelectedRunIndex))
+    {
+        ComparisonBaselineText->SetText(FText::FromString(FString::Printf(
+            TEXT("Baseline: %s"), *SavedRuns[SelectedRunIndex].CreatedAt
+        )));
+    }
+    else
+    {
+        ComparisonBaselineText->SetText(FText::FromString(TEXT("Baseline: Select a saved run")));
+    }
+
+    for (int32 RunIndex = 0; RunIndex < SavedRuns.Num(); ++RunIndex)
+    {
+        if (RunIndex == SelectedRunIndex)
+        {
+            continue;
+        }
+        ComparisonRunIndices.Add(RunIndex);
+        ComparisonRunComboBox->AddOption(SavedRuns[RunIndex].CreatedAt);
+    }
+
+    int32 OptionIndex = ComparisonRunIndices.IndexOfByKey(PreferredRunIndex);
+    if (OptionIndex == INDEX_NONE)
+    {
+        OptionIndex = 0;
+    }
+    if (ComparisonRunIndices.IsValidIndex(OptionIndex))
+    {
+        ComparisonRunIndex = ComparisonRunIndices[OptionIndex];
+        ComparisonRunComboBox->SetSelectedOption(SavedRuns[ComparisonRunIndex].CreatedAt);
+    }
+
+    const bool bCanCompare = SavedRuns.IsValidIndex(SelectedRunIndex) &&
+        SavedRuns.IsValidIndex(ComparisonRunIndex) && !bTelemetryTaskRunning;
+    CompareRunsButton->SetIsEnabled(bCanCompare);
+    SwapComparisonRunsButton->SetIsEnabled(bCanCompare);
+}
+
+void UTelemetryPanelWidget::RenderComparisonResult(const FTelemetryRunComparisonResult& Result)
+{
+    if (!ComparisonResultsBox)
+    {
+        return;
+    }
+    ComparisonResultsBox->ClearChildren();
+
+    UTextBlock* Heading = MakeText(
+        FString::Printf(
+            TEXT("BASELINE\n%s\n\nCOMPARISON\n%s"),
+            *Result.BaselineCreatedAt.Replace(TEXT("_"), TEXT(" ")),
+            *Result.ComparisonCreatedAt.Replace(TEXT("_"), TEXT(" "))
+        ),
+        12,
+        TextPrimary,
+        FName("Medium")
+    );
+    Heading->SetAutoWrapText(true);
+    ComparisonResultsBox->AddChildToVerticalBox(Heading);
+    ComparisonResultsBox->AddChildToVerticalBox(MakeText(
+        FString::Printf(
+            TEXT("\n%d shared road directions (%.1f%% coverage)"),
+            Result.SharedRoads,
+            Result.SharedCoveragePercent
+        ),
+        11,
+        TextSecondary
+    ));
+
+    if (!Result.Warnings.IsEmpty())
+    {
+        ComparisonResultsBox->AddChildToVerticalBox(
+            MakeText(TEXT("\nPRELIMINARY RESULT"), 11, Accent, FName("Bold"))
+        );
+        for (const FString& Warning : Result.Warnings)
+        {
+            UTextBlock* WarningText = MakeText(FString::Printf(TEXT("- %s"), *Warning), 11, TextSecondary);
+            WarningText->SetAutoWrapText(true);
+            ComparisonResultsBox->AddChildToVerticalBox(WarningText);
+        }
+    }
+
+    ComparisonResultsBox->AddChildToVerticalBox(
+        MakeText(TEXT("\nOVERALL CHANGES"), 11, TextSecondary, FName("Medium"), 150)
+    );
+    for (const FTelemetryRunComparisonMetric& Metric : Result.Metrics)
+    {
+        const FLinearColor StatusColor = Metric.Status == TEXT("improved")
+            ? Success
+            : Metric.Status == TEXT("worsened") ? ErrorColor
+            : Metric.Status == TEXT("little_change") ? Accent : TextSecondary;
+        const FString StatusLabel = Metric.Status.Replace(TEXT("_"), TEXT(" ")).ToUpper();
+        const FString PercentText = Metric.bHasPercentChange
+            ? FString::Printf(TEXT("  |  %+.1f%%"), Metric.PercentChange)
+            : TEXT("");
+        UTextBlock* MetricText = MakeText(
+            FString::Printf(
+                TEXT("\n%s  -  %s\n%.2f -> %.2f %s  |  change %+.2f%s\n%s"),
+                *Metric.Label,
+                *StatusLabel,
+                Metric.BaselineValue,
+                Metric.ComparisonValue,
+                *Metric.Unit,
+                Metric.Delta,
+                *PercentText,
+                *Metric.Explanation
+            ),
+            11,
+            StatusColor,
+            FName("Medium")
+        );
+        MetricText->SetAutoWrapText(true);
+        ComparisonResultsBox->AddChildToVerticalBox(MetricText);
+    }
+
+    ComparisonResultsBox->AddChildToVerticalBox(
+        MakeText(TEXT("\nLARGEST ROAD CHANGES"), 11, TextSecondary, FName("Medium"), 150)
+    );
+    if (Result.TopRoadChanges.IsEmpty())
+    {
+        ComparisonResultsBox->AddChildToVerticalBox(
+            MakeText(TEXT("No shared road-level metrics were available."), 11, TextSecondary)
+        );
+    }
+    for (const FTelemetryRunRoadChange& Road : Result.TopRoadChanges)
+    {
+        const FLinearColor StatusColor = Road.Status == TEXT("improved")
+            ? Success : Road.Status == TEXT("worsened") ? ErrorColor : Accent;
+        UTextBlock* RoadText = MakeText(
+            FString::Printf(
+                TEXT("\n%s  -  %s\nSpeed: %.1f -> %.1f mph (%+.1f)\nWait: %.1f -> %.1f s (%+.1f)\nBottleneck change: %+.2f"),
+                *Road.RoadName,
+                *Road.Status.Replace(TEXT("_"), TEXT(" ")).ToUpper(),
+                Road.BaselineSpeedMph,
+                Road.ComparisonSpeedMph,
+                Road.SpeedDeltaMph,
+                Road.BaselineWaitSeconds,
+                Road.ComparisonWaitSeconds,
+                Road.WaitDeltaSeconds,
+                Road.BottleneckDelta
+            ),
+            11,
+            StatusColor
+        );
+        RoadText->SetAutoWrapText(true);
+        ComparisonResultsBox->AddChildToVerticalBox(RoadText);
     }
 }
 
@@ -1420,7 +1686,7 @@ void UTelemetryPanelWidget::ClearHeatmapRoadInteraction()
 // Shows one focused workspace instead of displaying every telemetry control at once.
 void UTelemetryPanelWidget::SetWorkspaceTab(int32 TabIndex)
 {
-    ActiveWorkspaceTab = FMath::Clamp(TabIndex, 0, 2);
+    ActiveWorkspaceTab = FMath::Clamp(TabIndex, 0, 3);
     if (WorkspaceSwitcher)
     {
         WorkspaceSwitcher->SetActiveWidgetIndex(ActiveWorkspaceTab);
@@ -1442,6 +1708,10 @@ void UTelemetryPanelWidget::RefreshWorkspaceTabStyles()
     if (FDOTTabButton)
     {
         FDOTTabButton->SetStyle(ActionButtonStyle(ActiveWorkspaceTab == 2));
+    }
+    if (CompareTabButton)
+    {
+        CompareTabButton->SetStyle(ActionButtonStyle(ActiveWorkspaceTab == 3));
     }
 }
 
@@ -1519,6 +1789,22 @@ void UTelemetryPanelWidget::SetTelemetryTaskRunning(bool bIsRunning)
     {
         ViewFDOTMapButton->SetIsEnabled(!bIsRunning && SavedRuns.IsValidIndex(SelectedRunIndex));
     }
+    if (ComparisonRunComboBox)
+    {
+        ComparisonRunComboBox->SetIsEnabled(!bIsRunning);
+    }
+    if (CompareRunsButton)
+    {
+        CompareRunsButton->SetIsEnabled(
+            !bIsRunning && SavedRuns.IsValidIndex(SelectedRunIndex) && SavedRuns.IsValidIndex(ComparisonRunIndex)
+        );
+    }
+    if (SwapComparisonRunsButton)
+    {
+        SwapComparisonRunsButton->SetIsEnabled(
+            !bIsRunning && SavedRuns.IsValidIndex(SelectedRunIndex) && SavedRuns.IsValidIndex(ComparisonRunIndex)
+        );
+    }
 
     for (UTelemetryRunButton* RunRow : RunRows)
     {
@@ -1543,6 +1829,7 @@ void UTelemetryPanelWidget::HandleRunSelected(int32 RunIndex)
     }
 
     SelectedRunIndex = RunIndex;
+    RefreshComparisonOptions();
     RefreshHeatmapActionState();
     if (FDOTValidationText)
     {
@@ -1588,6 +1875,117 @@ void UTelemetryPanelWidget::HandleFDOTTabClicked()
 {
     SetWorkspaceTab(2);
     SetStatus(TEXT("FDOT validation compares simulated traffic with real-world reference estimates."));
+}
+
+void UTelemetryPanelWidget::HandleCompareTabClicked()
+{
+    SetWorkspaceTab(3);
+    SetStatus(TEXT("Choose a baseline run and a second run from the same map."));
+}
+
+void UTelemetryPanelWidget::HandleComparisonRunChanged(
+    FString SelectedItem,
+    ESelectInfo::Type SelectionType
+)
+{
+    ComparisonRunIndex = INDEX_NONE;
+    for (const int32 RunIndex : ComparisonRunIndices)
+    {
+        if (SavedRuns.IsValidIndex(RunIndex) && SavedRuns[RunIndex].CreatedAt == SelectedItem)
+        {
+            ComparisonRunIndex = RunIndex;
+            break;
+        }
+    }
+    const bool bCanCompare = SavedRuns.IsValidIndex(SelectedRunIndex) &&
+        SavedRuns.IsValidIndex(ComparisonRunIndex) && !bTelemetryTaskRunning;
+    CompareRunsButton->SetIsEnabled(bCanCompare);
+    SwapComparisonRunsButton->SetIsEnabled(bCanCompare);
+}
+
+void UTelemetryPanelWidget::HandleSwapComparisonRunsClicked()
+{
+    if (bTelemetryTaskRunning || !SavedRuns.IsValidIndex(SelectedRunIndex) ||
+        !SavedRuns.IsValidIndex(ComparisonRunIndex))
+    {
+        return;
+    }
+
+    const int32 OldBaselineIndex = SelectedRunIndex;
+    SelectedRunIndex = ComparisonRunIndex;
+    RefreshComparisonOptions(OldBaselineIndex);
+    RefreshRunRowStyles();
+    RefreshSelectedRunDetails();
+    SetStatus(TEXT("Swapped the baseline and comparison runs."));
+}
+
+void UTelemetryPanelWidget::HandleCompareRunsClicked()
+{
+    if (bTelemetryTaskRunning)
+    {
+        return;
+    }
+    if (!SavedRuns.IsValidIndex(SelectedRunIndex) || !SavedRuns.IsValidIndex(ComparisonRunIndex))
+    {
+        SetStatus(TEXT("Select two different saved runs before comparing."), true);
+        return;
+    }
+
+    const FString BaselineRunId = SavedRuns[SelectedRunIndex].RunId;
+    const FString ComparisonRunId = SavedRuns[ComparisonRunIndex].RunId;
+    SetTelemetryTaskRunning(true);
+    SetStatus(TEXT("Comparing saved runs in the background..."));
+
+    TWeakObjectPtr<UTelemetryPanelWidget> WeakThis(this);
+    Async(EAsyncExecution::ThreadPool, [WeakThis, BaselineRunId, ComparisonRunId]()
+    {
+        FTelemetryRunComparisonResult Result;
+        FString ErrorMessage;
+        const bool bSucceeded = UTelemetryPanelBridge::CompareSavedRuns(
+            BaselineRunId,
+            ComparisonRunId,
+            Result,
+            ErrorMessage
+        );
+        AsyncTask(ENamedThreads::GameThread, [WeakThis, BaselineRunId, ComparisonRunId, bSucceeded, Result, ErrorMessage]()
+        {
+            if (WeakThis.IsValid())
+            {
+                WeakThis->FinishRunComparison(
+                    BaselineRunId,
+                    ComparisonRunId,
+                    bSucceeded,
+                    Result,
+                    ErrorMessage
+                );
+            }
+        });
+    });
+}
+
+void UTelemetryPanelWidget::FinishRunComparison(
+    const FString& BaselineRunId,
+    const FString& ComparisonRunId,
+    bool bSucceeded,
+    const FTelemetryRunComparisonResult& Result,
+    const FString& ErrorMessage
+)
+{
+    SetTelemetryTaskRunning(false);
+    if (!bSucceeded)
+    {
+        ComparisonResultsBox->ClearChildren();
+        UTextBlock* ErrorText = MakeText(ErrorMessage, 12, ErrorColor, FName("Medium"));
+        ErrorText->SetAutoWrapText(true);
+        ComparisonResultsBox->AddChildToVerticalBox(ErrorText);
+        SetStatus(ErrorMessage, true);
+        return;
+    }
+
+    RenderComparisonResult(Result);
+    SetStatus(Result.bPreliminary
+        ? TEXT("Run comparison completed with preliminary-data warnings.")
+        : TEXT("Run comparison completed."));
 }
 
 void UTelemetryPanelWidget::HandleMetricSelectionChanged(
