@@ -25,6 +25,7 @@ struct VehicleRenderState
     float x, y, z;
     float yaw; // Heading direction in radians
     float pitch; // Road-surface grade under the vehicle in radians (positive = climbing)
+    float length; // Vehicle length in meters (renderer scales the mesh to match)
     int id; // vhcl id in sim backend
 };
 

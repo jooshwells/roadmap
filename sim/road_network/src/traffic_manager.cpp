@@ -105,15 +105,39 @@ bool TrafficManager::spawnRandomVehicle()
 
     if (!isSpawnClear) return false; 
 
-    // Jitter politeness per driver so some cars merge quickly and others
-    // drift over slowly (also weights their MOBIL incentive).
-    IDMParameters params = IDM_Profiles::getBasicDriverProfile();
-    params.politeness = std::clamp(params.politeness + politenessSpread(rng), 0.0f, 1.0f);
+    // Pick a driver class, then jitter its parameters so no two drivers are
+    // identical (spread justified in traffic_manager.h next to the dists).
+    IDMParameters params;
+    switch (profileDist(rng)) {
+        case 1:  params = IDM_Profiles::getAggressiveDriverProfile(); break;
+        case 2:  params = IDM_Profiles::getSemiTruckProfile();        break;
+        default: params = IDM_Profiles::getBasicDriverProfile();      break;
+    }
+    params.safeTimeHeadway = std::max(0.6f, params.safeTimeHeadway * paramJitter(rng));
+    params.maxAccel        = std::max(0.3f, params.maxAccel        * paramJitter(rng));
+    params.safeBrakePower  = std::max(0.5f, params.safeBrakePower  * paramJitter(rng));
+    params.minGap          = std::max(0.5f, params.minGap          * paramJitter(rng));
+    params.politeness      = std::clamp(params.politeness + politenessSpread(rng), 0.0f, 1.0f);
+    params.speedFactor     = std::clamp(speedFactorDist(rng), 0.75f, 1.30f);
+
+    // Enter at the first edge's (compliance-scaled) speed limit, capped by
+    // the vehicle's own top speed — a truck must not spawn doing 30 m/s.
+    float initialSpeed = params.desiredSpeed * 0.8f; // fallback if edge lookup fails
+    if (route.size() > 1) {
+        for (Road& edge : origin->outgoingEdges) {
+            if (edge.getDest() == route[1]) {
+                initialSpeed = std::min(
+                    static_cast<float>(edge.getSpeedLimit()) * params.speedFactor,
+                    params.desiredSpeed);
+                break;
+            }
+        }
+    }
 
     VehicleState* newCar = new VehicleState(
         originId,
         destId,
-        30.0f,
+        initialSpeed,
         0.0f,
         0,
         params

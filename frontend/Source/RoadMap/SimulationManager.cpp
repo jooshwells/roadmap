@@ -406,7 +406,12 @@ void ASimulationManager::UpdateVehicleVisuals(float Alpha, bool bDidPhysicsStep)
 			// instead of staying horizontal; positive pitch is nose-up, same
 			// convention as the sim's climbing-positive grade.
 			FRotator UnrealRotation(FMath::RadiansToDegrees(State.pitch), FMath::RadiansToDegrees(State.yaw), 0.0f);
-			FTransform NewTransform(UnrealRotation, UnrealPosition);
+			// Stretch the shared car mesh (authored at 4.5m) along its length
+			// so semi trucks read as long vehicles. Known limitation: the mesh
+			// is centered on the render point while the sim's pos is the front
+			// bumper, so long vehicles overhang forward visually.
+			// const FVector LengthScale(State.length / 4.5f, 1.0f, 1.0f);
+			// FTransform NewTransform(UnrealRotation, UnrealPosition, LengthScale);
 
 			if (InterpolationData.Contains(State.id))
 			{
@@ -448,7 +453,8 @@ void ASimulationManager::UpdateVehicleVisuals(float Alpha, bool bDidPhysicsStep)
 		// Spherical interpolation (Slerp) for Rotation to ensure cars take the shortest rotational path!
 		FQuat LerpedRot = FQuat::Slerp(State.Previous.GetRotation(), State.Target.GetRotation(), Alpha);
 
-		Transforms.Add(FTransform(LerpedRot, LerpedLoc));
+		// Scale never animates, so carry the target's length-scale through
+		Transforms.Add(FTransform(LerpedRot, LerpedLoc, State.Target.GetScale3D()));
 		InstanceIndexToVehicleId.Add(Index, VehID);
 		Index++;
 	}

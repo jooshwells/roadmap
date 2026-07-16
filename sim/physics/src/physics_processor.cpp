@@ -9,6 +9,14 @@
 #include <iostream>
 #include <algorithm>
 
+// MOBIL tuning (Kesting, Treiber & Helbing 2007, "General Lane-Changing
+// Model MOBIL for Car-Following Models"):
+//  - a lane change must promise at least this much net acceleration gain
+constexpr float kMobilChangeThreshold = 0.1f; // Delta-a_th (m/s^2)
+//  - US-style keep-right rule: leftward changes need extra justification,
+//    rightward changes get a head start (lane 0 is the leftmost lane)
+constexpr float kKeepRightBias = 0.3f;        // a_bias (m/s^2)
+
 PhysicsProcessor::PhysicsProcessor(Network* mapNetwork, VehicleSpatialHash* spatialObj) : network(mapNetwork), spatialHash(spatialObj), vehicleList(), vehicleUpdates() {}
 
 float PhysicsProcessor::getRouteSegmentLength(VehicleState* vhcl, int routeIndex) {
@@ -112,21 +120,20 @@ void PhysicsProcessor::update(float dt)
         int totalLanes = vhcl->getCurrentEdge()->getLanes(); 
         int bestLane = currentLane;
 
-        float threshold = 0.1f; 
-        float bestIncentive = threshold;
+        float bestIncentive = kMobilChangeThreshold;
 
-        //check left
+        //check left (toward the median) - penalized by the keep-right bias
         if (currentLane > 0) {
-            float leftIncentive = MOBIL(vhcl, currentLane - 1);
+            float leftIncentive = MOBIL(vhcl, currentLane - 1) - kKeepRightBias;
             if (leftIncentive > bestIncentive) {
                 bestLane = currentLane - 1;
                 bestIncentive = leftIncentive;
             }
         }
-    
-        //check right
+
+        //check right - favored by the keep-right bias
         if (currentLane < totalLanes - 1) {
-            float rightIncentive = MOBIL(vhcl, currentLane + 1);
+            float rightIncentive = MOBIL(vhcl, currentLane + 1) + kKeepRightBias;
             if (rightIncentive > bestIncentive) {
                 bestLane = currentLane + 1;
                 bestIncentive = rightIncentive;
@@ -196,8 +203,11 @@ void PhysicsProcessor::update(float dt)
             continue; 
         }
 
+        // Trapezoidal (ballistic) update: advance position with the average of
+        // the old and new speeds. Pass 1 already clamped dv so speed stays >= 0.
+        float vOld = vhcl->getSpeed();
         vhcl->accelerate(vehicleUpdates[i]);
-        vhcl->move(vhcl->getSpeed() * dt);
+        vhcl->move(0.5f * (vOld + vhcl->getSpeed()) * dt);
 
         bool routeAdvanced = true;
         while (routeAdvanced && !vhcl->currentRoute.empty() && vhcl->currentRouteIndex < vhcl->currentRoute.size() - 1) 
@@ -246,7 +256,12 @@ void PhysicsProcessor::update(float dt)
                     {
                         for (Road& edge : newCurrentNode->outgoingEdges) {
                             if (edge.getDest() == newNextNodeId) {
-                                vhcl->setDesiredSpeed(edge.getSpeedLimit());
+                                // Track the new road's limit scaled by the
+                                // driver's compliance, capped by the vehicle's
+                                // top speed (truck governor).
+                                vhcl->setDesiredSpeed(std::min(
+                                    static_cast<float>(edge.getSpeedLimit()) * vhcl->getSpeedFactor(),
+                                    vhcl->getDesiredSpeedCap()));
                                 
                                 // NEW: Volume swapping
                                 Road* oldEdge = vhcl->getCurrentEdge();
@@ -393,6 +408,12 @@ void PhysicsProcessor::addVehicle(VehicleState* vhcl)
                 if (edge.getDest() == nextNodeId) {
                     vhcl->setCurrentEdge(&edge); // Set the initial edge
                     edge.addVehicle();
+                    // Same compliance-scaled limit tracking as edge
+                    // transitions, so the first edge isn't driven at the
+                    // profile's raw desiredSpeed.
+                    vhcl->setDesiredSpeed(std::min(
+                        static_cast<float>(edge.getSpeedLimit()) * vhcl->getSpeedFactor(),
+                        vhcl->getDesiredSpeedCap()));
                     break;
                 }
             }
@@ -406,10 +427,14 @@ float  PhysicsProcessor::MOBIL(VehicleState* vhcl, int targetLane)
     VehicleState* newLeader = getLeader(vhcl, targetLane);
     VehicleState* newFollower = getFollower(vhcl, targetLane);
     VehicleState* oldFollower = getFollower(vhcl, vhcl->getLane());
-    VehicleState* curLeader = vhcl->getLeader();
+    // Query the fresh spatial hash rather than vhcl->getLeader(): that pointer
+    // is assigned in Pass 1, which runs AFTER this MOBIL pass, so it would be
+    // one tick stale (and wrong after edge transitions).
+    VehicleState* curLeader = getLeader(vhcl, vhcl->getLane());
 
     float politeness = vhcl->getPoliteness(); // 0 is selfish, 1 is selfless
-    float safeBrake = 2.0f; // b_safe, max deceleration vehicle can cause on new follower
+    // b_safe: max deceleration this driver will impose on the new follower
+    float safeBrake = vhcl->getSafeBrakeMobil();
 
     // saftey criterion, check if lane change is safe to do 
     

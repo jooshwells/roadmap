@@ -65,6 +65,9 @@ VehicleState::VehicleState(uint64_t originNode, uint64_t destNode, float iS, flo
     id(count),
     m_length(params.length),
     politeness(params.politeness),
+    m_speedFactor(params.speedFactor),
+    m_bSafeMobil(params.bSafeMobil),
+    m_desiredSpeedCap(params.desiredSpeed),
     m_laneFrom(startingLane)
 {
     count++;
@@ -89,8 +92,10 @@ void VehicleState::startLaneChange(int targetLane)
     m_lane = targetLane; // commit immediately; physics treats us as in the target lane
 
     // Polite drivers ease over gently, impolite ones dart across.
-    // politeness 0 -> ~1.5s, politeness 1 -> ~5s.
-    m_laneChangeDuration = 1.5f + politeness * 3.5f;
+    // politeness 0 -> 2s, politeness 1 -> 4s. Kept in the empirical 2-4s band
+    // because the car now physically occupies BOTH lanes for the first ~75%
+    // of the slide (see occupiesLane); a 5s two-lane blockade read as unreal.
+    m_laneChangeDuration = 2.0f + politeness * 2.0f;
     m_laneChangeElapsed = 0.0f;
 }
 
@@ -111,6 +116,22 @@ void VehicleState::updateLaneChange(float dt)
         // don't immediately weave back.
         m_laneChangeCooldown = 1.0f + politeness * 2.0f;
     }
+}
+
+bool VehicleState::occupiesLane(int lane) const
+{
+    if (lane == m_lane) return true;
+    if (!isChangingLanes() || lane != m_laneFrom) return false;
+
+    // Same eased progress the renderer uses (getRenderLane), so physics
+    // occupancy matches what's on screen. With ~3.5m lanes and a ~2m-wide
+    // car, the body fully clears the old lane at roughly 75% of the slide.
+    constexpr float kLaneClearProgress = 0.75f;
+    float t = m_laneChangeElapsed / m_laneChangeDuration;
+    if (t < 0.0f) t = 0.0f;
+    if (t > 1.0f) t = 1.0f;
+    float eased = t * t * (3.0f - 2.0f * t); // smoothstep
+    return eased < kLaneClearProgress;
 }
 
 float VehicleState::getRenderLane() const
