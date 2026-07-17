@@ -1,4 +1,5 @@
 from pathlib import Path
+import argparse
 import json
 import math
 import re
@@ -27,12 +28,19 @@ from shapely.geometry import LineString, MultiLineString
 # ---------------------------------------------------
 # 1) File paths / area
 # ---------------------------------------------------
-BASE_DIR = Path(r"E:\dev\OSM")
+# Paths come from the command line so the same script works for any extract:
+#   python OC_allroads_osmnx_offline.py <input.osm.bz2> <out_nodes.jsonl> <out_edges.jsonl>
+parser = argparse.ArgumentParser(
+    description="Build a driving graph from a local .osm/.osm.bz2 file and export nodes/edges JSONL."
+)
+parser.add_argument("input", type=Path, help="Local .osm or .osm.bz2 file to read")
+parser.add_argument("out_nodes", type=Path, help="Output path for the nodes .jsonl file")
+parser.add_argument("out_edges", type=Path, help="Output path for the edges .jsonl file")
+args = parser.parse_args()
 
-XML_PATH = BASE_DIR / "josh_downtown_orlando.osm.bz2"
-
-OUT_NODES = BASE_DIR / "out" / "josh_downtown_orlando_nodes.jsonl"
-OUT_EDGES = BASE_DIR / "out" / "josh_downtown_orlando_edges.jsonl"
+XML_PATH = args.input
+OUT_NODES = args.out_nodes
+OUT_EDGES = args.out_edges
 
 
 # ---------------------------------------------------
