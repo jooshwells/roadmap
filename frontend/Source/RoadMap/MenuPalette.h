@@ -35,6 +35,9 @@ namespace MenuPalette
 	inline const FLinearColor TextOnAccent   = Hex(TEXT("17130A"));
 	inline const FLinearColor TextDisabled   = Hex(TEXT("566072"));
 	inline const FLinearColor ErrorColor     = Hex(TEXT("FF7A66"));
+	inline const FLinearColor DangerHover    = Hex(TEXT("FF8F7D"));
+	inline const FLinearColor DangerPressed  = Hex(TEXT("E05A46"));
+	inline const FLinearColor DangerFillSoft = Hex(TEXT("FF7A66"), 0.10f);
 
 	inline FSlateBrush RoundedBrush(const FLinearColor& Fill, float Radius,
 		const FLinearColor& OutlineColor = FLinearColor::Transparent, float OutlineWidth = 0.0f)
@@ -72,6 +75,38 @@ namespace MenuPalette
 				.SetNormalForeground(TextPrimary)
 				.SetHoveredForeground(AccentHover)
 				.SetPressedForeground(AccentPressed)
+				.SetDisabledForeground(TextDisabled);
+		}
+		Style.SetNormalPadding(FMargin(24.0f, 14.0f))
+			.SetPressedPadding(FMargin(24.0f, 15.0f, 24.0f, 13.0f));
+		return Style;
+	}
+
+	// Destructive footer action (e.g. deleting a save). Quiet card that turns
+	// red on hover; bArmed = solid red fill for the confirm step.
+	inline FButtonStyle DangerButtonStyle(bool bArmed)
+	{
+		FButtonStyle Style;
+		if (bArmed)
+		{
+			Style.SetNormal(RoundedBrush(ErrorColor, 10.0f))
+				.SetHovered(RoundedBrush(DangerHover, 10.0f))
+				.SetPressed(RoundedBrush(DangerPressed, 10.0f))
+				.SetDisabled(RoundedBrush(CardFill, 10.0f, Outline, 1.0f))
+				.SetNormalForeground(TextOnAccent)
+				.SetHoveredForeground(TextOnAccent)
+				.SetPressedForeground(TextOnAccent)
+				.SetDisabledForeground(TextDisabled);
+		}
+		else
+		{
+			Style.SetNormal(RoundedBrush(CardFill, 10.0f, Outline, 1.0f))
+				.SetHovered(RoundedBrush(DangerFillSoft, 10.0f, ErrorColor, 1.0f))
+				.SetPressed(RoundedBrush(DangerFillSoft, 10.0f, DangerPressed, 1.0f))
+				.SetDisabled(RoundedBrush(CardFill, 10.0f, Outline, 1.0f))
+				.SetNormalForeground(TextPrimary)
+				.SetHoveredForeground(DangerHover)
+				.SetPressedForeground(DangerPressed)
 				.SetDisabledForeground(TextDisabled);
 		}
 		Style.SetNormalPadding(FMargin(24.0f, 14.0f))
