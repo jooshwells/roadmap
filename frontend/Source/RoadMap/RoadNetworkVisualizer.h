@@ -115,6 +115,8 @@ public:
     bool bTaperLaneDrops = true;
 
     // Length (cm) of the taper zone over which the width ramps up/down.
+    // Must match RoadIntersectionUtil::TaperLenMeters -- the vehicle renderer
+    // uses that constant to keep cars on the tapered pavement.
     UPROPERTY(EditAnywhere, Category = "Road Visuals|Taper")
     float TaperLengthCm = 3000.0f; // 30 m
 
@@ -254,6 +256,15 @@ public:
     // Snaps a clicked location to the nearest node if within the radius
     UFUNCTION(BlueprintCallable, Category = "Road Network")
     bool FindClosestNode(FVector SearchLocation, float SnapRadiusCM, FVector& OutNodeLocation, int64& OutNodeId);
+
+    // Nearest node worth inspecting: junction nodes (3+ roadways) and
+    // controlled nodes win over plain shape/pass-through nodes inside the
+    // radius, because a big junction's pavement spans many meters and the
+    // geometrically nearest node to a click on it is often a curve point on
+    // an approach road. Falls back to the plain nearest node when nothing
+    // junction-like is in range.
+    UFUNCTION(BlueprintCallable, Category = "Road Network")
+    bool FindClosestInspectableNode(FVector SearchLocation, float SnapRadiusCM, FVector& OutNodeLocation, int64& OutNodeId);
 
 private:
     // Appends one intersection's pavement polygon (a fan around the node whose

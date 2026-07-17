@@ -56,6 +56,7 @@ class Road {
         inline double getLength() const           { return length; }
         inline uint64_t getOriginId() const { return originId; }
         inline int getLayer() const               { return layer; }
+        inline bool isLink() const                { return linkRoad; }
 
         // Setters
         inline void setSpeedLimit(double sL) { speedLimit = sL; }
@@ -71,6 +72,7 @@ class Road {
             }
         }
         inline void setLayer(int l)          { layer = l; }
+        inline void setIsLink(bool v)        { linkRoad = v; }
         // Used by Network::splitDirectedEdge to shorten an edge in place so
         // existing Road* pointers (e.g. VehicleState::currentEdge) stay valid.
         inline void setDest(uint64_t d)      { destId = d; }
@@ -143,6 +145,9 @@ class Road {
         double speedLimit;
         int lanes;
         int layer = 0; // OSM vertical layer: 0 ground, +1 overpass, -1 underpass
+        // OSM *_link (ramp / turn slip), not a full roadway: its presence at a
+        // node must not make the junction look big enough to signalize.
+        bool linkRoad = false;
         int currentVolume = 0;
         std::vector<RoadGeomPoint> geometry; // empty = straight line
         double geometryLength = 0.0;         // total polyline arc length (m)

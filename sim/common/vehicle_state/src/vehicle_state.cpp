@@ -162,7 +162,9 @@ Road* VehicleState::getCurrentEdge() const
     return currentEdge;
 }
 
-void VehicleState::setCurrentEdge(Road* edge) 
+void VehicleState::setCurrentEdge(Road* edge)
 {
+    // A new edge means a new stop line, so the wrong-lane hold re-arms.
+    if (edge != currentEdge) m_wrongLaneHoldServed = false;
     currentEdge = edge;
 }

@@ -223,15 +223,18 @@ std::vector<VehicleState*> VehicleSpatialHash::getVehiclesOnRoad(Road* road)
     // Check if this road currently has any vehicles mapped to it
     if (edgeBuckets.find(road) != edgeBuckets.end())
     {
-        // Loop through all the lanes on this road
+        // A straddling car sits in two buckets, and a car that committed a
+        // lane change after the frame-start rebuild sits in buckets that no
+        // longer match its live lane at all -- so dedupe by identity rather
+        // than by matching the committed lane against the bucket index
+        // (which silently dropped those cars from intersection logic).
+        std::unordered_set<VehicleState*> seen;
         const auto& lanes = edgeBuckets[road];
         for (size_t laneIdx = 0; laneIdx < lanes.size(); laneIdx++)
         {
             for (VehicleState* v : lanes[laneIdx])
             {
-                // A straddling car sits in two buckets; emit it only from
-                // its committed lane so callers see each car once.
-                if (v->getLane() != (int)laneIdx && !(v->getLane() < 0 && laneIdx == 0)) continue;
+                if (!seen.insert(v).second) continue;
                 vehiclesOnRoad.push_back(v);
             }
         }

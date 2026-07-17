@@ -387,14 +387,6 @@ void ARoadNetworkVisualizer::RefreshRoadVisuals()
             const float TotalLenCm = Cum.Last();
             if (TotalLenCm < 1.0f) continue;
 
-            // End tangents of the centerline. Taper detection compares these,
-            // not the chord, so a curved edge measures the direction it
-            // actually meets each neighbour at. Flattened to the XY plane so a
-            // ramp's pitch doesn't weaken the alignment dot products (the
-            // neighbour directions below are built without z).
-            const FVector StartTangent = FVector(Pts[1] - Pts[0]).GetSafeNormal2D();
-            const FVector EndTangent = FVector(Pts.Last() - Pts[Pts.Num() - 2]).GetSafeNormal2D();
-
             // Position on the centerline at arc distance S, plus its segment index.
             auto PointAtArc = [&Pts, &Cum](float S, int32& OutSeg) -> FVector
             {
@@ -496,101 +488,18 @@ void ARoadNetworkVisualizer::RefreshRoadVisuals()
             const float FullWidthCm = SafeLanes * 350.0f;
 
             // --- Lane-drop / lane-gain detection -------------------------------
-            // Find the through-road at each end and taper to meet it. We only look
-            // at roughly-aligned neighbours (dot > TaperAlignmentDot) and, among
-            // those, pick the one whose lane count is CLOSEST to ours -- that is the
-            // mainline continuation, not a minor merging ramp / off-ramp. Picking by
-            // straightness alone would latch onto an aligned 1-lane ramp and taper
-            // the whole road to it. We also ignore jumps larger than TaperMaxLaneDelta
-            // (those are junctions, not lane drops) so a 4->1 change stays abrupt.
+            // Which through-continuation each end tapers to (and by how many
+            // lanes) is decided by the shared RoadIntersectionUtil helper, so
+            // the vehicle renderer clamps cars onto exactly the pavement drawn
+            // here. Keep any tuning of these knobs mirrored there.
             int32 DownstreamLanes = SafeLanes; // lanes we taper DOWN to at the end
             int32 UpstreamLanes   = SafeLanes; // lanes we taper UP from at the start
             if (bTaperLaneDrops && bScaleWidthByLanes)
             {
-                // Through-continuation out of DestNode (end of this edge).
-                {
-                    int32 BestDelta = TaperMaxLaneDelta + 1; // must be within cap to count
-                    float BestDot   = -1.0f;
-                    for (const Road& NextEdge : DestNode->outgoingEdges)
-                    {
-                        if (NextEdge.getDest() == OriginNode.getId()) continue; // ignore U-turn
-                        Node* NextDest = RoadNetwork->getNode(NextEdge.getDest());
-                        if (!NextDest) continue;
-
-                        // Leaving direction of the neighbour: its first curve
-                        // segment when shaped, node-to-node chord otherwise.
-                        FVector NextDir;
-                        if (NextEdge.hasCurveGeometry())
-                        {
-                            const std::vector<RoadGeomPoint>& G = NextEdge.getGeometry();
-                            NextDir = FVector(G[1].x - G[0].x, G[1].y - G[0].y, 0.0);
-                        }
-                        else
-                        {
-                            NextDir = FVector((NextDest->getX() - DestNode->getX()),
-                                              (NextDest->getY() - DestNode->getY()), 0.0);
-                        }
-                        const float Dot = FVector::DotProduct(EndTangent, NextDir.GetSafeNormal());
-                        if (Dot < TaperAlignmentDot) continue;
-
-                        const int32 L     = FMath::Max(1, NextEdge.getLanes());
-                        const int32 Delta = FMath::Abs(L - SafeLanes);
-                        if (Delta < BestDelta || (Delta == BestDelta && Dot > BestDot))
-                        {
-                            BestDelta = Delta; BestDot = Dot; DownstreamLanes = L;
-                        }
-                    }
-                    if (BestDelta > TaperMaxLaneDelta) DownstreamLanes = SafeLanes; // junction, not a drop
-                }
-
-                // Through-predecessor into OriginNode (start of this edge).
-                {
-                    int32 BestDelta = TaperMaxLaneDelta + 1;
-                    float BestDot   = -1.0f;
-                    for (uint64_t PrevNodeId : OriginNode.incomingEdgeNodeIds)
-                    {
-                        if (PrevNodeId == Edge.getDest()) continue; // ignore U-turn pair
-                        Node* PrevNode = RoadNetwork->getNode(PrevNodeId);
-                        if (!PrevNode) continue;
-
-                        // Find the predecessor edge feeding this node.
-                        const Road* PrevEdge = nullptr;
-                        for (const Road& Cand : PrevNode->outgoingEdges)
-                        {
-                            if (Cand.getDest() == OriginNode.getId())
-                            {
-                                PrevEdge = &Cand;
-                                break;
-                            }
-                        }
-                        if (!PrevEdge) continue;
-
-                        // Arriving direction of the predecessor: its last curve
-                        // segment when shaped, node-to-node chord otherwise.
-                        FVector PrevDir;
-                        if (PrevEdge->hasCurveGeometry())
-                        {
-                            const std::vector<RoadGeomPoint>& G = PrevEdge->getGeometry();
-                            PrevDir = FVector(G[G.size() - 1].x - G[G.size() - 2].x,
-                                              G[G.size() - 1].y - G[G.size() - 2].y, 0.0);
-                        }
-                        else
-                        {
-                            PrevDir = FVector((OriginNode.getX() - PrevNode->getX()),
-                                              (OriginNode.getY() - PrevNode->getY()), 0.0);
-                        }
-                        const float Dot = FVector::DotProduct(StartTangent, PrevDir.GetSafeNormal());
-                        if (Dot < TaperAlignmentDot) continue;
-
-                        const int32 L = FMath::Max(1, PrevEdge->getLanes());
-                        const int32 Delta = FMath::Abs(L - SafeLanes);
-                        if (Delta < BestDelta || (Delta == BestDelta && Dot > BestDot))
-                        {
-                            BestDelta = Delta; BestDot = Dot; UpstreamLanes = L;
-                        }
-                    }
-                    if (BestDelta > TaperMaxLaneDelta) UpstreamLanes = SafeLanes; // junction, not a gain
-                }
+                DownstreamLanes = RoadIntersectionUtil::GetTaperNeighborLanes(
+                    RoadNetwork, Edge, /*AtEnd=*/true, TaperAlignmentDot, TaperMaxLaneDelta);
+                UpstreamLanes = RoadIntersectionUtil::GetTaperNeighborLanes(
+                    RoadNetwork, Edge, /*AtEnd=*/false, TaperAlignmentDot, TaperMaxLaneDelta);
             }
 
             // Emits the HISM pieces covering arc span [Along, Along+Len] of the
@@ -1141,6 +1050,46 @@ bool ARoadNetworkVisualizer::FindClosestNode(FVector SearchLocation, float SnapR
     return bFound;
 }
 
+bool ARoadNetworkVisualizer::FindClosestInspectableNode(FVector SearchLocation, float SnapRadiusCM, FVector& OutNodeLocation, int64& OutNodeId)
+{
+    const float RadiusSq = SnapRadiusCM * SnapRadiusCM;
+    float BestJunctionDistSq = RadiusSq;
+    float BestAnyDistSq = RadiusSq;
+    FVector BestJunctionLoc = FVector::ZeroVector, BestAnyLoc = FVector::ZeroVector;
+    int64 BestJunctionId = -1, BestAnyId = -1;
+
+    for (const auto& Pair : CachedNodeLocations)
+    {
+        const float DistSq = FVector::DistSquaredXY(SearchLocation, Pair.Value);
+        if (DistSq >= BestAnyDistSq && DistSq >= BestJunctionDistSq) continue;
+
+        if (DistSq < BestAnyDistSq)
+        {
+            BestAnyDistSq = DistSq;
+            BestAnyLoc = Pair.Value;
+            BestAnyId = Pair.Key;
+        }
+
+        if (DistSq < BestJunctionDistSq && CachedNetwork)
+        {
+            const Node* N = CachedNetwork->getNode(Pair.Key);
+            if (N && (N->type != Node::PASS_THROUGH || RoadIntersectionUtil::IsIntersectionNode(*N)))
+            {
+                BestJunctionDistSq = DistSq;
+                BestJunctionLoc = Pair.Value;
+                BestJunctionId = Pair.Key;
+            }
+        }
+    }
+
+    if (BestJunctionId == -1 && BestAnyId == -1) return false;
+
+    OutNodeLocation = (BestJunctionId != -1) ? BestJunctionLoc : BestAnyLoc;
+    OutNodeLocation.Z = 0.0f;
+    OutNodeId = (BestJunctionId != -1) ? BestJunctionId : BestAnyId;
+    return true;
+}
+
 int64 ARoadNetworkVisualizer::ExportNewRoadSegment(int64 StartNodeId, int64 EndNodeId, FVector EndNodeUnrealLoc, int32 Lanes, float SpeedLimit, FString TurnLanes, int32 Layer)
 {
     // 1. Handle Node Generation (If the user clicked in empty space)
@@ -1233,6 +1182,12 @@ int64 ARoadNetworkVisualizer::ExportNewRoadSegment(int64 StartNodeId, int64 EndN
         // The new edge adds a movement at both endpoints, which changes what
         // the neighbouring approaches' inferred turn maps should say.
         CachedNetwork->assignInferredTurnLanes();
+
+        // Endpoints that just became intersections get the same default
+        // control (stop/signal/yield) the loader would give them, so the
+        // fixture rebuild after the draw has something to plant.
+        CachedNetwork->refreshTrafficControlAt(StartNodeId);
+        CachedNetwork->refreshTrafficControlAt(FinalEndNodeId);
     }
 
     return FinalEndNodeId;
@@ -1628,6 +1583,12 @@ bool ARoadNetworkVisualizer::SplitEdgeForNewNode(int64 U, int64 V, int64 NewNode
     // the original edge did, so refresh the inferred turn maps.
     CachedNetwork->assignInferredTurnLanes();
 
+    // The approaches into U and V now originate at the mid node, so their
+    // yield minor-road lists must be recomputed.
+    CachedNetwork->refreshTrafficControlAt(U);
+    CachedNetwork->refreshTrafficControlAt(V);
+    CachedNetwork->refreshTrafficControlAt(NewNodeId);
+
     return true;
 }
 
@@ -1874,6 +1835,11 @@ bool ARoadNetworkVisualizer::DeleteRoad(int64 U, int64 V, bool bBothDirections)
     // endpoints may do, so refresh the inferred turn maps.
     CachedNetwork->assignInferredTurnLanes();
 
+    // Losing an approach can demote an endpoint back to pass-through or
+    // change which surviving road is the minor one.
+    CachedNetwork->refreshTrafficControlAt(U);
+    CachedNetwork->refreshTrafficControlAt(V);
+
     // Full rebuild also refreshes junction pavement and tapers at both ends
     // and drops the deleted edge from the hit-test / edit maps.
     RefreshRoadVisuals();
@@ -1933,6 +1899,11 @@ bool ARoadNetworkVisualizer::UpdateRoadProperties(int64 U, int64 V, int32 Lanes,
         // edge and its neighbouring approaches; recompute them (explicit
         // maps set above are untouched).
         CachedNetwork->assignInferredTurnLanes();
+
+        // Speed/lane edits feed the yield minor-road comparison at both
+        // ends, so right-of-way must track the new values.
+        CachedNetwork->refreshTrafficControlAt(static_cast<uint64_t>(U));
+        CachedNetwork->refreshTrafficControlAt(static_cast<uint64_t>(V));
 
         // Lane count changes road width and the layer changes elevation, so
         // rebuild (re-runs the elevation pass and refreshes tapers and

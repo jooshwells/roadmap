@@ -64,6 +64,22 @@ class VehicleState {
         // after a genuine stop, pays out LaunchBoostFactor at standstill, and
         // fades to 1x by LaunchBoostEndSpeed.
         float getLaunchBoost() const;
+        // Continuous time (s) spent below LaunchArmSpeed; resets the moment
+        // the car moves again. Used by the wrong-lane gate's hesitation
+        // window before it reroutes around a turn its lane doesn't allow.
+        inline float getStopDuration() const      { return m_stopDuration; }
+        // One-shot release of the wrong-lane hold on the current edge: once
+        // the hold has been served (or given up on), the gate must stay open
+        // until the next edge -- getStopDuration() resets on any creep, so
+        // re-arming from it traps cars in a stop/creep/stop loop forever.
+        inline bool hasServedWrongLaneHold() const { return m_wrongLaneHoldServed; }
+        inline void markWrongLaneHoldServed()      { m_wrongLaneHoldServed = true; }
+        // Lifetime count of wrong-lane reroutes. The gate stops offering
+        // reroutes past a small cap so a driver who keeps landing in wrong
+        // lanes eventually just takes the wrong-lane turn instead of
+        // orbiting the same blocks forever.
+        inline int  getRerouteCount() const        { return m_rerouteCount; }
+        inline void incrementRerouteCount()        { ++m_rerouteCount; }
         inline float getLength() const            { return m_length;}
         inline float getPoliteness() const        { return politeness; }
 
@@ -115,6 +131,11 @@ class VehicleState {
         static constexpr float LaunchArmStopTime   = 0.5f;  // s below that to arm
         float m_stopDuration = 0.0f;
         bool  m_launchBoostArmed = false;
+
+        // Wrong-lane hold state (see hasServedWrongLaneHold); cleared by
+        // setCurrentEdge at every edge transition.
+        bool m_wrongLaneHoldServed = false;
+        int  m_rerouteCount = 0;
 
         // NEW: Telemetry state variables
         float m_acceleration = 0.0f;

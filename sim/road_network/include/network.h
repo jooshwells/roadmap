@@ -43,9 +43,11 @@ class Network {
         // pass empty when the tag is null and assignInferredTurnLanes will
         // fill the gap. Individual 0 entries are unmarked lanes ("left||"),
         // which the same pass completes from the downstream intersection.
+        // 'isLink' marks OSM *_link edges (ramps / turn slips); see
+        // Road::isLink for how traffic-control defaulting treats them.
         void addDirectedEdge(uint64_t fromId, uint64_t toId, double dist, double speedLimit, int lanes,
                              std::vector<RoadGeomPoint> geometry = {}, int layer = 0,
-                             std::vector<uint8_t> laneTurns = {});
+                             std::vector<uint8_t> laneTurns = {}, bool isLink = false);
 
         // Splits the directed edge from->to at map point (x, y): the existing
         // Road is shortened IN PLACE to end at newNodeId (so Road* pointers
@@ -95,6 +97,15 @@ class Network {
         void visualizeNetwork();
         void applyDefaultTrafficControls();
         void calculateIntersectionPriorities();
+
+        // Re-derives one node's traffic control after a runtime topology
+        // change (road drawn, edge split/deleted, lanes/speed edited), giving
+        // it exactly what the load-time defaulting pipeline would: defaulted
+        // nodes are reclassified from scratch (a drawn crossing becomes a
+        // stop/signal immediately instead of after the next reload), explicit
+        // dataset controls are kept, and the yield minor-road list is
+        // recomputed either way. Missing ids are ignored.
+        void refreshTrafficControlAt(uint64_t nodeId);
         // Fill in per-lane turn permissions for every edge that has no OSM
         // turn:lanes data, from the movements geometrically available at the
         // edge's destination node. Idempotent; re-run after runtime road
@@ -112,6 +123,13 @@ class Network {
         std::vector<uint64_t> nodeIds;
         uint64_t numNodes;
         uint64_t nextEdgeId = 1;
+
+        // Per-node bodies of applyDefaultTrafficControls /
+        // calculateIntersectionPriorities, shared with
+        // refreshTrafficControlAt so runtime edits and load-time
+        // classification can never disagree.
+        void applyDefaultControlAt(Node& node);
+        void assignYieldPriorityAt(Node& node);
         
 };
 

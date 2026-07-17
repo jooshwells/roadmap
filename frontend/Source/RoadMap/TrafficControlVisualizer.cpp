@@ -179,6 +179,12 @@ void ATrafficControlVisualizer::BuildTrafficControls(Network* RoadNetwork, doubl
             }
             if (!Edge || Edge->getLength() <= 0.0) continue;
 
+            // Internal leg of a multi-node physical junction: the sim does
+            // not stop cars here (canVehicleEnter skips the control on the
+            // same predicate), and its fixture would stand in the median /
+            // junction box rather than at a road end, so draw nothing.
+            if (RoadIntersectionUtil::IsInternalJunctionLeg(RoadNetwork, *Edge)) continue;
+
             // Anchor at the stop line: the same arc position the physics
             // engine brakes for and where the road visuals stop short of the
             // junction box.

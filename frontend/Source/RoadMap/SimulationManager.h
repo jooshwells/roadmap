@@ -50,6 +50,69 @@ struct FVehicleIDMStats
 	UPROPERTY(BlueprintReadOnly, Category = "Vehicle Stats") int32 RouteLength = 0;            // total nodes in the route
 };
 
+// One incoming approach of an inspected intersection node: which road feeds
+// it, where its stop line (and any sign/signal fixture) sits, and the
+// per-lane turn permissions the physics steers by. Everything the "why is
+// this fixture here / why do cars stop there" question needs.
+USTRUCT(BlueprintType)
+struct FIntersectionApproachInfo
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "Intersection") int64 FromNodeId = -1;
+	// Edge id of the approach road, matching the road editor's numbering.
+	UPROPERTY(BlueprintReadOnly, Category = "Intersection") int64 RoadId = -1;
+	UPROPERTY(BlueprintReadOnly, Category = "Intersection") int32 Lanes = 1;
+	UPROPERTY(BlueprintReadOnly, Category = "Intersection") float LengthMeters = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Intersection") float SpeedLimitMps = 0.0f;
+
+	// OSM-syntax per-lane turn map ("left|through|through;right"); empty when
+	// the edge has no data (every movement allowed from every lane).
+	UPROPERTY(BlueprintReadOnly, Category = "Intersection") FString TurnLanes;
+	UPROPERTY(BlueprintReadOnly, Category = "Intersection") bool bTurnLanesInferred = false;
+
+	// How far before the node center the stop line (and fixture) sits, and
+	// whether GetStopLineArcPos had to clamp it because the approach edge is
+	// shorter than the junction setback -- the usual culprit when a sign
+	// appears to float mid-road or cars halt in odd places.
+	UPROPERTY(BlueprintReadOnly, Category = "Intersection") float StopLineFromNodeM = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Intersection") bool bStopLineClamped = false;
+
+	// Interior edge of one physical multi-node junction: the sim skips the
+	// control here and no fixture or stop line exists on this approach.
+	UPROPERTY(BlueprintReadOnly, Category = "Intersection") bool bInternalLeg = false;
+
+	// This approach yields (minor road of a YIELD_STOP node).
+	UPROPERTY(BlueprintReadOnly, Category = "Intersection") bool bMinorApproach = false;
+
+	// A sign/signal fixture is rendered for this approach.
+	UPROPERTY(BlueprintReadOnly, Category = "Intersection") bool bHasFixture = false;
+};
+
+// Everything the intersection inspector panel shows about one node, mirroring
+// FRoadEdgeInfo for roads. Topology only -- it comes from the visual network,
+// which road edits keep current (the panel closes on edits anyway).
+USTRUCT(BlueprintType)
+struct FIntersectionNodeInfo
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "Intersection") int64 NodeId = -1;
+	UPROPERTY(BlueprintReadOnly, Category = "Intersection") FString ControlType;   // Traffic light / Four-way stop / Yield / Uncontrolled
+	UPROPERTY(BlueprintReadOnly, Category = "Intersection") FVector WorldLocation = FVector::ZeroVector;
+
+	// 3+ distinct roadways meet here (RoadIntersectionUtil::IsIntersectionNode).
+	// Controlled nodes that are NOT geometric intersections get a setback of 0,
+	// so their stop line lands on the node itself -- flagged by the panel.
+	UPROPERTY(BlueprintReadOnly, Category = "Intersection") bool bIsIntersection = false;
+	UPROPERTY(BlueprintReadOnly, Category = "Intersection") int32 IncomingCount = 0;
+	UPROPERTY(BlueprintReadOnly, Category = "Intersection") int32 OutgoingCount = 0;
+	UPROPERTY(BlueprintReadOnly, Category = "Intersection") int32 MaxLanesAtNode = 1;
+	UPROPERTY(BlueprintReadOnly, Category = "Intersection") float SetbackMeters = 0.0f;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Intersection") TArray<FIntersectionApproachInfo> Approaches;
+};
+
 
 UCLASS()
 class ROADMAP_API ASimulationManager : public AActor
@@ -79,6 +142,20 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Simulation")
 	int32 GetInstanceIndexFromVehicleID(int32 VehicleID);
+
+	// Fills the intersection inspector struct for a node: static topology,
+	// stop lines, and fixture placement from the visual network, live phase /
+	// queue state from the running sim when there is one. Returns false when
+	// the node id is unknown. The inspector panel re-polls this while open.
+	UFUNCTION(BlueprintCallable, Category = "Simulation")
+	bool GetIntersectionInfo(int64 NodeId, FIntersectionNodeInfo& OutInfo);
+
+	// One-frame debug overlay for an inspected node: junction setback circle
+	// around the node center plus a bar across every approach at its stop
+	// line (orange when the stop line had to be clamped onto a short edge).
+	// The inspector panel calls this every tick while open.
+	UFUNCTION(BlueprintCallable, Category = "Simulation")
+	void DrawIntersectionDebug(int64 NodeId);
 
 	//for the start sim button
 	UPROPERTY(BlueprintReadWrite, Category = "Simulation")
@@ -135,6 +212,13 @@ public:
 	// the sim re-infers a per-lane map from the intersection layout.
 	UFUNCTION(BlueprintCallable, Category = "Simulation")
 	void UpdateBackendRoad(int64 U, int64 V, int32 Lanes, float SpeedMps, const FString& TurnLanes, bool bBothDirections);
+
+	// Re-plants the traffic light / stop sign fixtures from the visual
+	// network's current node controls. Call after any road edit that can
+	// create, remove, or re-prioritize an intersection (draw, split, delete,
+	// lane/speed change); cheap enough to run once per committed edit.
+	UFUNCTION(BlueprintCallable, Category = "Simulation")
+	void RebuildTrafficControls();
 
 	// Deletes edge U->V (and V->U when bBothDirections) from the live sim.
 	// Vehicles on the road are despawned; routes through it are repaired.

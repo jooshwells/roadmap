@@ -10,6 +10,35 @@
 #include "RoadTurnLaneOptions.h"
 #include "MapPlayerController.h"
 #include "Kismet/GameplayStatics.h"
+#include "DrawDebugHelpers.h"
+
+THIRD_PARTY_INCLUDES_START
+#include "intersection_geometry.h"
+THIRD_PARTY_INCLUDES_END
+
+namespace
+{
+	// Point + tangent at 'Dist' meters along an edge, following its curved
+	// centerline when it has one and the straight chord otherwise (same
+	// fallback the traffic-control visualizer uses to place fixtures).
+	bool SampleEdgePointOrChord(const Node* Pred, const Node* Dest, const Road* Edge, double Dist,
+		double& PX, double& PY, double& PZ, double& TX, double& TY)
+	{
+		if (Edge->samplePointAt(Dist, PX, PY, TX, TY, PZ)) return true;
+
+		const double DX = Dest->getX() - Pred->getX();
+		const double DY = Dest->getY() - Pred->getY();
+		const double Len = FMath::Sqrt(DX * DX + DY * DY);
+		if (Len < 0.0001 || Edge->getLength() <= 0.0) return false;
+		const double T = Dist / Edge->getLength();
+		PX = Pred->getX() + T * DX;
+		PY = Pred->getY() + T * DY;
+		PZ = Pred->getZ() + T * (Dest->getZ() - Pred->getZ());
+		TX = DX / Len;
+		TY = DY / Len;
+		return true;
+	}
+}
 
 // Sets default values
 ASimulationManager::ASimulationManager()
@@ -577,6 +606,164 @@ bool ASimulationManager::GetVehicleStatsByID(int32 VehicleID, FVehicleIDMStats& 
 	return false;
 }
 
+bool ASimulationManager::GetIntersectionInfo(int64 NodeId, FIntersectionNodeInfo& OutInfo)
+{
+	if (!MyRoadNetwork) return false;
+
+	Node* N = MyRoadNetwork->getNode(static_cast<uint64_t>(NodeId));
+	if (!N) return false;
+
+	OutInfo = FIntersectionNodeInfo();
+	OutInfo.NodeId = NodeId;
+
+	switch (N->type)
+	{
+	case Node::TRAFFIC_LIGHT: OutInfo.ControlType = TEXT("Traffic light");  break;
+	case Node::FOUR_WAY_STOP: OutInfo.ControlType = TEXT("Four-way stop");  break;
+	case Node::YIELD_STOP:    OutInfo.ControlType = TEXT("Yield");          break;
+	default:                  OutInfo.ControlType = TEXT("Uncontrolled");   break;
+	}
+
+	if (NetworkVisualizer)
+	{
+		OutInfo.WorldLocation = FVector(
+			(N->getX() - NetworkVisualizer->OriginOffsetX) * 100.0,
+			(N->getY() - NetworkVisualizer->OriginOffsetY) * 100.0,
+			N->getZ() * 100.0);
+	}
+
+	OutInfo.bIsIntersection = RoadIntersectionUtil::IsIntersectionNode(*N);
+	OutInfo.OutgoingCount = static_cast<int32>(N->outgoingEdges.size());
+	OutInfo.MaxLanesAtNode = RoadIntersectionUtil::GetMaxLanesAtNode(MyRoadNetwork, *N);
+	OutInfo.SetbackMeters = RoadIntersectionUtil::GetNodeSetbackMeters(
+		MyRoadNetwork, *N, RoadIntersectionUtil::MedianGapMeters);
+
+	// One approach per distinct incoming origin, mirroring how the traffic
+	// control visualizer decides where to plant fixtures.
+	TSet<uint64> SeenOrigins;
+	for (uint64_t PredId : N->incomingEdgeNodeIds)
+	{
+		if (SeenOrigins.Contains(PredId)) continue;
+		SeenOrigins.Add(PredId);
+
+		Node* Pred = MyRoadNetwork->getNode(PredId);
+		if (!Pred) continue;
+
+		const Road* Edge = nullptr;
+		for (const Road& E : Pred->outgoingEdges)
+		{
+			if (E.getDest() == N->getId()) { Edge = &E; break; }
+		}
+		if (!Edge) continue;
+
+		FIntersectionApproachInfo Approach;
+		Approach.FromNodeId = static_cast<int64>(PredId);
+		Approach.RoadId = static_cast<int64>(Edge->getEdgeId());
+		Approach.Lanes = Edge->getLanes();
+		Approach.LengthMeters = static_cast<float>(Edge->getLength());
+		Approach.SpeedLimitMps = static_cast<float>(Edge->getSpeedLimit());
+
+		if (Edge->hasLaneTurnData())
+		{
+			Approach.TurnLanes = FString(UTF8_TO_TCHAR(TurnLane::toOsmString(Edge->getLaneTurns()).c_str()));
+			Approach.bTurnLanesInferred = !Edge->isLaneTurnsFromOsm();
+		}
+
+		const float Len = static_cast<float>(Edge->getLength());
+		const float StopLine = RoadIntersectionUtil::GetStopLineArcPos(
+			MyRoadNetwork, *Edge, *N, RoadIntersectionUtil::MedianGapMeters);
+		Approach.StopLineFromNodeM = Len - StopLine;
+		// GetStopLineArcPos clamps to the edge's back half; when that fired,
+		// the line sits closer to the node than the setback asked for and the
+		// fixture ends up somewhere that looks arbitrary.
+		Approach.bStopLineClamped = StopLine > (Len - OutInfo.SetbackMeters) + 0.01f;
+
+		const auto& Minor = N->minorRoadOriginIds;
+		Approach.bMinorApproach = std::find(Minor.begin(), Minor.end(), PredId) != Minor.end();
+		Approach.bInternalLeg = RoadIntersectionUtil::IsInternalJunctionLeg(MyRoadNetwork, *Edge);
+		Approach.bHasFixture = !Approach.bInternalLeg
+			&& (N->type == Node::TRAFFIC_LIGHT || N->type == Node::FOUR_WAY_STOP
+				|| (N->type == Node::YIELD_STOP && Approach.bMinorApproach));
+
+		OutInfo.Approaches.Add(Approach);
+	}
+	OutInfo.IncomingCount = OutInfo.Approaches.Num();
+
+	return true;
+}
+
+void ASimulationManager::DrawIntersectionDebug(int64 NodeId)
+{
+	if (!MyRoadNetwork || !NetworkVisualizer) return;
+
+	Node* N = MyRoadNetwork->getNode(static_cast<uint64_t>(NodeId));
+	if (!N) return;
+
+	UWorld* World = GetWorld();
+	if (!World) return;
+
+	const double OffX = NetworkVisualizer->OriginOffsetX;
+	const double OffY = NetworkVisualizer->OriginOffsetY;
+	auto ToUnreal = [&](double X, double Y, double Z) -> FVector
+	{
+		return FVector((X - OffX) * 100.0, (Y - OffY) * 100.0, Z * 100.0 + 40.0);
+	};
+
+	const FVector Center = ToUnreal(N->getX(), N->getY(), N->getZ());
+	DrawDebugSphere(World, Center, 120.0f, 12, FColor::Cyan, false, 0.0f, 0, 20.0f);
+
+	// Junction setback radius: where every approach's pavement (and stop
+	// line) is supposed to end.
+	const float SetbackM = RoadIntersectionUtil::GetNodeSetbackMeters(
+		MyRoadNetwork, *N, RoadIntersectionUtil::MedianGapMeters);
+	if (SetbackM > 0.0f)
+	{
+		DrawDebugCircle(World, Center, SetbackM * 100.0f, 48, FColor::Cyan, false, 0.0f, 0, 15.0f,
+			FVector(1, 0, 0), FVector(0, 1, 0), false);
+	}
+
+	// Stop-line bar across each approach's lanes. Orange = the line had to be
+	// clamped onto a short edge (it is NOT at the setback distance).
+	TSet<uint64> SeenOrigins;
+	for (uint64_t PredId : N->incomingEdgeNodeIds)
+	{
+		if (SeenOrigins.Contains(PredId)) continue;
+		SeenOrigins.Add(PredId);
+
+		Node* Pred = MyRoadNetwork->getNode(PredId);
+		if (!Pred) continue;
+
+		const Road* Edge = nullptr;
+		for (const Road& E : Pred->outgoingEdges)
+		{
+			if (E.getDest() == N->getId()) { Edge = &E; break; }
+		}
+		if (!Edge || Edge->getLength() <= 0.0) continue;
+
+		// Internal junction legs carry no stop line (the sim doesn't stop
+		// cars there), so drawing a bar would misreport the physics.
+		if (RoadIntersectionUtil::IsInternalJunctionLeg(MyRoadNetwork, *Edge)) continue;
+
+		const float Len = static_cast<float>(Edge->getLength());
+		const float StopLine = RoadIntersectionUtil::GetStopLineArcPos(
+			MyRoadNetwork, *Edge, *N, RoadIntersectionUtil::MedianGapMeters);
+		const bool bClamped = StopLine > (Len - SetbackM) + 0.01f;
+
+		double PX, PY, PZ, TX, TY;
+		if (!SampleEdgePointOrChord(Pred, N, Edge, StopLine, PX, PY, PZ, TX, TY)) continue;
+
+		// Lanes span MedianGap .. MedianGap + lanes * LaneWidth to the right
+		// of the centerline (same layout as the road HISM and the vehicles).
+		const double LatNear = RoadIntersectionUtil::MedianGapMeters;
+		const double LatFar = RoadIntersectionUtil::MedianGapMeters
+			+ Edge->getLanes() * RoadIntersectionUtil::LaneWidthMeters;
+		const FVector A = ToUnreal(PX + (-TY) * LatNear, PY + TX * LatNear, PZ);
+		const FVector B = ToUnreal(PX + (-TY) * LatFar, PY + TX * LatFar, PZ);
+
+		DrawDebugLine(World, A, B, bClamped ? FColor::Orange : FColor::Green, false, 0.0f, 0, 40.0f);
+	}
+}
+
 int32 ASimulationManager::GetInstanceIndexFromVehicleID(int32 VehicleID)
 {
 	// Search the map for the VehicleID. If found, return its current HISM Index.
@@ -603,6 +790,19 @@ void ASimulationManager::NotifyBackendOfNewRoad(int64 StartNodeId, int64 EndNode
         if (GEngine) {
             GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, TEXT("Live Graph Updated!"));
         }
+    }
+}
+
+void ASimulationManager::RebuildTrafficControls()
+{
+    // MyRoadNetwork is the same object the road editor mutates through the
+    // visualizer (BuildVisualNetwork cached it), so after an edit its node
+    // types already carry the refreshed controls -- rebuilding replants every
+    // fixture, including ones for intersections the edit just created.
+    if (TrafficControlVisualizer && MyRoadNetwork && NetworkVisualizer)
+    {
+        TrafficControlVisualizer->BuildTrafficControls(MyRoadNetwork,
+            NetworkVisualizer->OriginOffsetX, NetworkVisualizer->OriginOffsetY);
     }
 }
 

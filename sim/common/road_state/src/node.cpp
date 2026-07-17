@@ -6,13 +6,16 @@ Node::Node(std::uint64_t initId, double iLon, double iLat, double iX, double iY,
     // Parse intersection type from the JSON data
     if (typeStr == "signal") {
         type = Node::TRAFFIC_LIGHT;
-    } 
+        controlFromData = true;
+    }
     else if (typeStr == "stop") {
         type = Node::FOUR_WAY_STOP;
-    } 
+        controlFromData = true;
+    }
     else if (typeStr == "yield") {
         type = Node::YIELD_STOP;
-    } 
+        controlFromData = true;
+    }
     else {
         type = Node::PASS_THROUGH; // default to pass through
     }

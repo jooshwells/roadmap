@@ -41,6 +41,19 @@ public:
 	UFUNCTION(BlueprintImplementableEvent, Category = "UI")
 	void OnRoadClickedUI(FRoadEdgeInfo EdgeInfo);
 
+	// Fired when an intersection node is clicked outside draw mode (junction
+	// pavement, node cap, a sign/signal fixture, or empty ground near a
+	// node), in case you want a custom Blueprint widget. The built-in C++
+	// panel (IntersectionInspectorWidget) opens automatically either way
+	// unless bUseCustomIntersectionUI is set.
+	UFUNCTION(BlueprintImplementableEvent, Category = "UI")
+	void OnIntersectionClickedUI(FIntersectionNodeInfo NodeInfo);
+
+	// Set true if you implement OnIntersectionClickedUI with your own widget
+	// and don't want the built-in C++ intersection inspector to open.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UI")
+	bool bUseCustomIntersectionUI = false;
+
 	// Set true if you implement OnRoadClickedUI with your own widget and
 	// don't want the built-in C++ road editor panel to open.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UI")
@@ -116,6 +129,20 @@ protected:
 	// SimManager while open so the readouts stay live.
 	void OpenVehicleStats(class ASimulationManager* SimManager, const FVehicleIDMStats& Stats);
 
+	// Snaps the cursor's ground-plane point to the nearest inspectable node
+	// and opens the intersection inspector for it. Returns false when no
+	// node is within NodeInspectRadius. Called for clicks that hit nothing
+	// solid (fixtures have no collision, empty ground beside a node).
+	bool TryOpenIntersectionAtCursor();
+
+	// Same, anchored on an exact world point (e.g. the impact point of a
+	// click that hit junction pavement, which the Z-plane projection would
+	// misplace for elevated roads) with an explicit search radius.
+	bool TryOpenIntersectionAt(const FVector& ClickLoc, float SearchRadiusCM);
+
+	// Opens (or retargets) the built-in C++ intersection inspector panel.
+	void OpenIntersectionInspector(class ASimulationManager* SimManager, const FIntersectionNodeInfo& NodeInfo);
+
 	// The built-in road editor panel, when open.
 	UPROPERTY()
 	class URoadEditorWidget* ActiveRoadEditor = nullptr;
@@ -123,6 +150,10 @@ protected:
 	// The built-in vehicle stats panel, when open.
 	UPROPERTY()
 	class UVehicleStatsWidget* ActiveVehicleStats = nullptr;
+
+	// The built-in intersection inspector panel, when open.
+	UPROPERTY()
+	class UIntersectionInspectorWidget* ActiveIntersectionInspector = nullptr;
 
 	// The built-in road-drawing toolbar, when spawned.
 	UPROPERTY()
@@ -163,6 +194,10 @@ private:
 
 	// How close the mouse needs to be to an intersection to snap (e.g., 2000 = 20 meters)
 	float SnapRadius = 2000.0f;
+
+	// How close a click must land to a node (cm) to open the intersection
+	// inspector. Tighter than SnapRadius so mid-road clicks stay road clicks.
+	float NodeInspectRadius = 1500.0f;
 
 	// Cached reference to your visualizer
 	class ARoadNetworkVisualizer* CachedVisualizer;

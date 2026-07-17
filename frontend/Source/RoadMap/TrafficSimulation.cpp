@@ -235,6 +235,16 @@ std::vector<VehicleRenderState> TrafficSimulation::GetVehicleRenderStates()
         out.yaw = static_cast<float>(std::atan2(ty, tx));
         out.pitch = static_cast<float>(pitch);
 
+        // The pavement narrows through lane-drop taper zones (see the road
+        // visualizer); clamp the lane offset onto the drawn width so a car in
+        // the dropping lane slides in with the taper instead of riding beside
+        // the road.
+        if (edge)
+        {
+            lane = std::min(lane, static_cast<double>(RoadIntersectionUtil::GetTaperedMaxLaneAt(
+                orlandoMap, *edge, static_cast<float>(std::clamp(dist, 0.0, edgeLen)))));
+        }
+
         double laneOffset = MEDIAN_GAP_METERS + (LANE_WIDTH / 2.0) + lane * LANE_WIDTH;
         out.x += (-ty) * laneOffset;
         out.y += ( tx) * laneOffset;
@@ -293,7 +303,16 @@ std::vector<VehicleRenderState> TrafficSimulation::GetVehicleRenderStates()
         if (!nA || !nB || !v->getCurrentEdge() || v->getCurrentEdge()->getLength() == 0) continue;
 
         const double L = v->getCurrentEdge()->getLength();
-        const float pos = v->getPos();
+        // Physics positions are front-bumper arc positions (IDM gaps measure
+        // follower front to leader rear), but the vehicle mesh pivot is at
+        // its center: rendering the center at the front-bumper position
+        // pushed every car half a body forward, which is why cars waiting at
+        // stop lines looked like they were poking into the intersection.
+        // Deliberately NOT clamped to 0: right after an edge handoff the
+        // center is still up to half a body behind the new edge's start, and
+        // pinning it at 0 froze every car at the junction entry until the sim
+        // position caught up (the negative span is handled below).
+        const float pos = v->getPos() - v->getLength() * 0.5f;
 
         // Continuous lane position: mid-lane-change this eases between the old
         // and new lane centers, so the transition sweeps across instead of
@@ -363,7 +382,17 @@ std::vector<VehicleRenderState> TrafficSimulation::GetVehicleRenderStates()
                 float prevLane = MovementLane(nP, nA, nB, prev, lane);
                 EdgePoint exitPt, entryPt;
                 float denom = sbPrevEnd + sbStart;
-                if (denom > 0.001f &&
+                if (sbPrevEnd + pos < 0.0f)
+                {
+                    // The center is still short of the previous edge's exit
+                    // point (fresh handoff at a node whose setback is smaller
+                    // than half a body -- zero for plain pass-through nodes):
+                    // render it where it physically is, on the previous edge,
+                    // instead of pinning it at the junction entry.
+                    resolved = PointOnEdge(nP, nA, prev, prev->getLength(),
+                        prev->getLength() + pos, prevLane, p);
+                }
+                else if (denom > 0.001f &&
                     PointOnEdge(nP, nA, prev, prev->getLength(), prev->getLength() - sbPrevEnd, prevLane, exitPt) &&
                     PointOnEdge(nA, nB, v->getCurrentEdge(), L, sbStart, lane, entryPt))
                 {
@@ -423,9 +452,20 @@ void TrafficSimulation::AddRuntimeRoad(uint64_t startNodeId, uint64_t endNodeId,
     // the inferred per-lane turn maps (OSM-tagged edges are untouched).
     orlandoMap->assignInferredTurnLanes();
 
+    // A new approach can turn either endpoint into a real intersection; give
+    // it the control the load-time defaulting would (stop/signal/yield), so
+    // drawn crossings are controlled immediately instead of after a reload.
+    // Lights created this way self-initialize in the physics step.
+    orlandoMap->refreshTrafficControlAt(startNodeId);
+    orlandoMap->refreshTrafficControlAt(endNodeId);
+
     // Adding to a node's outgoingEdges vector can reallocate it, which would
     // leave vehicles on that node's other edges holding dangling Road*.
     RefreshVehicleEdgePointers();
+
+    // Same reallocation dangles the Road* inside every light's axis map, and
+    // an endpoint promoted to a signal above needs its state built.
+    if (controller) controller->refreshIntersectionStates();
 }
 
 void TrafficSimulation::SplitRuntimeEdge(uint64_t u, uint64_t v, uint64_t newNodeId, double x, double y)
@@ -465,7 +505,18 @@ void TrafficSimulation::SplitRuntimeEdge(uint64_t u, uint64_t v, uint64_t newNod
     // the original edge did, so refresh the inferred turn maps.
     orlandoMap->assignInferredTurnLanes();
 
+    // The approaches into u and v now originate at the mid node instead of
+    // each other, so their yield minor-road lists must be recomputed. The mid
+    // node itself classifies once a drawn road actually tees into it.
+    orlandoMap->refreshTrafficControlAt(u);
+    orlandoMap->refreshTrafficControlAt(v);
+    orlandoMap->refreshTrafficControlAt(newNodeId);
+
     RefreshVehicleEdgePointers();
+
+    // The split rehomed edges and may have reallocated outgoingEdges, so
+    // every light's axis map must be rebuilt from the new topology.
+    if (controller) controller->refreshIntersectionStates();
 }
 
 void TrafficSimulation::DeleteRuntimeEdge(uint64_t u, uint64_t v, bool bBothDirections)
@@ -586,9 +637,19 @@ void TrafficSimulation::DeleteRuntimeEdge(uint64_t u, uint64_t v, bool bBothDire
     // endpoints may do, so refresh the inferred turn maps.
     orlandoMap->assignInferredTurnLanes();
 
+    // Losing an approach can demote an endpoint back to pass-through or
+    // change which surviving road is the minor one. (Fully removed nodes are
+    // simply skipped.)
+    orlandoMap->refreshTrafficControlAt(u);
+    orlandoMap->refreshTrafficControlAt(v);
+
     // removeDirectedEdge shifts the surviving Roads inside outgoingEdges, so
     // every cached currentEdge pointer must be re-resolved.
     RefreshVehicleEdgePointers();
+
+    // Lights whose approaches shifted (or that lost signal status, or whose
+    // node vanished with its last road) get their state rebuilt or dropped.
+    if (controller) controller->refreshIntersectionStates();
 }
 
 void TrafficSimulation::UpdateRuntimeRoad(uint64_t u, uint64_t v, int lanes, float speedMps, bool bBothDirections,
@@ -627,6 +688,15 @@ void TrafficSimulation::UpdateRuntimeRoad(uint64_t u, uint64_t v, int lanes, flo
     // have cleared it; recompute the inferred maps so nothing drives on a
     // stale or missing one (explicit maps set above stay put).
     orlandoMap->assignInferredTurnLanes();
+
+    // Speed/lane edits feed the yield minor-road comparison at both ends, so
+    // the right-of-way assignment must track the new values.
+    orlandoMap->refreshTrafficControlAt(u);
+    orlandoMap->refreshTrafficControlAt(v);
+
+    // Signal timings are derived from speed limits and lane counts, so the
+    // lights at both ends recompute their phase durations.
+    if (controller) controller->refreshIntersectionStates();
 
     // Vehicles already driving the edited edge adopt the new speed limit and
     // get pulled out of lanes that no longer exist.

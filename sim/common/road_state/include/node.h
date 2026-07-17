@@ -38,9 +38,15 @@ class Node
         double g = std::numeric_limits<double>::infinity();
         double rhs = std::numeric_limits<double>::infinity();
 
-        // intersection stuff 
+        // intersection stuff
         enum IntersectionType { PASS_THROUGH, FOUR_WAY_STOP, TRAFFIC_LIGHT, YIELD_STOP };
         IntersectionType type = PASS_THROUGH;
+
+        // True when 'type' came from the dataset (signal/stop/yield in the
+        // node JSONL) rather than from applyDefaultTrafficControls. Explicit
+        // controls survive Network::refreshTrafficControlAt after runtime
+        // road edits; defaulted ones are recomputed from the new topology.
+        bool controlFromData = false;
 
         // updated constructor
         Node(std::uint64_t initId, double iLon, double iLat, double x, double y, const std::string& typeStr);

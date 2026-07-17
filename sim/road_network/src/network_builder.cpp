@@ -53,6 +53,28 @@ int parseEdgeLayer(const json& j)
     return 0;
 }
 
+// OSM highway classes ending in "_link" (trunk_link, primary_link, ...) are
+// ramps and turn slips rather than full roadways. Merged ways can carry an
+// array of classes; any link class in it marks the edge.
+bool isLinkHighway(const json& j)
+{
+    auto endsWithLink = [](const std::string& s) {
+        static const std::string suffix = "_link";
+        return s.size() > suffix.size()
+            && s.compare(s.size() - suffix.size(), suffix.size(), suffix) == 0;
+    };
+
+    auto it = j.find("highway");
+    if (it == j.end()) return false;
+    if (it->is_string()) return endsWithLink(it->get<std::string>());
+    if (it->is_array())
+    {
+        for (const auto& item : *it)
+            if (item.is_string() && endsWithLink(item.get<std::string>())) return true;
+    }
+    return false;
+}
+
 } // namespace
 
 Network NetworkBuilder::buildNetworkFromJSONL(const std::string& nodePath, const std::string& edgePath)
@@ -155,7 +177,8 @@ Network NetworkBuilder::buildNetworkFromJSONL(const std::string& nodePath, const
                     lanes,
                     std::move(geometry),
                     parseEdgeLayer(j),
-                    TurnLane::fromOsmString(turnSpec, lanes)
+                    TurnLane::fromOsmString(turnSpec, lanes),
+                    isLinkHighway(j)
                 );
             }
             catch(const json::exception& e)

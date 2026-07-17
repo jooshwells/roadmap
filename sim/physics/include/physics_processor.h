@@ -20,13 +20,34 @@ struct IntersectionState {
     // of freezing every approach forever.
     float occupantHeldTime = 0.0f;
     float lightTimer = 0.0f;
-    
-    // default to phase 2 N/S straight 
-    int currentPhase = 2; 
-    bool isInitialized = false; 
-    
+    // Seconds since the last demand scan during a green phase; scans hit the
+    // spatial hash, so they poll at 2 Hz instead of every frame.
+    float demandPollTimer = 0.0f;
+
+    // default to phase 2 N/S straight
+    int currentPhase = 2;
+    bool isInitialized = false;
+
+    // Per-phase durations in seconds, indices matching the 10-phase ring in
+    // updateIntersections. initializeLightAxes overwrites the greens/yellows
+    // from the axes' speed limits and lane counts; these values are the
+    // fallback for lights whose axes carry no usable road data.
+    float phaseDurations[10] = {6.0f, 3.0f, 15.0f, 4.0f, 2.0f, 6.0f, 3.0f, 15.0f, 4.0f, 2.0f};
+
     // [0] = N/S, [1] = E/W
-    std::vector<Road*> axisEdges[2]; 
+    std::vector<Road*> axisEdges[2];
+
+    // Multi-node junction coordination (see rebuildSignalClusters): every
+    // light of one physical junction cluster mirrors the master light's
+    // phase, so the perimeter nodes can never show conflicting greens into
+    // the shared box. bInCluster is set on every clustered light; the master
+    // (lowest light id) runs the actuated ring, the rest copy it each tick.
+    bool bInCluster = false;
+    uint64_t syncMasterId = 0;
+    // Shared compass baseline (degrees) for axis grouping, so "axis 0" means
+    // the same physical direction at every node of the cluster. Negative =
+    // unclustered, derive the baseline from the node's own first edge.
+    double axisBaselineDeg = -1.0;
 };
 
 class PhysicsProcessor 
@@ -42,7 +63,18 @@ class PhysicsProcessor
         float IDM(VehicleState* vhcl, VehicleState* leader, bool mobil); // now takes leader for MOBIL to use
         void addVehicle(VehicleState* vhcl);
         float MOBIL(VehicleState* vhcl, int targetLane);
-        bool checkLeftTurnDemand(Node* node);
+        // True when a stopped car near one of 'axis's stop lines wants to
+        // turn left -- the sensor that decides whether a protected-left
+        // phase is worth serving.
+        bool checkLeftTurnDemand(Node* node, const IntersectionState& state, int axis);
+
+        // Rebuilds every light's axis grouping and phase timings from live
+        // topology, drops state for deleted nodes, and creates it for newly
+        // promoted lights. Call after ANY runtime road edit: mutating a
+        // node's outgoingEdges vector can reallocate it, dangling the Road*
+        // held by every light fed from that node -- not just the lights at
+        // the edited endpoints.
+        void refreshIntersectionStates();
 
         VehicleState* getLeader(VehicleState* vhcl, int targetLane);
         VehicleState* getFollower(VehicleState* vhcl, int targetLane);
@@ -82,10 +114,39 @@ class PhysicsProcessor
         std::vector<VehicleState*> vehiclesToDestroy;
         
         // intersection stuff
-        std::unordered_map<uint64_t, IntersectionState> intersections; 
+        std::unordered_map<uint64_t, IntersectionState> intersections;
         std::map<std::pair<Road*, int>, VehicleState*> ghostVehicles; // ghost vehicles for each lane in intersection
-        
+
+        // Multi-node junction clusters: controlled nodes joined by internal
+        // junction legs are one physical intersection. Maps every member
+        // node id to the full member list (including itself); nodes not part
+        // of any cluster are absent. Rebuilt with the intersection states.
+        std::unordered_map<uint64_t, std::vector<uint64_t>> junctionClusterOf;
+
+        // Recomputes junctionClusterOf and stamps every clustered light's
+        // sync master + shared axis baseline. Must run before axes are
+        // (re)built so the baseline is in place when edges are grouped.
+        void rebuildSignalClusters();
+
+        // Demand for 'axis' anywhere in node's cluster (or just at node when
+        // unclustered) -- what the master's ring actuates on, so a car at
+        // any perimeter node can call up its own green.
+        bool clusterAxisHasDemand(Node* node, const IntersectionState& state, int axis);
+        bool clusterLeftTurnDemand(Node* node, const IntersectionState& state, int axis);
+
         bool canVehicleEnter(VehicleState* vhcl, Node* destNode);
+        // Signal/right-of-way decision for destNode: traffic-light phase,
+        // stop-sign FIFO (including queue-admission side effects), yield gap.
+        // Split from canVehicleEnter so the wrong-lane gate can ask "would I
+        // otherwise be let through?" before choosing between holding to merge
+        // and rerouting.
+        bool controlGrantsEntry(VehicleState* vhcl, Node* destNode);
+        // Wrong-lane escape: replans the tail of vhcl's route so its first
+        // movement out of destNode is one its current lane allows, splicing
+        // the cheapest complete alternative into currentRoute. False when no
+        // allowed exit reaches the destination -- the caller then falls back
+        // to the wrong-lane turn.
+        bool tryRerouteAroundWrongLaneTurn(VehicleState* vhcl, Road* approach, Node* destNode);
         // True when the lane vhcl lands in on its exit edge out of destNode
         // has room for the whole car beyond the junction box -- the
         // don't-block-the-box gate inside canVehicleEnter.
@@ -104,6 +165,10 @@ class PhysicsProcessor
         // every TRAFFIC_LIGHT node at construction and lazily for nodes added
         // at runtime.
         void initializeLightAxes(Node* node, IntersectionState& state);
+        // True when any car is approaching (or waiting at) one of 'axis's
+        // stop lines -- the demand signal behind phase skipping, gap-out,
+        // and rest-on-green.
+        bool axisHasDemand(Node* node, const IntersectionState& state, int axis);
         bool hasSafeGap(VehicleState* yieldingCar, Node* destNode, float criticalGapSeconds);
 };
 
