@@ -14,7 +14,6 @@ pillow==12.2.0
 pyproj==3.7.2
 pyparsing==3.3.2
 python-dateutil==2.9.0.post0
-reportlab==5.0.0
 six==1.17.0
 shapely==2.1.2
 tzdata==2026.2

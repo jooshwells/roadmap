@@ -151,12 +151,14 @@ def ensure_fdot_mapping(
 
 
 def _clean_value(value):
+    """Replace missing table values with simple Python values."""
     if value is None or (not isinstance(value, (list, dict)) and pd.isna(value)):
         return None
     return value
 
 
 def _parse_geometry(value, row: pd.Series) -> LineString | None:
+    """Read a road shape, or fall back to its start and end points."""
     points = None
     if isinstance(value, str) and value.strip():
         try:
@@ -357,6 +359,7 @@ def match_edges_to_fdot(
 
 
 def mapping_columns(matched: pd.DataFrame) -> list[str]:
+    """Choose the columns saved in the final mapping CSV."""
     preferred = [
         "EdgeID", "u", "v", "name", "ref", "highway", "length_m",
         "fdot_aadt", "fdot_roadway", "fdot_from", "fdot_to", "fdot_year",
@@ -415,6 +418,7 @@ def create_fdot_mapping(
 
 
 def main() -> None:
+    """Run the matcher as a stand-alone development tool."""
     parser = argparse.ArgumentParser(description="Match a RoadMap network_graph.csv to FDOT AADT segments.")
     parser.add_argument("--network", type=Path, required=True)
     parser.add_argument("--fdot", type=Path, default=DEFAULT_FDOT_FILE)

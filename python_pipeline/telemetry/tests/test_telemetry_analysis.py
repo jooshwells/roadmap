@@ -35,6 +35,7 @@ from telemetry_analysis import (
     load_telemetry,
     validate_telemetry,
     add_derived_columns,
+    calculate_bottleneck_index,
     build_run_summary,
     build_edge_metrics,
     build_vehicle_metrics,
@@ -177,8 +178,29 @@ def test_edge_metrics_are_created():
     # These are newer fields used by the updated heatmap and future FDOT comparison.
     assert "edge_entry_count" in edge_metrics.columns
     assert "estimated_flow_veh_per_hr" in edge_metrics.columns
+    assert "avg_wait_per_vehicle_s" in edge_metrics.columns
     assert "low_speed_sample_ratio" in edge_metrics.columns
     assert "bad_accel_count" in edge_metrics.columns
+
+    # The new wait value should be total added wait divided by road entries.
+    for _, row in edge_metrics.iterrows():
+        expected = row["total_wait_added_s"] / row["edge_entry_count"]
+        assert row["avg_wait_per_vehicle_s"] == pytest.approx(expected)
+
+    # The RoadMap screening index now has a fixed range that can be compared
+    # between runs instead of growing forever with total stopped time.
+    assert edge_metrics["bottleneck_score"].between(0.0, 100.0).all()
+
+
+def test_bottleneck_index_uses_fixed_per_entry_parts():
+    """The index should cap its stopped-time part and stay on a 0-100 scale."""
+    score = calculate_bottleneck_index(
+        pd.Series([30.0, 90.0]),
+        pd.Series([0.50, 0.50]),
+        pd.Series([0.25, 0.25]),
+    )
+
+    assert score.tolist() == pytest.approx([70.0, 70.0])
 
 
 def test_vehicle_and_od_metrics_are_created():

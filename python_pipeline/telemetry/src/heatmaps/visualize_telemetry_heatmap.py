@@ -13,7 +13,7 @@ Expected network_graph.csv columns:
     name, ref, highway, geometry_xy
 
 Expected edge_metrics.csv columns include:
-    EdgeID, bottleneck_score, total_wait_added_s,
+    EdgeID, bottleneck_score, avg_wait_per_vehicle_s,
     estimated_flow_veh_per_hr, avg_speed_mph
 """
 
@@ -43,6 +43,9 @@ MAJOR_ROAD_TYPES = {"motorway", "trunk", "primary", "secondary"}
 # Tertiary roads are included because they are usually useful connector roads.
 LABELED_HIGHWAY_TYPES = {"motorway", "trunk", "primary", "secondary", "tertiary"}
 MAX_ROAD_LABELS = 45
+
+# Data cleanup and road selection
+# These helpers make files from different maps follow the same format.
 
 BACKGROUND_WIDTHS = {
     "motorway": 1.70,
@@ -91,6 +94,9 @@ def filter_metrics_for_focus(metrics_df: pd.DataFrame, metric: str, focus: str) 
         return metrics_df.copy()
 
     candidates = metrics_df.dropna(subset=[metric]).copy()
+    if metric == "comparison_delta":
+        keep_count = max(1, math.ceil(len(candidates) * fraction))
+        return candidates.loc[candidates[metric].abs().sort_values(ascending=False).index].head(keep_count)
     if metric != "avg_speed_mph":
         candidates = candidates[candidates[metric] > 1e-9]
     if candidates.empty:
@@ -105,7 +111,25 @@ def filter_metrics_for_focus(metrics_df: pd.DataFrame, metric: str, focus: str) 
 def load_files(network_path: Path, edge_metrics_path: Path):
     network_df = pd.read_csv(network_path)
     metrics_df = pd.read_csv(edge_metrics_path)
+    metrics_df = add_average_wait_metric(metrics_df)
     return network_df, metrics_df
+
+
+# Add the newer wait metric when an older saved run is opened.
+def add_average_wait_metric(metrics_df: pd.DataFrame) -> pd.DataFrame:
+    """Build average wait from columns that were already saved in old runs."""
+    metrics_df = metrics_df.copy()
+    if "avg_wait_per_vehicle_s" in metrics_df.columns:
+        return metrics_df
+
+    needed = {"total_wait_added_s", "edge_entry_count"}
+    if not needed.issubset(metrics_df.columns):
+        return metrics_df
+
+    total_wait = pd.to_numeric(metrics_df["total_wait_added_s"], errors="coerce")
+    entry_count = pd.to_numeric(metrics_df["edge_entry_count"], errors="coerce").replace(0, np.nan)
+    metrics_df["avg_wait_per_vehicle_s"] = (total_wait / entry_count).fillna(0.0)
+    return metrics_df
 
 
 # Clean EdgeID values so the network and metrics files can join correctly.
@@ -324,6 +348,7 @@ def point_and_angle_at_fraction(segment, fraction=0.5):
 
 # Draw road names for important roads without labeling every neighborhood street.
 def draw_road_labels(ax, network_df: pd.DataFrame):
+    """Add a useful number of road names without filling the whole map."""
     if "name" not in network_df.columns and "ref" not in network_df.columns:
         print("Road labels skipped because name/ref columns are missing.")
         return
@@ -477,6 +502,8 @@ def draw_road_labels(ax, network_df: pd.DataFrame):
 
 
 # Build the shared green-yellow-orange-red traffic color palette.
+# Color and number formatting
+
 def make_roadmap_traffic_cmap(high_values_are_bad: bool = True):
     """Use one traffic-light color palette for all heatmaps."""
     green_to_bad = ["#00884A", "#38C172", "#EAF76E", "#FFB347", "#FF3B30"]
@@ -491,14 +518,25 @@ def make_roadmap_traffic_cmap(high_values_are_bad: bool = True):
     )
 
 
+def make_comparison_cmap(neutral_metric: bool = False):
+    """Use a centered palette so zero means little change."""
+    palette = (
+        ["#D97706", "#FDBA74", "#D1D5DB", "#7DD3FC", "#0284C7"]
+        if neutral_metric
+        else ["#D73027", "#FC8D59", "#D1D5DB", "#91CF60", "#1A9850"]
+    )
+    return colors.LinearSegmentedColormap.from_list("roadmap_comparison", palette, N=256)
+
+
 # Convert metric column names into readable titles.
 def metric_display_name(metric: str) -> str:
     names = {
-        "bottleneck_score": "Bottleneck Score",
-        "total_wait_added_s": "Total Wait Added",
-        "estimated_flow_veh_per_hr": "Estimated Flow",
-        "avg_speed_mph": "Average Speed",
-        "fdot_geh_score": "FDOT Match Quality",
+        "bottleneck_score": "RoadMap Bottleneck Index",
+        "avg_wait_per_vehicle_s": "Average Stopped Time per Vehicle Entry",
+        "estimated_flow_veh_per_hr": "Estimated Hourly Traffic Flow",
+        "avg_speed_mph": "Average Recorded Speed",
+        "fdot_geh_score": "FDOT Reference Difference",
+        "comparison_delta": "Run-to-Run Change",
     }
     return names.get(metric, metric.replace("_", " ").title())
 
@@ -526,12 +564,14 @@ def metric_value_unit(metric: str) -> str:
         return "mph"
     if metric == "estimated_flow_veh_per_hr":
         return "veh/hr"
-    if metric == "total_wait_added_s":
+    if metric == "avg_wait_per_vehicle_s":
         return "sec"
     if metric == "bottleneck_score":
         return "index"
     if metric == "fdot_geh_score":
         return "GEH"
+    if metric == "comparison_delta":
+        return "change"
     return ""
 
 
@@ -600,6 +640,16 @@ def choose_visual_range(values: pd.Series, metric: str):
         # the useful close/review/large-difference range stays readable.
         return 0.0, 20.0
 
+    if metric == "bottleneck_score":
+        # The revised project index always uses the same 0-100 range. This lets
+        # users compare its numbers between runs instead of only comparing colors.
+        return 0.0, 100.0
+
+    if metric == "comparison_delta":
+        raw_limit = values.abs().quantile(0.95) if len(values) >= 20 else values.abs().max()
+        limit = nice_round_up(raw_limit)
+        return -limit, limit
+
     vmin = 0.0
 
     if len(values) < 40:
@@ -640,15 +690,15 @@ def shorten_text(value, max_length=28):
 # Choose the summary label for the most important road in the selected metric.
 def metric_extreme_label(metric: str) -> str:
     if metric == "avg_speed_mph":
-        return "Slowest Road"
+        return "Lowest Average-Speed Segment"
     if metric == "estimated_flow_veh_per_hr":
-        return "Highest Flow Road"
-    if metric == "total_wait_added_s":
-        return "Longest Wait Road"
+        return "Highest-Flow Segment"
+    if metric == "avg_wait_per_vehicle_s":
+        return "Highest Average Stopped-Time Segment"
     if metric == "bottleneck_score":
-        return "Most Congested Road"
+        return "Highest Bottleneck-Index Segment"
     if metric == "fdot_geh_score":
-        return "Largest Difference Road"
+        return "Largest FDOT Difference Segment"
     return "Most Extreme Road"
 
 
@@ -673,7 +723,9 @@ def get_extreme_road_info(merged_df: pd.DataFrame, metric: str):
     if not label:
         label = "Unnamed road"
 
-    return shorten_text(label), float(row[metric])
+    edge_value = pd.to_numeric(row.get("EdgeID"), errors="coerce")
+    edge_text = f"Edge {int(edge_value)}" if not pd.isna(edge_value) else "Edge unavailable"
+    return f"{shorten_text(label, 24)} - {edge_text}", float(row[metric])
 
 
 # Build the rows shown in the upper-left simulation summary card.
@@ -681,6 +733,24 @@ def summary_rows_for_metric(metric, heat_values, background_count, heat_count, m
     """Build the lines shown in the summary card."""
     values = pd.Series(heat_values)
     unit = metric_value_unit(metric)
+
+    if metric == "comparison_delta":
+        statuses = merged_df.get("comparison_status", pd.Series(dtype=str)).value_counts()
+        neutral_column = merged_df.get("comparison_is_neutral", pd.Series([False]))
+        neutral = bool(neutral_column.iloc[0]) if not neutral_column.empty else False
+        if neutral:
+            return [
+                ("Shared Road Directions", f"{heat_count:,}"),
+                ("Increased", f"{int(statuses.get('increased', 0)):,}"),
+                ("Little Change", f"{int(statuses.get('little_change', 0)):,}"),
+                ("Decreased", f"{int(statuses.get('decreased', 0)):,}"),
+            ]
+        return [
+            ("Shared Road Directions", f"{heat_count:,}"),
+            ("Improved", f"{int(statuses.get('improved', 0)):,}"),
+            ("Little Change", f"{int(statuses.get('little_change', 0)):,}"),
+            ("Worsened", f"{int(statuses.get('worsened', 0)):,}"),
+        ]
 
     if metric == "fdot_geh_score":
         valid = merged_df.dropna(subset=[metric]).copy()
@@ -701,8 +771,8 @@ def summary_rows_for_metric(metric, heat_values, background_count, heat_count, m
     # A zero-only bottleneck run has no meaningful extreme road or hotspots.
     if metric == "bottleneck_score" and (values.empty or values.abs().max() <= 1e-9):
         return [
-            ("Road Segments", f"{background_count:,}"),
-            ("Highlighted Roads" if focus != "all" else "Analyzed Roads", f"{heat_count:,}"),
+            ("Map Road Directions", f"{background_count:,}"),
+            ("Highlighted Directions" if focus != "all" else "Analyzed Directions", f"{heat_count:,}"),
             ("Result", "No significant bottlenecks detected"),
         ]
 
@@ -714,25 +784,26 @@ def summary_rows_for_metric(metric, heat_values, background_count, heat_count, m
         top_count = int((positive_values >= positive_values.quantile(0.95)).sum()) if not positive_values.empty else 0
 
     rows = [
-        ("Road Segments", f"{background_count:,}"),
-        ("Highlighted Roads" if focus != "all" else "Analyzed Segments", f"{heat_count:,}"),
+        ("Map Road Directions", f"{background_count:,}"),
+        ("Highlighted Directions" if focus != "all" else "Analyzed Directions", f"{heat_count:,}"),
         (metric_extreme_label(metric), extreme_road),
     ]
+    average_scope = "Highlighted" if focus != "all" else "Analyzed"
 
     if metric == "avg_speed_mph":
         rows.extend([
-            ("Lowest Speed", compact_number_with_unit(values.min(), unit)),
-            ("Average Speed", compact_number_with_unit(values.mean(), unit)),
+            ("Lowest Segment Speed", compact_number_with_unit(values.min(), unit)),
+            (f"{average_scope}-Segment Average", compact_number_with_unit(values.mean(), unit)),
         ])
     elif metric == "estimated_flow_veh_per_hr":
         rows.extend([
-            ("Peak Flow", compact_number_with_unit(values.max(), unit)),
-            ("Average Flow", compact_number_with_unit(values.mean(), unit)),
+            ("Highest Segment Flow", compact_number_with_unit(values.max(), unit)),
+            (f"{average_scope}-Segment Average", compact_number_with_unit(values.mean(), unit)),
         ])
-    elif metric == "total_wait_added_s":
+    elif metric == "avg_wait_per_vehicle_s":
         rows.extend([
-            ("Peak Wait", compact_number_with_unit(values.max(), unit)),
-            ("Average Wait", compact_number_with_unit(values.mean(), unit)),
+            ("Highest Average Stopped Time", compact_number_with_unit(values.max(), unit)),
+            (f"{average_scope}-Segment Average", compact_number_with_unit(values.mean(), unit)),
         ])
     elif metric == "bottleneck_score":
         # The bottleneck score is internal, so showing the road name is clearer than showing raw score values.
@@ -747,6 +818,8 @@ def summary_rows_for_metric(metric, heat_values, background_count, heat_count, m
 
 
 # Get the midpoint of a road segment.
+# Map cards, bounds, and highlighted roads
+
 def segment_midpoint(segment):
     x, y, _ = point_and_angle_at_fraction(segment, 0.50)
     return x, y
@@ -782,7 +855,7 @@ def add_stats_card(ax, metric, heat_values, background_count, heat_count, merged
     if not heat_values:
         return
 
-    title = "Simulation Summary"
+    title = "Run Comparison" if metric == "comparison_delta" else "Simulation Summary"
     rows = summary_rows_for_metric(
         metric,
         heat_values,
@@ -869,6 +942,8 @@ def add_value_weighted_glow(ax, heat_segments, heat_widths, values, cmap_name, n
     """Add extra glow to the roads that matter most for the selected metric."""
     if not heat_segments or len(values) == 0:
         return
+    if metric == "comparison_delta":
+        return
 
     series = pd.Series(values)
 
@@ -925,10 +1000,10 @@ def add_value_weighted_glow(ax, heat_segments, heat_widths, values, cmap_name, n
         ax.add_collection(glow)
 
 
-# Optionally draw numbered markers on the worst bottlenecks.
+# Optionally mark the segments with the highest RoadMap index values.
 def add_top_bottleneck_markers(ax, heat_segments, heat_values, metric, max_markers=5):
     """Optional numbered markers for the worst roads."""
-    if metric not in {"bottleneck_score", "total_wait_added_s"}:
+    if metric not in {"bottleneck_score", "avg_wait_per_vehicle_s"}:
         return
     if not heat_segments or not heat_values:
         return
@@ -963,22 +1038,27 @@ def add_top_bottleneck_markers(ax, heat_segments, heat_values, metric, max_marke
         )
 
 # Choose the palette direction and colorbar label for the selected metric.
+# Metric settings and road line building
+
 def choose_color_settings(metric: str):
-    # Same traffic palette for all maps. Reverse it when higher values should look better.
+    # Speed uses red-to-green because the number itself moves from low to high.
     if metric == "avg_speed_mph":
-        return make_roadmap_traffic_cmap(high_values_are_bad=False), "Average speed (mph)", False
+        return make_roadmap_traffic_cmap(high_values_are_bad=False), "Average recorded speed (mph)", False
 
     if metric == "estimated_flow_veh_per_hr":
-        return make_roadmap_traffic_cmap(high_values_are_bad=False), "Estimated flow (vehicles/hour)", True
+        return make_roadmap_traffic_cmap(high_values_are_bad=True), "Estimated hourly traffic flow (vehicles/hour)", True
 
-    if metric == "total_wait_added_s":
-        return make_roadmap_traffic_cmap(high_values_are_bad=True), "Total wait added (seconds)", True
+    if metric == "avg_wait_per_vehicle_s":
+        return make_roadmap_traffic_cmap(high_values_are_bad=True), "Average stopped time per vehicle entry (seconds)", True
 
     if metric == "bottleneck_score":
-        return make_roadmap_traffic_cmap(high_values_are_bad=True), "Bottleneck score", True
+        return make_roadmap_traffic_cmap(high_values_are_bad=True), "RoadMap bottleneck index", True
 
     if metric == "fdot_geh_score":
-        return make_roadmap_traffic_cmap(high_values_are_bad=True), "FDOT match difference (GEH)", True
+        return make_roadmap_traffic_cmap(high_values_are_bad=True), "FDOT reference difference (GEH)", True
+
+    if metric == "comparison_delta":
+        return make_comparison_cmap(), "Road condition change", False
 
     return make_roadmap_traffic_cmap(high_values_are_bad=True), metric, True
 
@@ -1028,7 +1108,10 @@ def build_line_segments(network_df: pd.DataFrame, metrics_df: pd.DataFrame, metr
                 heat_by_geometry[key] = (segment, width, value)
             else:
                 old_segment, old_width, old_value = existing
-                use_new_value = value < old_value if metric == "avg_speed_mph" else value > old_value
+                if metric == "comparison_delta":
+                    use_new_value = abs(value) > abs(old_value)
+                else:
+                    use_new_value = value < old_value if metric == "avg_speed_mph" else value > old_value
                 selected_segment = segment if use_new_value else old_segment
                 selected_value = value if use_new_value else old_value
                 heat_by_geometry[key] = (selected_segment, max(old_width, width), selected_value)
@@ -1048,6 +1131,8 @@ def build_line_segments(network_df: pd.DataFrame, metrics_df: pd.DataFrame, metr
 
 
 # Draw optional water, park, or building polygons under the roads.
+# Extra map data saved for Unreal
+
 def draw_geojson_polygons(ax, geojson_path, facecolor, edgecolor, alpha, zorder):
     """Draw optional water/park/building GeoJSON layers if they are provided."""
     if not geojson_path:
@@ -1128,14 +1213,17 @@ def build_interactive_road_data(merged_df, metric, map_bounds):
         # Two directions often share one shape. Match the value used to color it.
         if existing is not None:
             old_value = existing["value"]
-            use_new_value = value < old_value if metric == "avg_speed_mph" else value > old_value
+            if metric == "comparison_delta":
+                use_new_value = abs(value) > abs(old_value)
+            else:
+                use_new_value = value < old_value if metric == "avg_speed_mph" else value > old_value
             if not use_new_value:
                 continue
 
         name = get_road_label(row)
         route_ref = simplify_osm_value(row.get("ref"))
         edge_id = int(row["EdgeID"])
-        roads_by_geometry[key] = {
+        road_data = {
             "edge_id": edge_id,
             "name": name or route_ref or f"Road edge {edge_id}",
             "route_ref": route_ref or "",
@@ -1146,6 +1234,16 @@ def build_interactive_road_data(merged_df, metric, map_bounds):
                 for x, y in segment
             ],
         }
+        if metric == "comparison_delta":
+            road_data.update({
+                "baseline_value": float(row.get("baseline_value", 0.0)),
+                "comparison_value": float(row.get("comparison_value", 0.0)),
+                "raw_delta": float(row.get("raw_delta", 0.0)),
+                "comparison_status": str(row.get("comparison_status", "little_change")),
+                "comparison_metric": str(row.get("comparison_metric", "Metric")),
+                "comparison_unit": str(row.get("comparison_unit", "")),
+            })
+        roads_by_geometry[key] = road_data
 
     return list(roads_by_geometry.values())
 
@@ -1163,14 +1261,37 @@ def save_heatmap_display_info(
     map_rect=None,
 ):
     ticks = [vmin + (vmax - vmin) * i / 4 for i in range(5)]
-    if metric == "avg_speed_mph":
-        colors_top_to_bottom = ["#1A9850", "#91CF60", "#FFFFBF", "#FC8D59", "#D73027"]
+    comparison_roads = interactive_roads or []
+    comparison_neutral = any(
+        road.get("comparison_status") in {"increased", "decreased"}
+        for road in comparison_roads
+    )
+    if metric == "comparison_delta":
+        colors_top_to_bottom = (
+            ["#0284C7", "#7DD3FC", "#D1D5DB", "#FDBA74", "#D97706"]
+            if comparison_neutral
+            else ["#1A9850", "#91CF60", "#D1D5DB", "#FC8D59", "#D73027"]
+        )
+    elif metric == "avg_speed_mph":
+        colors_top_to_bottom = ["#00884A", "#38C172", "#EAF76E", "#FFB347", "#FF3B30"]
     else:
-        colors_top_to_bottom = ["#D73027", "#FC8D59", "#FFFFBF", "#91CF60", "#1A9850"]
+        colors_top_to_bottom = ["#FF3B30", "#FFB347", "#EAF76E", "#38C172", "#00884A"]
 
     tick_labels = [compact_axis_number(tick) for tick in reversed(ticks)]
     if metric == "fdot_geh_score":
         tick_labels = ["20+", "15", "10 - Large", "5 - Review", "0 - Close"]
+    elif metric == "comparison_delta":
+        tick_labels = (
+            ["Increased", "", "Little change", "", "Decreased"]
+            if comparison_neutral
+            else ["Improved", "", "Little change", "", "Worsened"]
+        )
+        if comparison_roads:
+            road = comparison_roads[0]
+            unit = road.get("comparison_unit", "")
+            colorbar_label = f"{road.get('comparison_metric', 'Metric')} change"
+            if unit:
+                colorbar_label += f" ({unit})"
 
     display_info = {
         "metric": metric,
@@ -1199,6 +1320,7 @@ def plot_heatmap(
     show_markers=False,
     focus="all",
 ):
+    """Draw one complete heatmap and save its PNG, SVG, and display JSON."""
     if metric not in metrics_df.columns:
         raise ValueError(
             f"Metric '{metric}' was not found in edge_metrics.csv. "
@@ -1207,6 +1329,8 @@ def plot_heatmap(
 
     focus = normalize_focus(focus)
     cmap_name, colorbar_label, clip_high_values = choose_color_settings(metric)
+    if metric == "comparison_delta" and "comparison_is_neutral" in metrics_df.columns:
+        cmap_name = make_comparison_cmap(bool(metrics_df["comparison_is_neutral"].iloc[0]))
     focused_metrics_df = filter_metrics_for_focus(metrics_df, metric, focus)
 
     (
@@ -1316,7 +1440,11 @@ def plot_heatmap(
         if pd.isna(vmax) or vmax == vmin:
             vmax = vmin + 1
 
-        norm = colors.Normalize(vmin=vmin, vmax=vmax, clip=True)
+        norm = (
+            colors.TwoSlopeNorm(vmin=vmin, vcenter=0.0, vmax=vmax)
+            if metric == "comparison_delta"
+            else colors.Normalize(vmin=vmin, vmax=vmax, clip=True)
+        )
 
         # Dark outline behind colored roads.
         heat_casing = LineCollection(
@@ -1334,7 +1462,7 @@ def plot_heatmap(
         glow_items = [
             (segment, width, value)
             for segment, width, value in zip(heat_segments, heat_widths, values.to_numpy())
-            if metric == "avg_speed_mph" or abs(value) > 1e-9
+            if metric in {"avg_speed_mph", "comparison_delta"} or abs(value) > 1e-9
         ]
         if glow_items:
             glow_segments, glow_widths, glow_values = zip(*glow_items)
@@ -1390,16 +1518,17 @@ def plot_heatmap(
     ax.axis("off")
 
     friendly_titles = {
-        "bottleneck_score": "Road Bottleneck Hotspots",
-        "total_wait_added_s": "Total Vehicle Wait Time",
-        "estimated_flow_veh_per_hr": "Estimated Traffic Flow",
-        "avg_speed_mph": "Average Road Speed",
-        "fdot_geh_score": "FDOT Traffic Comparison",
+        "bottleneck_score": "Road Bottleneck Candidates",
+        "avg_wait_per_vehicle_s": "Average Stopped Time per Vehicle Entry",
+        "estimated_flow_veh_per_hr": "Estimated Hourly Traffic Flow",
+        "avg_speed_mph": "Average Recorded Road Speed",
+        "fdot_geh_score": "FDOT Reference Comparison",
+        "comparison_delta": "Run-to-Run Road Changes",
     }
 
     title = friendly_titles.get(metric, metric)
     if focus != "all":
-        title += " - " + focus.replace("worst_", "Worst ").replace("_", " ").title() + "%"
+        title += " - " + focus.replace("worst_", "Focused ").replace("_", " ").title() + "%"
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -1497,6 +1626,8 @@ def plot_heatmap(
     print(f"Saved vector heatmap to: {svg_output_path}")
 
 # Draw simple route shields for common roads like I-4, 50, 417, and 528.
+# Route shields are drawn last so they stay visible over the road lines.
+
 def add_route_shields(ax, network_df: pd.DataFrame):
     """Draw simple route shields for common major roads."""
     if "ref" not in network_df.columns:
@@ -1559,6 +1690,7 @@ def add_route_shields(ax, network_df: pd.DataFrame):
 
 # Set up command-line options and run the heatmap generator.
 def main():
+    """Read command-line options and generate one heatmap."""
     parser = argparse.ArgumentParser(description="Create RoadMap telemetry heatmaps.")
 
     BASE_DIR = Path(__file__).resolve().parents[2]
@@ -1582,7 +1714,7 @@ def main():
         default="bottleneck_score",
         choices=[
             "bottleneck_score",
-            "total_wait_added_s",
+            "avg_wait_per_vehicle_s",
             "estimated_flow_veh_per_hr",
             "avg_speed_mph",
         ],

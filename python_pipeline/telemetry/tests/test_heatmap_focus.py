@@ -11,6 +11,7 @@ from src.heatmaps.visualize_telemetry_heatmap import (
     build_interactive_road_data,
     filter_metrics_for_focus,
     normalize_focus,
+    summary_rows_for_metric,
 )
 
 
@@ -37,6 +38,27 @@ def test_high_bad_metric_keeps_largest_values(focus, count):
 def test_speed_focus_keeps_slowest_values():
     result = filter_metrics_for_focus(sample_metrics(), "avg_speed_mph", "worst_10")
     assert result["avg_speed_mph"].tolist() == [20, 21]
+
+
+def test_summary_names_the_exact_directed_segment():
+    """A repeated road name should still show which EdgeID owns the result."""
+    merged = pd.DataFrame({
+        "EdgeID": [10, 11],
+        "name": ["Rouse Road", "Rouse Road"],
+        "avg_speed_mph": [3.5, 14.0],
+    })
+
+    rows = summary_rows_for_metric(
+        "avg_speed_mph",
+        merged["avg_speed_mph"],
+        background_count=20,
+        heat_count=2,
+        merged_df=merged,
+        focus="worst_10",
+    )
+
+    assert rows[2] == ("Lowest Average-Speed Segment", "Rouse Road - Edge 10")
+    assert rows[-1][0] == "Highlighted-Segment Average"
 
 
 def test_unknown_focus_is_rejected():

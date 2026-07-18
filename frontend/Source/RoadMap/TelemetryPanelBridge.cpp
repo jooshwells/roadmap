@@ -10,6 +10,8 @@
 
 namespace
 {
+    // The packaged Python tool can print setup messages before its JSON result.
+    // Reading the last JSON line keeps those messages from breaking the panel.
     FString FindLastJsonLine(const FString& ProcessOutput)
     {
         FString JsonLine = ProcessOutput.TrimStartAndEnd();
@@ -28,6 +30,7 @@ namespace
         return JsonLine;
     }
 
+    // New runs are grouped by map. The first check also supports older flat folders.
     FString FindTelemetryRunFolder(const FString& RunsDirectory, const FString& RunId)
     {
         const FString LegacyPath = FPaths::Combine(RunsDirectory, RunId);
@@ -88,8 +91,11 @@ FString UTelemetryPanelBridge::GetTelemetryRunsPath()
     );
 }
 
+// Starts the packaged telemetry tool and returns the JSON it prints.
+// This keeps Python work in one place instead of repeating it in each button.
 bool UTelemetryPanelBridge::RunTelemetryCommand(const FString& Command, const TArray<FString>& Arguments, FString& OutJson)
 {
+    // Only commands used by the panel are allowed through this shared entry point.
     OutJson.Empty();
 
     const FString TelemetryExePath = GetTelemetryExePath();
@@ -108,7 +114,9 @@ bool UTelemetryPanelBridge::RunTelemetryCommand(const FString& Command, const TA
 
     if (Command != TEXT("generate-heatmap")
         && Command != TEXT("compare-fdot")
-        && Command != TEXT("compare-runs"))
+        && Command != TEXT("compare-runs")
+        && Command != TEXT("generate-comparison-heatmaps")
+        && Command != TEXT("delete-run"))
     {
         OutJson = FString::Printf(
             TEXT("{\"success\":false,\"error\":\"Unknown telemetry panel command.\",\"command\":\"%s\"}"),
@@ -119,6 +127,7 @@ bool UTelemetryPanelBridge::RunTelemetryCommand(const FString& Command, const TA
 
     FString Params = FString::Printf(TEXT("--panel-command %s"), *Command);
 
+    // Add each option exactly as the caller supplied it.
     for (const FString& Arg : Arguments)
     {
         Params += TEXT(" ");
@@ -129,6 +138,7 @@ bool UTelemetryPanelBridge::RunTelemetryCommand(const FString& Command, const TA
     FString StdErr;
     int32 ReturnCode = -1;
 
+    // Wait for the tool to finish and collect both normal and error text.
     const bool bStarted = FPlatformProcess::ExecProcess(
         *TelemetryExePath,
         *Params,
@@ -146,7 +156,7 @@ bool UTelemetryPanelBridge::RunTelemetryCommand(const FString& Command, const TA
     OutJson = StdOut.TrimStartAndEnd();
     if (ReturnCode != 0)
     {
-        // The pipeline normally prints a structured error to stdout. Keep it so
+        // Python normally prints a useful error message. Keep it so
         // the panel can show the real problem instead of a generic failure.
         if (OutJson.IsEmpty())
         {
@@ -163,6 +173,9 @@ bool UTelemetryPanelBridge::RunTelemetryCommand(const FString& Command, const TA
     return true;
 }
 
+
+// Saved run files
+// These reads are done in C++ because they are quick and do not need Python.
 
 // Gets saved telemetry runs directly from the run folders without launching Python.
 bool UTelemetryPanelBridge::GetSavedRuns(
@@ -501,6 +514,7 @@ bool UTelemetryPanelBridge::GetSavedRunDetails(
     double AverageSpeedValue = 0.0;
     double TotalWaitValue = 0.0;
     double MaximumWaitValue = 0.0;
+    double BottleneckIndexVersionValue = 1.0;
 
     // Read the main numeric values from telemetry_summary.json.
     SummaryObject->TryGetNumberField(
@@ -533,7 +547,13 @@ bool UTelemetryPanelBridge::GetSavedRunDetails(
         MaximumWaitValue
     );
 
-    // Convert JSON numbers into the types used by the Blueprint struct.
+    // Runs without this field used the older cumulative score.
+    SummaryObject->TryGetNumberField(
+        TEXT("bottleneck_index_version"),
+        BottleneckIndexVersionValue
+    );
+
+    // Copy the saved numbers into the fields used by the panel.
     OutDetails.TotalVehicles =
         static_cast<int32>(TotalVehiclesValue);
 
@@ -552,6 +572,9 @@ bool UTelemetryPanelBridge::GetSavedRunDetails(
     OutDetails.MaximumWaitSeconds =
         static_cast<float>(MaximumWaitValue);
 
+    OutDetails.BottleneckIndexVersion =
+        static_cast<int32>(BottleneckIndexVersionValue);
+
     // Read the nested worst-bottleneck values when they are available.
     const TSharedPtr<FJsonObject>* BottleneckObject = nullptr;
 
@@ -563,12 +586,21 @@ bool UTelemetryPanelBridge::GetSavedRunDetails(
         BottleneckObject->IsValid())
     {
         double BottleneckScoreValue = 0.0;
+        double BottleneckEdgeIdValue = -1.0;
 
+        // Read the road name shown in the normal run details.
         (*BottleneckObject)->TryGetStringField(
             TEXT("road_label"),
             OutDetails.WorstBottleneckRoad
         );
 
+        // Keep the exact directed edge so roads with the same name are not confused.
+        if ((*BottleneckObject)->TryGetNumberField(TEXT("edge_id"), BottleneckEdgeIdValue))
+        {
+            OutDetails.WorstBottleneckEdgeId = static_cast<int32>(BottleneckEdgeIdValue);
+        }
+
+        // Read the student-built index value for this segment.
         (*BottleneckObject)->TryGetNumberField(
             TEXT("bottleneck_score"),
             BottleneckScoreValue
@@ -583,6 +615,9 @@ bool UTelemetryPanelBridge::GetSavedRunDetails(
 
 
 // Gets a generated heatmap path directly for use by the Unreal UI.
+// Generated heatmap files
+
+// Finds a heatmap that was already made for the selected run.
 bool UTelemetryPanelBridge::GetGeneratedHeatmapPath(
     const FString& RunId,
     const FString& Metric,
@@ -662,13 +697,13 @@ bool UTelemetryPanelBridge::GetGeneratedHeatmapPath(
         return false;
     }
 
-    // Return the complete PNG path so Blueprint can load it as a texture.
+    // Return the complete PNG path so the panel can load the image.
     OutHeatmapPath = HeatmapPath;
 
     return true;
 }
 
-// Loads the small JSON sidecar that describes the native SVG viewer decorations.
+// Loads the JSON saved beside the SVG with its title, legend, summary, and roads.
 bool UTelemetryPanelBridge::GetHeatmapDisplayInfo(
     const FString& HeatmapPath,
     FTelemetryHeatmapDisplayInfo& OutInfo,
@@ -781,6 +816,19 @@ bool UTelemetryPanelBridge::GetHeatmapDisplayInfo(
             Road.EdgeId = FMath::RoundToInt(EdgeId);
             Road.MetricValue = static_cast<float>(MetricValue);
 
+            double BaselineValue = 0.0;
+            double ComparisonValue = 0.0;
+            double RawDelta = 0.0;
+            Road.bIsComparison = RoadObject->TryGetNumberField(TEXT("baseline_value"), BaselineValue) &&
+                RoadObject->TryGetNumberField(TEXT("comparison_value"), ComparisonValue);
+            RoadObject->TryGetNumberField(TEXT("raw_delta"), RawDelta);
+            RoadObject->TryGetStringField(TEXT("comparison_status"), Road.ComparisonStatus);
+            RoadObject->TryGetStringField(TEXT("comparison_metric"), Road.ComparisonMetric);
+            RoadObject->TryGetStringField(TEXT("comparison_unit"), Road.ComparisonUnit);
+            Road.BaselineValue = static_cast<float>(BaselineValue);
+            Road.ComparisonValue = static_cast<float>(ComparisonValue);
+            Road.RawDelta = static_cast<float>(RawDelta);
+
             const TArray<TSharedPtr<FJsonValue>>* PointValues = nullptr;
             if (RoadObject->TryGetArrayField(TEXT("points"), PointValues))
             {
@@ -847,7 +895,7 @@ UTexture2D* UTelemetryPanelBridge::LoadHeatmapTexture(
         return nullptr;
     }
 
-    // Import the PNG file into a transient Unreal texture at runtime.
+    // Load the PNG into an Unreal image that only needs to last while the game runs.
     UTexture2D* LoadedTexture =
         FImageUtils::ImportFileAsTexture2D(HeatmapPath);
 
@@ -857,7 +905,7 @@ UTexture2D* UTelemetryPanelBridge::LoadHeatmapTexture(
         return nullptr;
     }
 
-    // Treat runtime heatmaps as UI assets so Unreal keeps their full detail and color.
+    // Mark the heatmap as a UI image so Unreal keeps its detail and color.
     LoadedTexture->LODGroup = TEXTUREGROUP_UI;
     LoadedTexture->NeverStream = true;
     LoadedTexture->Filter = TF_Bilinear;
@@ -867,6 +915,9 @@ UTexture2D* UTelemetryPanelBridge::LoadHeatmapTexture(
     return LoadedTexture;
 }
 
+// Commands that ask the packaged Python tool to do longer work
+
+// Asks Python to create one heatmap using the selected metric and road group.
 bool UTelemetryPanelBridge::GenerateSelectedHeatmap(
     const FString& RunId,
     const FString& Metric,
@@ -885,6 +936,86 @@ bool UTelemetryPanelBridge::GenerateSelectedHeatmap(
     );
 }
 
+// Creates the two run maps and the map that shows their changes.
+bool UTelemetryPanelBridge::GenerateComparisonHeatmaps(
+    const FString& BaselineRunId,
+    const FString& ComparisonRunId,
+    const FString& Metric,
+    const FString& Focus,
+    FTelemetryHeatmapComparisonPaths& OutPaths,
+    FString& OutError
+)
+{
+    // Clear old values so a failed job cannot leave paths from an older job.
+    OutPaths = FTelemetryHeatmapComparisonPaths();
+    OutError.Empty();
+    FString ResultJson;
+    // Ask Python to create all three files in one job.
+    if (!RunTelemetryCommand(
+            TEXT("generate-comparison-heatmaps"),
+            {
+                TEXT("--baseline-run-id"), BaselineRunId,
+                TEXT("--comparison-run-id"), ComparisonRunId,
+                TEXT("--metric"), Metric,
+                TEXT("--focus"), Focus
+            },
+            ResultJson
+        ))
+    {
+        // Use Python's message when it explains the failure.
+        TSharedPtr<FJsonObject> ErrorObject;
+        const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(FindLastJsonLine(ResultJson));
+        if (!FJsonSerializer::Deserialize(Reader, ErrorObject) || !ErrorObject.IsValid() ||
+            !ErrorObject->TryGetStringField(TEXT("error"), OutError))
+        {
+            OutError = TEXT("Comparison heatmaps could not be generated.");
+        }
+        return false;
+    }
+
+    // Read the three returned paths and the shared-road count.
+    TSharedPtr<FJsonObject> Root;
+    const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(FindLastJsonLine(ResultJson));
+    if (!FJsonSerializer::Deserialize(Reader, Root) || !Root.IsValid())
+    {
+        OutError = TEXT("Comparison heatmaps returned an unreadable response.");
+        return false;
+    }
+    double SharedRoads = 0.0;
+    Root->TryGetStringField(TEXT("baseline_path"), OutPaths.BaselinePath);
+    Root->TryGetStringField(TEXT("comparison_path"), OutPaths.ComparisonPath);
+    Root->TryGetStringField(TEXT("change_path"), OutPaths.ChangePath);
+    Root->TryGetNumberField(TEXT("shared_roads"), SharedRoads);
+    OutPaths.SharedRoads = FMath::RoundToInt(SharedRoads);
+    if (OutPaths.BaselinePath.IsEmpty() || OutPaths.ComparisonPath.IsEmpty() || OutPaths.ChangePath.IsEmpty())
+    {
+        OutError = TEXT("Comparison heatmap paths were missing from the response.");
+        return false;
+    }
+    return true;
+}
+
+// Deletes one saved run through Python so the same path checks are always used.
+bool UTelemetryPanelBridge::DeleteSavedRun(const FString& RunId, FString& OutError)
+{
+    // The Python command performs the final folder safety check.
+    OutError.Empty();
+    FString ResultJson;
+    if (!RunTelemetryCommand(TEXT("delete-run"), {TEXT("--run-id"), RunId}, ResultJson))
+    {
+        TSharedPtr<FJsonObject> ErrorObject;
+        const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(FindLastJsonLine(ResultJson));
+        if (!FJsonSerializer::Deserialize(Reader, ErrorObject) || !ErrorObject.IsValid() ||
+            !ErrorObject->TryGetStringField(TEXT("error"), OutError))
+        {
+            OutError = TEXT("The selected run could not be deleted.");
+        }
+        return false;
+    }
+    return true;
+}
+
+// Compares two runs and turns the returned JSON into values the panel can show.
 bool UTelemetryPanelBridge::CompareSavedRuns(
     const FString& BaselineRunId,
     const FString& ComparisonRunId,
@@ -892,9 +1023,11 @@ bool UTelemetryPanelBridge::CompareSavedRuns(
     FString& OutError
 )
 {
+    // Start with an empty result in case any check below fails.
     OutResult = FTelemetryRunComparisonResult();
     OutError.Empty();
 
+    // Run IDs are folder names, so path marks are never allowed here.
     auto IsInvalidRunId = [](const FString& RunId)
     {
         return RunId.IsEmpty() || RunId.Contains(TEXT("..")) ||
@@ -906,6 +1039,7 @@ bool UTelemetryPanelBridge::CompareSavedRuns(
         return false;
     }
 
+    // Ask Python to do the comparison math and return one result.
     FString ResultJson;
     if (!RunTelemetryCommand(
             TEXT("compare-runs"),
@@ -926,6 +1060,7 @@ bool UTelemetryPanelBridge::CompareSavedRuns(
         return false;
     }
 
+    // Make sure the returned text is valid before reading any fields.
     TSharedPtr<FJsonObject> Root;
     const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(FindLastJsonLine(ResultJson));
     if (!FJsonSerializer::Deserialize(Reader, Root) || !Root.IsValid())
@@ -945,6 +1080,7 @@ bool UTelemetryPanelBridge::CompareSavedRuns(
         return false;
     }
 
+    // Read the run names and dates shown at the top of the result.
     const TSharedPtr<FJsonObject>* BaselineObject = nullptr;
     const TSharedPtr<FJsonObject>* ComparisonObject = nullptr;
     if (Root->TryGetObjectField(TEXT("baseline"), BaselineObject) && BaselineObject && BaselineObject->IsValid())
@@ -958,6 +1094,7 @@ bool UTelemetryPanelBridge::CompareSavedRuns(
         (*ComparisonObject)->TryGetStringField(TEXT("created_at"), OutResult.ComparisonCreatedAt);
     }
 
+    // Read how much of the road network both runs share.
     Root->TryGetBoolField(TEXT("preliminary"), OutResult.bPreliminary);
     const TSharedPtr<FJsonObject>* CoverageObject = nullptr;
     if (Root->TryGetObjectField(TEXT("road_coverage"), CoverageObject) && CoverageObject && CoverageObject->IsValid())
@@ -970,6 +1107,7 @@ bool UTelemetryPanelBridge::CompareSavedRuns(
         OutResult.SharedCoveragePercent = static_cast<float>(CoveragePercent);
     }
 
+    // Keep warnings so short or incomplete runs are not mistaken for final results.
     const TArray<TSharedPtr<FJsonValue>>* WarningValues = nullptr;
     if (Root->TryGetArrayField(TEXT("warnings"), WarningValues) && WarningValues)
     {
@@ -983,6 +1121,7 @@ bool UTelemetryPanelBridge::CompareSavedRuns(
         }
     }
 
+    // Read the overall speed, wait, flow, and bottleneck changes.
     const TArray<TSharedPtr<FJsonValue>>* MetricValues = nullptr;
     if (Root->TryGetArrayField(TEXT("metrics"), MetricValues) && MetricValues)
     {
@@ -1011,6 +1150,7 @@ bool UTelemetryPanelBridge::CompareSavedRuns(
         }
     }
 
+    // Read the roads with the biggest useful changes.
     const TArray<TSharedPtr<FJsonValue>>* RoadValues = nullptr;
     if (Root->TryGetArrayField(TEXT("top_road_changes"), RoadValues) && RoadValues)
     {
@@ -1050,16 +1190,18 @@ bool UTelemetryPanelBridge::CompareSavedRuns(
     return true;
 }
 
-// Runs the packaged FDOT comparison and converts its JSON response for the native UI.
+// Runs the packaged FDOT comparison and copies its result into panel fields.
 bool UTelemetryPanelBridge::CompareSelectedRunWithFDOT(
     const FString& RunId,
     FTelemetryFDOTValidationSummary& OutSummary,
     FString& OutError
 )
 {
+    // Clear old results before running a new FDOT check.
     OutSummary = FTelemetryFDOTValidationSummary();
     OutError.Empty();
 
+    // Stop folder path marks from being passed as a run ID.
     if (RunId.IsEmpty() ||
         RunId.Contains(TEXT("..")) ||
         RunId.Contains(TEXT("/")) ||
@@ -1069,6 +1211,7 @@ bool UTelemetryPanelBridge::CompareSelectedRunWithFDOT(
         return false;
     }
 
+    // Ask Python to match this run with its map's FDOT data.
     FString ResultJson;
     if (!RunTelemetryCommand(
             TEXT("compare-fdot"),
@@ -1110,6 +1253,7 @@ bool UTelemetryPanelBridge::CompareSelectedRunWithFDOT(
         return false;
     }
 
+    // The panel only needs the short summary part of the full result.
     const TSharedPtr<FJsonObject>* SummaryObject = nullptr;
     if (!ResultObject->TryGetObjectField(TEXT("summary"), SummaryObject) ||
         SummaryObject == nullptr || !SummaryObject->IsValid())
@@ -1118,6 +1262,7 @@ bool UTelemetryPanelBridge::CompareSelectedRunWithFDOT(
         return false;
     }
 
+    // Read the numbers in the form Unreal uses for JSON files.
     double MatchedEdges = 0.0;
     double GoodEdges = 0.0;
     double ReviewEdges = 0.0;
@@ -1142,6 +1287,7 @@ bool UTelemetryPanelBridge::CompareSelectedRunWithFDOT(
     (*SummaryObject)->TryGetNumberField(TEXT("unmatched_road_directions"), UnmatchedRoadDirections);
     (*SummaryObject)->TryGetNumberField(TEXT("coverage_percent"), CoveragePercent);
 
+    // Copy the numbers into the smaller types used by the panel.
     OutSummary.MatchedEdges = static_cast<int32>(MatchedEdges);
     OutSummary.GoodEdges = static_cast<int32>(GoodEdges);
     OutSummary.ReviewEdges = static_cast<int32>(ReviewEdges);
@@ -1154,6 +1300,7 @@ bool UTelemetryPanelBridge::CompareSelectedRunWithFDOT(
     OutSummary.CoveragePercent = static_cast<float>(CoveragePercent);
     OutSummary.bPreliminary = MinimumDurationSeconds > 0.0 && DurationSeconds < MinimumDurationSeconds;
 
+    // Join any warnings into one readable block of text.
     const TArray<TSharedPtr<FJsonValue>>* WarningValues = nullptr;
     if ((*SummaryObject)->TryGetArrayField(TEXT("validation_warnings"), WarningValues) && WarningValues)
     {
@@ -1169,6 +1316,7 @@ bool UTelemetryPanelBridge::CompareSelectedRunWithFDOT(
         OutSummary.Warning = FString::Join(Warnings, TEXT("\n"));
     }
 
+    // Read the roads with the largest gaps from FDOT values.
     const TArray<TSharedPtr<FJsonValue>>* DifferenceValues = nullptr;
     if ((*SummaryObject)->TryGetArrayField(TEXT("top_road_differences"), DifferenceValues) && DifferenceValues)
     {

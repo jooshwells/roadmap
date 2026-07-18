@@ -67,10 +67,16 @@ struct FTelemetryRunDetails
     FString WorstBottleneckRoad;
 
     UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
+    int32 WorstBottleneckEdgeId = INDEX_NONE;
+
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
     float WorstBottleneckScore = 0.0f;
+
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
+    int32 BottleneckIndexVersion = 1;
 };
 
-// Stores one label and value displayed in the native heatmap summary card.
+// Stores one label and value displayed in the heatmap summary card.
 USTRUCT(BlueprintType)
 struct FTelemetryHeatmapSummaryRow
 {
@@ -118,7 +124,7 @@ struct FTelemetryRunRoadChange
     UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry") float BottleneckDelta = 0.0f;
 };
 
-// Complete response used by the native run-comparison tab.
+// Complete result used by the run-comparison tab.
 USTRUCT(BlueprintType)
 struct FTelemetryRunComparisonResult
 {
@@ -136,7 +142,19 @@ struct FTelemetryRunComparisonResult
     UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry") TArray<FTelemetryRunRoadChange> TopRoadChanges;
 };
 
-// One analyzed road and its normalized shape for native hover/click hit testing.
+// Files generated for the three run-comparison map views.
+USTRUCT(BlueprintType)
+struct FTelemetryHeatmapComparisonPaths
+{
+    GENERATED_BODY()
+
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry") FString BaselinePath;
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry") FString ComparisonPath;
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry") FString ChangePath;
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry") int32 SharedRoads = 0;
+};
+
+// One analyzed road and its map shape for mouse hover and clicks.
 USTRUCT(BlueprintType)
 struct FTelemetryHeatmapRoad
 {
@@ -158,10 +176,31 @@ struct FTelemetryHeatmapRoad
     float MetricValue = 0.0f;
 
     UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
+    bool bIsComparison = false;
+
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
+    float BaselineValue = 0.0f;
+
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
+    float ComparisonValue = 0.0f;
+
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
+    float RawDelta = 0.0f;
+
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
+    FString ComparisonStatus;
+
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
+    FString ComparisonMetric;
+
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
+    FString ComparisonUnit;
+
+    UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
     TArray<FVector2D> Points;
 };
 
-// Stores display information that Unreal draws around the vector road map.
+// Stores the information Unreal draws around the SVG road map.
 USTRUCT(BlueprintType)
 struct FTelemetryHeatmapDisplayInfo
 {
@@ -182,7 +221,7 @@ struct FTelemetryHeatmapDisplayInfo
     UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
     TArray<FTelemetryHeatmapSummaryRow> SummaryRows;
 
-    // Position of Matplotlib's map axes inside the fixed SVG canvas.
+    // Position of the road map inside the full SVG image.
     UPROPERTY(BlueprintReadOnly, Category = "RoadMap Telemetry")
     FVector4 MapRect = FVector4(0.0f, 0.0f, 1.0f, 1.0f);
 
@@ -190,7 +229,7 @@ struct FTelemetryHeatmapDisplayInfo
     TArray<FTelemetryHeatmapRoad> Roads;
 };
 
-// Stores one high-priority road difference from an FDOT validation.
+// Stores one high-priority road difference from an FDOT reference comparison.
 USTRUCT(BlueprintType)
 struct FTelemetryFDOTRoadDifference
 {
@@ -215,7 +254,7 @@ struct FTelemetryFDOTRoadDifference
     FString Result;
 };
 
-// Stores the compact FDOT validation summary shown for one selected run.
+// Stores the compact FDOT reference summary shown for one selected run.
 USTRUCT(BlueprintType)
 struct FTelemetryFDOTValidationSummary
 {
@@ -267,8 +306,9 @@ class ROADMAP_API UTelemetryPanelBridge : public UBlueprintFunctionLibrary
     GENERATED_BODY()
 
 public:
+    // Run list and overview data.
 
-    // Gets the saved telemetry runs and converts them into Blueprint-friendly structs.
+    // Gets saved runs and puts their values into a form the panel can read.
     UFUNCTION(BlueprintCallable, Category = "RoadMap Telemetry")
     static bool GetSavedRuns(
         const FString& ActiveMapName,
@@ -276,7 +316,7 @@ public:
         FString& OutError
     );
 
-    // Gets one saved run and converts its JSON summary into a Blueprint-friendly struct.
+    // Gets one saved run and reads the values shown on the Overview tab.
     UFUNCTION(BlueprintCallable, Category = "RoadMap Telemetry")
     static bool GetSavedRunDetails(
         const FString& RunId,
@@ -284,7 +324,8 @@ public:
         FString& OutError
     );
 
-    // Compares two saved runs from the same map using the packaged pipeline.
+    // Run comparison actions.
+    // Compares two saved runs from the same map using the packaged Python tool.
     static bool CompareSavedRuns(
         const FString& BaselineRunId,
         const FString& ComparisonRunId,
@@ -292,8 +333,22 @@ public:
         FString& OutError
     );
 
+    // Creates the baseline, second-run, and change heatmap files.
+    static bool GenerateComparisonHeatmaps(
+        const FString& BaselineRunId,
+        const FString& ComparisonRunId,
+        const FString& Metric,
+        const FString& Focus,
+        FTelemetryHeatmapComparisonPaths& OutPaths,
+        FString& OutError
+    );
+
+    // Removes one saved run after Python checks that its path is safe.
+    static bool DeleteSavedRun(const FString& RunId, FString& OutError);
+
+    // Heatmap files and display data.
     // Gets the full file path for an existing generated heatmap.
-    // This returns Blueprint-friendly path and error outputs without JSON parsing.
+    // This gives the panel a path and an error message without extra file reading.
     UFUNCTION(BlueprintCallable, Category = "RoadMap Telemetry")
     static bool GetGeneratedHeatmapPath(
         const FString& RunId,
@@ -303,7 +358,7 @@ public:
         FString& OutError
     );
 
-    // Loads the sidecar information used by Unreal's native heatmap UI.
+    // Loads the title, legend, summary, and road data saved beside a heatmap.
     static bool GetHeatmapDisplayInfo(
         const FString& HeatmapPath,
         FTelemetryHeatmapDisplayInfo& OutInfo,
@@ -326,6 +381,7 @@ public:
         FString& OutJson
     );
 
+    // FDOT comparison.
     // Compares one saved run with its map-specific FDOT design-hour targets.
     UFUNCTION(BlueprintCallable, Category = "RoadMap Telemetry")
     static bool CompareSelectedRunWithFDOT(

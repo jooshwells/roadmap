@@ -93,6 +93,8 @@ def test_build_comparison_calculates_expected_categories():
     assert summary["poor_edges"] == 1
     assert summary["k_factor_edges"] == 3
     assert summary["fallback_edges"] == 0
+    assert "directional reference" in summary["hourly_conversion_method"]
+    assert "50/50 directional split" in summary["directional_assumption"]
     assert [item["road_name"] for item in summary["top_road_differences"]] == [
         "Poor Road",
         "Review Road",

@@ -22,7 +22,7 @@ The Unreal panel has three workspaces:
 - **Heatmaps** generates bottleneck, speed, flow, and wait-time maps on demand. Both PNG and SVG versions are kept; Unreal prefers SVG and uses PNG as a fallback.
 - **FDOT** compares a run with map-specific FDOT design-hour estimates. GEH is included for engineers, with plain-language result labels for other users.
 
-FDOT comparison requires a mapping CSV in `data/fdot/mappings/` for the selected map. `src/fdot/fdot_option_a_matcher.py` is a development utility for creating mappings for additional maps. The animation and PDF validation-report scripts are also optional developer tools; they are not called by Unreal.
+FDOT comparison requires a mapping CSV in `data/fdot/mappings/` for the selected map. `src/fdot/fdot_option_a_matcher.py` is a development utility for creating mappings for additional maps. The animation script is also an optional developer tool; it is not called by Unreal.
 
 ## Development
 

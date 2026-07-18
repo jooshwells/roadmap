@@ -43,6 +43,7 @@ BAD_ACCEL_LIMIT = 20.0          # anything over +/-20 m/s^2 is probably a bug/sp
 BAD_JUMP_M = 200.0              # suspicious position jump on the same edge
 MIN_EDGE_SAMPLES = 5            # keeps tiny sample edges from dominating bottlenecks
 DEFAULT_FRAME_SECONDS = 30.0     # used for animated/replay heatmap frames
+BOTTLENECK_WAIT_REFERENCE_S = 30.0  # 30 seconds fills the stopped-time part of the index
 
 REQUIRED_COLS = [
     "Time", "VehicleID", "EdgeID", "LaneIndex",
@@ -53,6 +54,8 @@ REQUIRED_COLS = [
 # In the current telemetry export all required columns should be numeric.
 NUMERIC_COLS = REQUIRED_COLS.copy()
 
+
+# Loading and basic checks
 
 def load_telemetry(csv_file: str | Path) -> pd.DataFrame:
     """Load telemetry and make sure the required columns exist."""
@@ -141,6 +144,29 @@ def add_derived_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+# Full-run and per-road measurements
+
+def calculate_bottleneck_index(
+    average_stopped_time_s: pd.Series,
+    low_speed_ratio: pd.Series,
+    stopped_ratio: pd.Series,
+) -> pd.Series:
+    """Build RoadMap's 0-100 screening index from per-entry measurements."""
+    # A fixed 30-second reference keeps the same meaning between runs. Values
+    # above it stay at the top of this part instead of making the score unlimited.
+    stopped_time_part = (
+        pd.to_numeric(average_stopped_time_s, errors="coerce")
+        .fillna(0.0)
+        .clip(lower=0.0, upper=BOTTLENECK_WAIT_REFERENCE_S)
+        / BOTTLENECK_WAIT_REFERENCE_S
+    )
+
+    # Slow and stopped sample ratios describe how often traffic had trouble
+    # moving. Keeping every part between 0 and 1 gives a final 0-100 index.
+    slow_part = pd.to_numeric(low_speed_ratio, errors="coerce").fillna(0.0).clip(0.0, 1.0)
+    stopped_part = pd.to_numeric(stopped_ratio, errors="coerce").fillna(0.0).clip(0.0, 1.0)
+    return 100.0 * (0.50 * stopped_time_part + 0.30 * slow_part + 0.20 * stopped_part)
+
 def build_run_summary(df: pd.DataFrame) -> tuple[dict[str, Any], float]:
     """Create high-level summary values for the whole simulation run."""
     sim_start = df["Time"].min()
@@ -217,6 +243,13 @@ def build_edge_metrics(df: pd.DataFrame, sim_duration_hr: float) -> pd.DataFrame
     else:
         edge_metrics["estimated_flow_veh_per_hr"] = np.nan
 
+    # Divide the wait collected on a road by the number of vehicle entries. This
+    # keeps a long or busy run from looking worse only because it has more data.
+    safe_entry_count = edge_metrics["edge_entry_count"].replace(0, np.nan)
+    edge_metrics["avg_wait_per_vehicle_s"] = (
+        edge_metrics["total_wait_added_s"] / safe_entry_count
+    ).fillna(0.0)
+
     low_speed_ratio = grouped["Speed_mps"].apply(lambda s: (s < LOW_SPEED_MPS).mean())
     zero_speed_ratio = grouped["Speed_mps"].apply(lambda s: (s == 0).mean())
     bad_accel_count = grouped["Accel_mps2"].apply(lambda s: (s.abs() > BAD_ACCEL_LIMIT).sum())
@@ -237,17 +270,18 @@ def build_edge_metrics(df: pd.DataFrame, sim_duration_hr: float) -> pd.DataFrame
         how="left",
     )
 
-    # Simple score for presentation/debugging. It is not a real traffic engineering
-    # formula. It just pushes the most suspicious/congested edges to the top.
-    edge_metrics["bottleneck_score"] = (
-        edge_metrics["total_wait_added_s"] * 0.50
-        + edge_metrics["avg_wait_added_per_sample_s"] * 10.0
-        + edge_metrics["low_speed_sample_ratio"] * 10.0
-        + edge_metrics["zero_speed_sample_ratio"] * 5.0
+    # This student-built index ranks possible trouble spots. It uses values per
+    # vehicle entry so a longer or busier run does not score worse just for size.
+    edge_metrics["bottleneck_score"] = calculate_bottleneck_index(
+        edge_metrics["avg_wait_per_vehicle_s"],
+        edge_metrics["low_speed_sample_ratio"],
+        edge_metrics["zero_speed_sample_ratio"],
     )
 
     return edge_metrics.sort_values("EdgeID").reset_index(drop=True)
 
+
+# Replay frames split the same run into smaller time windows.
 
 def build_heatmap_frames(df: pd.DataFrame, frame_seconds: float) -> tuple[pd.DataFrame, list[pd.DataFrame]]:
     """
@@ -310,6 +344,12 @@ def build_heatmap_frames(df: pd.DataFrame, frame_seconds: float) -> tuple[pd.Dat
         frame_metrics["avg_speed_mph"] = frame_metrics["avg_speed_mps"] * MPS_TO_MPH
         frame_metrics["estimated_flow_veh_per_hr"] = frame_metrics["edge_entry_count"] / frame_duration_hr
 
+        # Replay frames use the same wait measurement as the normal heatmap.
+        safe_entry_count = frame_metrics["edge_entry_count"].replace(0, np.nan)
+        frame_metrics["avg_wait_per_vehicle_s"] = (
+            frame_metrics["total_wait_added_s"] / safe_entry_count
+        ).fillna(0.0)
+
         low_speed_ratio = grouped["Speed_mps"].apply(lambda s: (s < LOW_SPEED_MPS).mean())
         zero_speed_ratio = grouped["Speed_mps"].apply(lambda s: (s == 0).mean())
 
@@ -324,19 +364,18 @@ def build_heatmap_frames(df: pd.DataFrame, frame_seconds: float) -> tuple[pd.Dat
             how="left",
         )
 
-        # Same simple presentation/debug score as the full-run edge metrics.
-        frame_metrics["bottleneck_score"] = (
-            frame_metrics["total_wait_added_s"] * 0.50
-            + frame_metrics["avg_wait_added_per_sample_s"] * 10.0
-            + frame_metrics["low_speed_sample_ratio"] * 10.0
-            + frame_metrics["zero_speed_sample_ratio"] * 5.0
+        # Replay frames use the exact same 0-100 index as the full run.
+        frame_metrics["bottleneck_score"] = calculate_bottleneck_index(
+            frame_metrics["avg_wait_per_vehicle_s"],
+            frame_metrics["low_speed_sample_ratio"],
+            frame_metrics["zero_speed_sample_ratio"],
         )
 
         ordered_cols = [
             "FrameIndex", "FrameStart_s", "FrameEnd_s", "EdgeID",
             "sample_count", "vehicle_count", "edge_entry_count",
             "avg_speed_mph", "estimated_flow_veh_per_hr",
-            "total_wait_added_s", "low_speed_sample_ratio",
+            "total_wait_added_s", "avg_wait_per_vehicle_s", "low_speed_sample_ratio",
             "zero_speed_sample_ratio", "bottleneck_score",
             "first_seen_s", "last_seen_s",
         ]
@@ -402,6 +441,8 @@ def write_heatmap_frames(
 
     return manifest, all_frames
 
+
+# Vehicle, trip, and data-quality outputs
 
 def build_vehicle_metrics(df: pd.DataFrame) -> pd.DataFrame:
     """Summarize each vehicle's trip behavior."""
@@ -498,6 +539,7 @@ def write_summary_file(summary: dict[str, Any], output_path: str | Path, validat
         "How to read this:",
         "- edge_metrics.csv is the main file for heatmaps and FDOT comparison.",
         "- estimated_flow_veh_per_hr is based on edge entries per simulation hour.",
+        "- avg_wait_per_vehicle_s is the added wait divided by road entries.",
         "- vehicle_metrics.csv is useful for trip-level behavior.",
         "- od_metrics.csv groups trips by origin/destination pair.",
         "- bottleneck_edges.csv highlights likely congestion locations.",
@@ -507,6 +549,8 @@ def write_summary_file(summary: dict[str, Any], output_path: str | Path, validat
 
     Path(output_path).write_text("\n".join(lines), encoding="utf-8")
 
+
+# Main analysis flow
 
 def run_analysis(
     input_file: str | Path = INPUT_FILE,
@@ -554,6 +598,7 @@ def run_analysis(
 
 
 def main() -> None:
+    """Read command-line options and analyze one telemetry CSV."""
     parser = argparse.ArgumentParser(description="Analyze RoadMap telemetry CSV output.")
     parser.add_argument("--input", default=INPUT_FILE, help="Path to simulation_output.csv")
     parser.add_argument("--output", default=OUTPUT_DIR, help="Folder for output CSV files")

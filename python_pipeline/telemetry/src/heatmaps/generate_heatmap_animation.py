@@ -39,7 +39,7 @@ METRICS = [
     "bottleneck_score",
     "estimated_flow_veh_per_hr",
     "avg_speed_mph",
-    "total_wait_added_s",
+    "avg_wait_per_vehicle_s",
 ]
 
 
@@ -159,13 +159,13 @@ def load_frame_files(frames_dir: Path, max_frames: int | None = None, every_nth_
 def choose_color_settings(metric: str):
     """Match the normal heatmap color choices."""
     if metric == "avg_speed_mph":
-        return "RdYlGn", "Average speed (mph)", False, "Average Speed Replay"
-    if metric == "total_wait_added_s":
-        return "RdYlGn_r", "Total wait added (seconds)", True, "Wait Time Replay"
+        return "RdYlGn", "Average recorded speed (mph)", False, "Recorded Speed Replay"
+    if metric == "avg_wait_per_vehicle_s":
+        return "RdYlGn_r", "Average stopped time per vehicle entry (seconds)", True, "Stopped Time Replay"
     if metric == "estimated_flow_veh_per_hr":
-        return "viridis", "Estimated flow (vehicles/hour)", True, "Traffic Flow Replay"
+        return "RdYlGn_r", "Estimated hourly traffic flow (vehicles/hour)", True, "Hourly Flow Replay"
     if metric == "bottleneck_score":
-        return "RdYlGn_r", "Bottleneck score", True, "Bottleneck Replay"
+        return "RdYlGn_r", "RoadMap bottleneck index", True, "Bottleneck Candidate Replay"
 
     return "RdYlGn_r", metric, True, f"{metric} Replay"
 
@@ -181,6 +181,15 @@ def load_frame_data(
 
     for frame_file in frame_files:
         frame_df = pd.read_csv(frame_file)
+
+        # Older replay frames can build the new wait value from saved columns.
+        if metric == "avg_wait_per_vehicle_s" and metric not in frame_df.columns:
+            needed = {"total_wait_added_s", "edge_entry_count"}
+            if needed.issubset(frame_df.columns):
+                total_wait = pd.to_numeric(frame_df["total_wait_added_s"], errors="coerce")
+                entries = pd.to_numeric(frame_df["edge_entry_count"], errors="coerce")
+                entries = entries.where(entries != 0)
+                frame_df[metric] = (total_wait / entries).fillna(0.0)
 
         if "EdgeID" not in frame_df.columns:
             raise ValueError(f"{frame_file.name} is missing EdgeID.")
@@ -321,6 +330,7 @@ def make_animation(
 
 
 def main() -> None:
+    """Read animation options and export a GIF or MP4."""
     parser = argparse.ArgumentParser(description="Create an animated RoadMap heatmap replay.")
 
     parser.add_argument(
