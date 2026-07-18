@@ -29,12 +29,32 @@ namespace
         return JsonLine;
     }
 
-    // New runs are grouped by map. The first check also supports older flat folders.
+    // Resolved run folders, keyed on "RunsDirectory / RunId". The recursive
+    // metadata scan below runs on nearly every panel interaction (run select,
+    // metric change, focus change), so hits must not re-walk the runs tree.
+    // Game-thread only; misses are never cached, so a run that finishes
+    // writing while the panel is open resolves on the next lookup.
+    TMap<FString, FString> GRunFolderCache;
+
     FString FindTelemetryRunFolder(const FString& RunsDirectory, const FString& RunId)
     {
+        check(IsInGameThread());
+
+        const FString CacheKey = FPaths::Combine(RunsDirectory, RunId);
+        if (const FString* Cached = GRunFolderCache.Find(CacheKey))
+        {
+            if (IFileManager::Get().DirectoryExists(**Cached))
+            {
+                return *Cached;
+            }
+            // Run folder vanished on disk: drop the stale entry and rescan.
+            GRunFolderCache.Remove(CacheKey);
+        }
+
         const FString LegacyPath = FPaths::Combine(RunsDirectory, RunId);
         if (IFileManager::Get().DirectoryExists(*LegacyPath))
         {
+            GRunFolderCache.Add(CacheKey, LegacyPath);
             return LegacyPath;
         }
 
@@ -53,6 +73,7 @@ namespace
             const FString Candidate = FPaths::GetPath(MetadataPath);
             if (FPaths::GetCleanFilename(Candidate) == RunId)
             {
+                GRunFolderCache.Add(CacheKey, Candidate);
                 return Candidate;
             }
         }
@@ -61,6 +82,12 @@ namespace
     }
 }
 
+
+void UTelemetryPanelBridge::InvalidateRunFolderCache()
+{
+    check(IsInGameThread());
+    GRunFolderCache.Empty();
+}
 
 // Finds the packaged telemetry EXE inside Content/ThirdParty.
 FString UTelemetryPanelBridge::GetTelemetryExePath()

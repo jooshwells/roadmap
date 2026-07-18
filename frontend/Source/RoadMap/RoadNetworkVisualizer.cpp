@@ -268,14 +268,34 @@ void ARoadNetworkVisualizer::RefreshRoadVisuals()
     TArray<float> TempScaleX;
     TArray<float> TempLanes; // Holds the lane counts per instance
 
-    Transforms.Reserve(120000);
-    TempEdgeIds.Reserve(120000);
-    TempScaleX.Reserve(120000);
-    TempLanes.Reserve(120000);
+    // The four arrays grow in lockstep (one entry per road piece in AddSeg),
+    // so the previous build's count sizes all of them. A fixed 120k reserve
+    // here cost ~11.5 MB of FTransforms up front on every rebuild, even for
+    // tiny maps; only the first build now pays amortized growth.
+    const int32 ReserveGuess = (LastRoadInstanceCount > 0)
+        ? LastRoadInstanceCount + LastRoadInstanceCount / 16 + 256
+        : 4096;
+    Transforms.Reserve(ReserveGuess);
+    TempEdgeIds.Reserve(ReserveGuess);
+    TempScaleX.Reserve(ReserveGuess);
+    TempLanes.Reserve(ReserveGuess);
 
     // Bridge dressing gathered alongside the road pieces.
     TArray<FTransform> DeckTransforms;
     TArray<FTransform> PillarTransforms;
+
+    // Per-edge scratch, hoisted out of the loop so thousands of per-edge
+    // heap allocations become Reset() reuse. Every array is refilled from
+    // scratch at the top of each edge iteration.
+    TArray<FVector> Pts;            // raw centerline
+    TArray<float> Cum;              // cumulative arc length at each vertex
+    TArray<FVector> TPts;           // trimmed centerline actually drawn
+    TArray<float> TCum;
+    TArray<FVector> SegDir;
+    TArray<FVector> SegRight;
+    TArray<FRotator> SegRot;
+    TArray<float> SegSlopeScale;
+    TArray<float> JointSin;
 
     for (const auto& NodePair : AllNodes)
     {
@@ -358,7 +378,7 @@ void ARoadNetworkVisualizer::RefreshRoadVisuals()
             // endpoints were snapped onto the node coordinates at network build,
             // so the chain stays flush at junctions. Shapeless edges (runtime
             // roads, missing data) fall back to the straight chord.
-            TArray<FVector> Pts;
+            Pts.Reset();
             if (Edge.hasCurveGeometry())
             {
                 const std::vector<RoadGeomPoint>& Geom = Edge.getGeometry();
@@ -377,7 +397,7 @@ void ARoadNetworkVisualizer::RefreshRoadVisuals()
             }
 
             // Cumulative arc length (cm) at each centerline vertex.
-            TArray<float> Cum;
+            Cum.Reset();
             Cum.Reserve(Pts.Num());
             Cum.Add(0.0f);
             for (int32 i = 1; i < Pts.Num(); i++)
@@ -414,7 +434,7 @@ void ARoadNetworkVisualizer::RefreshRoadVisuals()
             }
 
             // The trimmed centerline actually drawn.
-            TArray<FVector> TPts;
+            TPts.Reset();
             if (SetbackStartCm > 0.0f || SetbackEndCm > 0.0f)
             {
                 const float SpanStart = SetbackStartCm;
@@ -451,11 +471,11 @@ void ARoadNetworkVisualizer::RefreshRoadVisuals()
             // piece's length back out so its horizontal footprint still covers
             // the intended 2D span.
             const int32 NumSegs = TPts.Num() - 1;
-            TArray<float> TCum;
-            TArray<FVector> SegDir;
-            TArray<FVector> SegRight;
-            TArray<FRotator> SegRot;
-            TArray<float> SegSlopeScale;
+            TCum.Reset();
+            SegDir.Reset();
+            SegRight.Reset();
+            SegRot.Reset();
+            SegSlopeScale.Reset();
             TCum.Reserve(TPts.Num());
             SegDir.Reserve(NumSegs);
             SegRight.Reserve(NumSegs);
@@ -477,8 +497,10 @@ void ARoadNetworkVisualizer::RefreshRoadVisuals()
 
             // Turn sharpness (sin of the heading change) at each interior
             // vertex, used to size the miter fills. Ends stay 0.
-            TArray<float> JointSin;
-            JointSin.Init(0.0f, TPts.Num());
+            // Reset+AddZeroed instead of Init: Init calls Empty(N) internally,
+            // which would reallocate to exact size every edge.
+            JointSin.Reset(TPts.Num());
+            JointSin.AddZeroed(TPts.Num());
             for (int32 i = 1; i < NumSegs; i++)
             {
                 const float Cross = SegDir[i - 1].X * SegDir[i].Y - SegDir[i - 1].Y * SegDir[i].X;
@@ -774,6 +796,8 @@ void ARoadNetworkVisualizer::RefreshRoadVisuals()
         // Index 1: The X-scale (used to keep dashed lines a standard length)
         RoadHISM->SetCustomDataValue(AddedIndices[i], 1, TempScaleX[i], false);
     }
+
+    LastRoadInstanceCount = Transforms.Num();
 
     RoadHISM->MarkRenderStateDirty();
 }
@@ -1684,65 +1708,99 @@ bool ARoadNetworkVisualizer::GetEdgeInfo(int64 EdgeId, FRoadEdgeInfo& OutInfo)
     return true;
 }
 
-bool ARoadNetworkVisualizer::UpdateEdgeInFile(int64 U, int64 V, int32 Lanes, float SpeedMps, const FString& TurnLanes, int32 Layer)
+bool ARoadNetworkVisualizer::UpdateEdgesInFile(const TArray<FEdgeFileUpdate>& Updates, int32 Lanes, float SpeedMps, int32 Layer)
 {
+    if (Updates.Num() == 0) return true;
+
     TArray<FString> Lines;
     if (!FFileHelper::LoadFileToStringArray(Lines, *EdgesFilePath))
     {
-        UE_LOG(LogTemp, Error, TEXT("UpdateEdgeInFile: could not read %s"), *EdgesFilePath);
+        UE_LOG(LogTemp, Error, TEXT("UpdateEdgesInFile: could not read %s"), *EdgesFilePath);
         return false;
     }
 
-    const FString UStr = FString::Printf(TEXT("%lld"), U);
-    const FString VStr = FString::Printf(TEXT("%lld"), V);
-
-    for (int32 LineIdx = 0; LineIdx < Lines.Num(); LineIdx++)
+    // Cheap substring prefilter per update, same as the old single-edge scan.
+    TArray<FString> UStrs, VStrs;
+    UStrs.Reserve(Updates.Num());
+    VStrs.Reserve(Updates.Num());
+    for (const FEdgeFileUpdate& Update : Updates)
     {
-        const FString& Line = Lines[LineIdx];
-        if (Line.IsEmpty() || !Line.Contains(UStr) || !Line.Contains(VStr)) continue;
-
-        TSharedPtr<FJsonObject> Obj;
-        TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Line);
-        if (!FJsonSerializer::Deserialize(Reader, Obj) || !Obj.IsValid()) continue;
-
-        int64 LineU = 0, LineV = 0;
-        if (!Obj->TryGetNumberField(TEXT("u"), LineU) || !Obj->TryGetNumberField(TEXT("v"), LineV)) continue;
-        if (LineU != U || LineV != V) continue;
-
-        Obj->SetNumberField(TEXT("lanes"), Lanes);
-        Obj->SetNumberField(TEXT("speed_mps"), SpeedMps);
-        // "turn_lanes" is the key the datasets and NetworkBuilder read;
-        // scrub the alternate spellings so one authoritative value remains.
-        // An empty edit clears the tag entirely, handing the edge back to
-        // assignInferredTurnLanes.
-        Obj->RemoveField(TEXT("turn:lanes"));
-        Obj->RemoveField(TEXT("turn_lanes_forward"));
-        if (TurnLanes.IsEmpty())
-        {
-            Obj->RemoveField(TEXT("turn_lanes"));
-        }
-        else
-        {
-            Obj->SetStringField(TEXT("turn_lanes"), TurnLanes);
-        }
-
-        // Always written explicitly: parseEdgeLayer prefers "layer" over the
-        // bridge/tunnel tag fallback, so grounding an OSM bridge (layer 0)
-        // sticks even when the line keeps its original bridge tag.
-        Obj->SetNumberField(TEXT("layer"), Layer);
-
-        FString Out;
-        TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Out, 0);
-        FJsonSerializer::Serialize(Obj.ToSharedRef(), Writer);
-        Out.ReplaceInline(TEXT("\n"), TEXT(""));
-        Out.ReplaceInline(TEXT("\r"), TEXT(""));
-        Lines[LineIdx] = Out;
-
-        return FFileHelper::SaveStringArrayToFile(Lines, *EdgesFilePath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
+        UStrs.Add(FString::Printf(TEXT("%lld"), Update.U));
+        VStrs.Add(FString::Printf(TEXT("%lld"), Update.V));
     }
 
-    UE_LOG(LogTemp, Warning, TEXT("UpdateEdgeInFile: edge %lld -> %lld not found in %s"), U, V, *EdgesFilePath);
-    return false;
+    TBitArray<> Applied(false, Updates.Num());
+    int32 Remaining = Updates.Num();
+
+    for (int32 LineIdx = 0; LineIdx < Lines.Num() && Remaining > 0; LineIdx++)
+    {
+        const FString& Line = Lines[LineIdx];
+        if (Line.IsEmpty()) continue;
+
+        for (int32 UpdateIdx = 0; UpdateIdx < Updates.Num(); UpdateIdx++)
+        {
+            if (Applied[UpdateIdx]) continue;
+            if (!Line.Contains(UStrs[UpdateIdx]) || !Line.Contains(VStrs[UpdateIdx])) continue;
+
+            TSharedPtr<FJsonObject> Obj;
+            TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Line);
+            if (!FJsonSerializer::Deserialize(Reader, Obj) || !Obj.IsValid()) break;
+
+            int64 LineU = 0, LineV = 0;
+            if (!Obj->TryGetNumberField(TEXT("u"), LineU) || !Obj->TryGetNumberField(TEXT("v"), LineV)) break;
+            if (LineU != Updates[UpdateIdx].U || LineV != Updates[UpdateIdx].V) continue;
+
+            Obj->SetNumberField(TEXT("lanes"), Lanes);
+            Obj->SetNumberField(TEXT("speed_mps"), SpeedMps);
+            // "turn_lanes" is the key the datasets and NetworkBuilder read;
+            // scrub the alternate spellings so one authoritative value remains.
+            // An empty edit clears the tag entirely, handing the edge back to
+            // assignInferredTurnLanes.
+            Obj->RemoveField(TEXT("turn:lanes"));
+            Obj->RemoveField(TEXT("turn_lanes_forward"));
+            if (Updates[UpdateIdx].TurnLanes.IsEmpty())
+            {
+                Obj->RemoveField(TEXT("turn_lanes"));
+            }
+            else
+            {
+                Obj->SetStringField(TEXT("turn_lanes"), Updates[UpdateIdx].TurnLanes);
+            }
+
+            // Always written explicitly: parseEdgeLayer prefers "layer" over the
+            // bridge/tunnel tag fallback, so grounding an OSM bridge (layer 0)
+            // sticks even when the line keeps its original bridge tag.
+            Obj->SetNumberField(TEXT("layer"), Layer);
+
+            FString Out;
+            TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Out, 0);
+            FJsonSerializer::Serialize(Obj.ToSharedRef(), Writer);
+            Out.ReplaceInline(TEXT("\n"), TEXT(""));
+            Out.ReplaceInline(TEXT("\r"), TEXT(""));
+            Lines[LineIdx] = Out;
+
+            Applied[UpdateIdx] = true;
+            Remaining--;
+            break; // one JSONL line holds exactly one directed edge
+        }
+    }
+
+    for (int32 UpdateIdx = 0; UpdateIdx < Updates.Num(); UpdateIdx++)
+    {
+        if (!Applied[UpdateIdx])
+        {
+            UE_LOG(LogTemp, Warning, TEXT("UpdateEdgesInFile: edge %lld -> %lld not found in %s"),
+                Updates[UpdateIdx].U, Updates[UpdateIdx].V, *EdgesFilePath);
+        }
+    }
+
+    if (Remaining == Updates.Num())
+    {
+        return false; // nothing matched; don't rewrite the file for no reason
+    }
+
+    const bool bSaved = FFileHelper::SaveStringArrayToFile(Lines, *EdgesFilePath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
+    return bSaved && Remaining == 0;
 }
 
 bool ARoadNetworkVisualizer::RemoveEdgeInFile(int64 U, int64 V)
@@ -1881,16 +1939,21 @@ bool ARoadNetworkVisualizer::UpdateRoadProperties(int64 U, int64 V, int32 Lanes,
     // edge gets the mirrored string, not a verbatim copy.
     const FString MirroredTurnLanes = RoadTurnLaneOptions::MirrorTurnLanes(TurnLanes);
 
-    bool bAny = false;
+    TArray<FEdgeFileUpdate> FileUpdates;
     if (ApplyToNetwork(U, V, TurnLanes))
     {
-        bAny = true;
-        UpdateEdgeInFile(U, V, SafeLanes, SafeSpeed, TurnLanes, SafeLayer);
+        FileUpdates.Add({ U, V, TurnLanes });
     }
     if (bBothDirections && ApplyToNetwork(V, U, MirroredTurnLanes))
     {
-        bAny = true;
-        UpdateEdgeInFile(V, U, SafeLanes, SafeSpeed, MirroredTurnLanes, SafeLayer);
+        FileUpdates.Add({ V, U, MirroredTurnLanes });
+    }
+
+    const bool bAny = FileUpdates.Num() > 0;
+    if (bAny)
+    {
+        // Both directions land in one file load + one save.
+        UpdateEdgesInFile(FileUpdates, SafeLanes, SafeSpeed, SafeLayer);
     }
 
     if (bAny)

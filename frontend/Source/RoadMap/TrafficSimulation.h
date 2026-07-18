@@ -54,7 +54,10 @@ public:
     TrafficSimulation();
     ~TrafficSimulation();
 
-    std::vector<VehicleRenderState> GetVehicleRenderStates();
+    // Fills OutStates with the current per-vehicle render transforms. The
+    // buffer is cleared but keeps its capacity, so passing a persistent caller
+    // buffer makes this allocation-free after warm-up.
+    void GetVehicleRenderStates(std::vector<VehicleRenderState>& OutStates);
 
     // Current signal colors for every traffic-light intersection, for the
     // frontend's traffic control visuals. Cheap: one entry per light node.

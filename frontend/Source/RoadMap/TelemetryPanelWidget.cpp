@@ -1265,6 +1265,10 @@ void UTelemetryPanelWidget::RefreshRunList()
         return;
     }
 
+    // Rescanning the run list is the one moment folders can have moved or
+    // been renamed, so stale resolutions must not survive it.
+    UTelemetryPanelBridge::InvalidateRunFolderCache();
+
     RunListBox->ClearChildren();
     RunRows.Empty();
     SavedRuns.Empty();

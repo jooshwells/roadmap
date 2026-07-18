@@ -179,11 +179,11 @@ const std::vector<VehicleState*>& TrafficSimulation::GetActiveVehicles() const
     return controller->getActiveVehicles();
 }
 
-std::vector<VehicleRenderState> TrafficSimulation::GetVehicleRenderStates()
+void TrafficSimulation::GetVehicleRenderStates(std::vector<VehicleRenderState>& OutStates)
 {
-    std::vector<VehicleRenderState> renderStates;
+    OutStates.clear(); // keeps capacity, so a reused caller buffer never reallocates
 
-    if (!controller || !orlandoMap) return renderStates;
+    if (!controller || !orlandoMap) return;
 
     const float MEDIAN_GAP_METERS = RoadIntersectionUtil::MedianGapMeters;
     const float LANE_WIDTH = RoadIntersectionUtil::LaneWidthMeters;
@@ -457,10 +457,8 @@ std::vector<VehicleRenderState> TrafficSimulation::GetVehicleRenderStates()
         state.pitch = p.pitch;
         state.id = v->getId();
 
-        renderStates.push_back(state);
+        OutStates.push_back(state);
     }
-
-    return renderStates;
 }
 void TrafficSimulation::AddRuntimeRoad(uint64_t startNodeId, uint64_t endNodeId, double destX, double destY, double lengthMeters, int lanes, float speedLimit) {
     if (!orlandoMap) return;

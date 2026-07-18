@@ -258,12 +258,22 @@ private:
 	TMap<int32, FVehicleTransformState> InterpolationData;
 	TMap<int32, int32> InstanceIndexToVehicleId;
 
+	// Scratch buffers reused across frames so the render push is allocation-free
+	// once warm. Reset() (not Empty()) keeps their capacity.
+	std::vector<VehicleRenderState> RenderStateBuffer;
+	TArray<FTransform> VehicleTransforms;
+	TSet<int32> ActiveVehicleIDScratch;
+
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 	bool bWaitingForTelemetry = false;
+
+	// Throttles the telemetry done-file existence check to ~2 Hz; a per-frame
+	// filesystem stat on the game thread is wasted work.
+	float TelemetryPollAccumulator = 0.0f;
 
 	FString TelemetryDoneFilePath;
 	
@@ -280,5 +290,11 @@ protected:
 	// can't snowball into ever-more steps per frame.
 	UPROPERTY(EditAnywhere, Category = "Simulation Settings")
 	int32 MaxStepsPerFrame;
+
+	// On-screen per-frame sim stats (steps/frame, backend car count). Off by
+	// default: the Printf + AddOnScreenDebugMessage every frame is pure waste
+	// outside of debugging sessions.
+	UPROPERTY(EditAnywhere, Category = "Simulation Settings")
+	bool bShowDebugStats = false;
 
 };
