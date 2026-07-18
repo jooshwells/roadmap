@@ -202,13 +202,14 @@ void UTelemetryPanelWidget::NativeDestruct()
     Super::NativeDestruct();
 }
 
-// Updates the permanent metric marker after Slate finishes laying out the map.
+// Gives Slate a few frames to finish laying out a newly opened map.
 void UTelemetryPanelWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
     Super::NativeTick(MyGeometry, InDeltaTime);
-    if (HeatmapViewer && HeatmapViewer->IsVisible())
+    if (HeatmapMarkerLayoutFramesRemaining > 0 && HeatmapViewer && HeatmapViewer->IsVisible())
     {
         UpdateHeatmapExtremeMarker();
+        --HeatmapMarkerLayoutFramesRemaining;
     }
 }
 
@@ -3180,12 +3181,16 @@ bool UTelemetryPanelWidget::OpenHeatmapPath(
     HeatmapTitleText->SetText(FText::FromString(Title));
     HeatmapViewer->SetVisibility(ESlateVisibility::Visible);
     SelectHeatmapExtremeRoad();
+    // The image size becomes final shortly after the viewer appears.
+    // Updating for three frames places the arrow correctly without doing layout work forever.
+    HeatmapMarkerLayoutFramesRemaining = 3;
     return true;
 }
 
 // Hides the map viewer and returns to the telemetry tabs.
 void UTelemetryPanelWidget::HandleCloseHeatmapClicked()
 {
+    HeatmapMarkerLayoutFramesRemaining = 0;
     ResetHeatmapView();
     HeatmapViewer->SetVisibility(ESlateVisibility::Collapsed);
 }

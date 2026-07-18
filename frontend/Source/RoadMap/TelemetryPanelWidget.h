@@ -57,7 +57,7 @@ public:
     virtual void NativeConstruct() override;
     // Restores game controls when the panel closes.
     virtual void NativeDestruct() override;
-    // Keeps the automatic metric marker lined up with a zoomed or moved map.
+    // Finishes placing the automatic metric marker after a map opens.
     virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
     // Zooms the heatmap with the mouse wheel.
     virtual FReply NativeOnMouseWheel(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
@@ -363,6 +363,8 @@ private:
     int32 HoveredHeatmapRoadIndex = INDEX_NONE;
     int32 PinnedHeatmapRoadIndex = INDEX_NONE;
     int32 ExtremeHeatmapRoadIndex = INDEX_NONE;
+    // Only update the automatic marker for a few layout frames after opening a map.
+    int32 HeatmapMarkerLayoutFramesRemaining = 0;
     FTelemetryHeatmapDisplayInfo CurrentHeatmapDisplayInfo;
 
     // Saved-run widgets.

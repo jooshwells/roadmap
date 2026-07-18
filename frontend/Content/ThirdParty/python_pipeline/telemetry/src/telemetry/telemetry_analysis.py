@@ -64,10 +64,12 @@ def load_telemetry(csv_file: str | Path) -> pd.DataFrame:
     if missing:
         raise ValueError(f"Missing required columns: {missing}")
 
-    # Convert bad strings to NaN instead of crashing immediately. The validation
-    # step reports them so we know the CSV has a data quality problem.
+    # Pandas normally reads these columns as numbers already. Only run the
+    # slower cleanup when a column contains text or another unexpected type.
     for col in NUMERIC_COLS:
-        df[col] = pd.to_numeric(df[col], errors="coerce")
+        if not pd.api.types.is_numeric_dtype(df[col]):
+            # Bad strings become NaN so validation can report them clearly.
+            df[col] = pd.to_numeric(df[col], errors="coerce")
 
     # Keep the original CSV row number to make debugging with the simulation team easier.
     df.insert(0, "SourceRow", np.arange(2, len(df) + 2))
@@ -116,11 +118,14 @@ def validate_telemetry(df: pd.DataFrame) -> list[str]:
     return issues
 
 
-def add_derived_columns(df: pd.DataFrame) -> pd.DataFrame:
+def add_derived_columns(df: pd.DataFrame, copy_data: bool = True) -> pd.DataFrame:
     """Add helper columns used by the metric builders."""
     # The logger already writes frames in time order. Keeping that order avoids
     # sorting a very large run again after it is loaded.
-    df = df.copy()
+    # Direct callers still receive a copy by default. The main pipeline owns its
+    # loaded table, so it can safely skip a second full copy to save memory.
+    if copy_data:
+        df = df.copy()
 
     df["Speed_mph"] = df["Speed_mps"] * MPS_TO_MPH
 
@@ -386,7 +391,7 @@ def run_analysis(
 
     df = load_telemetry(input_file)
     validation_issues = validate_telemetry(df)
-    df = add_derived_columns(df)
+    df = add_derived_columns(df, copy_data=False)
 
     summary, sim_duration_hr = build_run_summary(df)
     edge_metrics = build_edge_metrics(df, sim_duration_hr)

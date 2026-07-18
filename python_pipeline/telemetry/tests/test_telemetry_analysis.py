@@ -23,6 +23,7 @@ from pathlib import Path
 # folder to the import path before running the tests.
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
+sys.path.insert(0, str(PROJECT_ROOT))
 sys.path.insert(
     0,
     str(PROJECT_ROOT / "src" / "telemetry")
@@ -30,6 +31,7 @@ sys.path.insert(
 
 import pandas as pd
 import pytest
+import run_pipeline
 
 from telemetry_analysis import (
     load_telemetry,
@@ -137,6 +139,65 @@ def test_load_telemetry_checks_required_columns(tmp_path):
 
     with pytest.raises(ValueError):
         load_telemetry(bad_file)
+
+
+def test_load_telemetry_still_cleans_unexpected_numeric_text(tmp_path):
+    """Unexpected text should still become a validation error instead of crashing."""
+    input_file = tmp_path / "simulation_output.csv"
+    df = sample_df().drop(columns=["SourceRow"])
+    df["Speed_mps"] = df["Speed_mps"].astype(object)
+    df.loc[0, "Speed_mps"] = "bad speed"
+    df.to_csv(input_file, index=False)
+
+    loaded = load_telemetry(input_file)
+
+    assert pd.isna(loaded.loc[0, "Speed_mps"])
+    assert any("Speed_mps" in issue for issue in validate_telemetry(loaded))
+
+
+def test_simulation_csv_is_moved_into_its_run(tmp_path):
+    """A normal same-drive save should move the raw CSV instead of copying it."""
+    source = tmp_path / "simulation_output.csv"
+    saved = tmp_path / "run" / "simulation_output.csv"
+    saved.parent.mkdir()
+    source.write_text("Time,VehicleID\n0,1\n", encoding="utf-8")
+
+    method = run_pipeline.save_simulation_csv(source, saved)
+
+    assert method == "moved"
+    assert saved.exists()
+    assert not source.exists()
+
+
+def test_simulation_csv_uses_copy_when_move_fails(tmp_path, monkeypatch):
+    """A blocked move should preserve the old safe copy behavior."""
+    source = tmp_path / "simulation_output.csv"
+    saved = tmp_path / "run" / "simulation_output.csv"
+    saved.parent.mkdir()
+    source.write_text("Time,VehicleID\n0,1\n", encoding="utf-8")
+    original_replace = Path.replace
+
+    def blocked_replace(path, target):
+        if path == source:
+            raise OSError("test move failure")
+        return original_replace(path, target)
+
+    monkeypatch.setattr(Path, "replace", blocked_replace)
+
+    method = run_pipeline.save_simulation_csv(source, saved)
+
+    assert method == "copied"
+    assert saved.read_bytes() == source.read_bytes()
+
+
+def test_main_analysis_can_add_columns_without_copying():
+    """The owned analysis table can be updated without making a full duplicate."""
+    df = sample_df()
+
+    result = add_derived_columns(df, copy_data=False)
+
+    assert result is df
+    assert "WaitDelta_s" in df.columns
 
 
 def test_validate_good_telemetry_has_no_issues():

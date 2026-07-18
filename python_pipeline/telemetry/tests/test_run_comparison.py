@@ -10,6 +10,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.telemetry.run_comparison import compare_saved_runs, build_heatmap_comparison_metrics
+from run_pipeline import get_saved_comparison_heatmap_paths
 
 
 def make_run(
@@ -192,3 +193,48 @@ def test_old_run_builds_average_wait_from_saved_columns(tmp_path):
     assert context["shared_roads"] == 2
     assert changes.iloc[0]["baseline_value"] == pytest.approx(10.0)
     assert changes.iloc[0]["comparison_value"] == pytest.approx(5.0)
+
+
+def test_complete_saved_comparison_maps_are_reused(tmp_path):
+    baseline = make_run(tmp_path, "run_one", "test-map", speed=40, wait=20, duration=120)
+    comparison = make_run(tmp_path, "run_two", "test-map", speed=50, wait=10, duration=120)
+    baseline_heatmaps = baseline / "heatmaps"
+    comparison_heatmaps = comparison / "heatmaps"
+    baseline_heatmaps.mkdir()
+    comparison_heatmaps.mkdir()
+
+    saved_files = [
+        baseline_heatmaps / "heatmap_avg_speed_mph.svg",
+        baseline_heatmaps / "heatmap_avg_speed_mph.json",
+        comparison_heatmaps / "heatmap_avg_speed_mph.svg",
+        comparison_heatmaps / "heatmap_avg_speed_mph.json",
+        comparison_heatmaps / "comparison_run_one_avg_speed_mph.svg",
+        comparison_heatmaps / "comparison_run_one_avg_speed_mph.json",
+    ]
+    for path in saved_files:
+        path.write_text("saved", encoding="utf-8")
+
+    paths = get_saved_comparison_heatmap_paths(
+        baseline, comparison, "run_one", "avg_speed_mph", "all"
+    )
+
+    assert paths is not None
+    assert paths["change_path"].endswith("comparison_run_one_avg_speed_mph.svg")
+
+
+def test_incomplete_saved_comparison_maps_are_not_reused(tmp_path):
+    baseline = make_run(tmp_path, "run_one", "test-map", speed=40, wait=20, duration=120)
+    comparison = make_run(tmp_path, "run_two", "test-map", speed=50, wait=10, duration=120)
+    (baseline / "heatmaps").mkdir()
+    (comparison / "heatmaps").mkdir()
+
+    # Missing JSON files must force normal generation so Unreal gets complete data.
+    (baseline / "heatmaps" / "heatmap_bottleneck_score.svg").write_text("saved", encoding="utf-8")
+    (comparison / "heatmaps" / "heatmap_bottleneck_score.svg").write_text("saved", encoding="utf-8")
+    (comparison / "heatmaps" / "comparison_run_one_bottleneck_score.svg").write_text(
+        "saved", encoding="utf-8"
+    )
+
+    assert get_saved_comparison_heatmap_paths(
+        baseline, comparison, "run_one", "bottleneck_score", "all"
+    ) is None

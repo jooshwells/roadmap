@@ -32,6 +32,30 @@ INPUT_DIR = TELEMETRY_DIR / "inputs"
 EDGE_JSONL_PATH = PYTHON_PIPELINE_DIR / "sample_out" / "waterford_edges_orange_allroads_offline_xy.jsonl"
 EDITED_EDGES_PATH = INPUT_DIR / "edited_edges.csv"
 
+
+def save_simulation_csv(source_path: Path, saved_path: Path) -> str:
+    """Move a completed simulation CSV into its run, with a safe copy fallback."""
+    source_path = Path(source_path)
+    saved_path = Path(saved_path)
+    expected_size = source_path.stat().st_size
+
+    try:
+        # A move on the same drive avoids copying a very large file. If Windows
+        # cannot move it, the old copy behavior below keeps the run working.
+        source_path.replace(saved_path)
+        save_method = "moved"
+    except OSError as move_error:
+        print(f"CSV move was not available; using a safe copy instead: {move_error}")
+        shutil.copy2(source_path, saved_path)
+        save_method = "copied"
+
+    # Do not start analysis unless the run owns a complete raw data file.
+    if not saved_path.is_file() or saved_path.stat().st_size != expected_size:
+        raise OSError("The simulation CSV was not saved completely in the run folder.")
+
+    return save_method
+
+
 def clean_label_value(value):
     """Turn an optional road label value into clean text."""
     if value is None:
@@ -364,6 +388,48 @@ def compare_runs(baseline_run_id: str, comparison_run_id: str) -> dict:
         return {"success": False, "error": str(error)}
 
 
+def get_saved_comparison_heatmap_paths(
+    baseline_folder: Path,
+    comparison_folder: Path,
+    baseline_run_id: str,
+    metric: str,
+    focus: str,
+) -> dict[str, str] | None:
+    """Return a complete saved comparison set when every required file is current."""
+    source_stem = heatmap_file_stem(metric, focus)
+    change_stem = f"comparison_{baseline_run_id}_{metric}"
+    if focus != "all":
+        change_stem += f"_{focus}"
+
+    paths = {
+        "baseline_path": Path(baseline_folder) / "heatmaps" / f"{source_stem}.svg",
+        "comparison_path": Path(comparison_folder) / "heatmaps" / f"{source_stem}.svg",
+        "change_path": Path(comparison_folder) / "heatmaps" / f"{change_stem}.svg",
+    }
+
+    # Each SVG needs its display JSON or Unreal cannot build the legend and road details.
+    required_files = []
+    for svg_path in paths.values():
+        required_files.extend([svg_path, svg_path.with_suffix(".json")])
+    if not all(path.is_file() for path in required_files):
+        return None
+
+    # Regenerate when either run's saved metrics or road graph changed afterward.
+    source_files = [
+        Path(baseline_folder) / "edge_metrics.csv",
+        Path(baseline_folder) / "network_graph.csv",
+        Path(comparison_folder) / "edge_metrics.csv",
+        Path(comparison_folder) / "network_graph.csv",
+    ]
+    if not all(path.is_file() for path in source_files):
+        return None
+    newest_source_time = max(path.stat().st_mtime for path in source_files)
+    if any(path.stat().st_mtime < newest_source_time for path in required_files):
+        return None
+
+    return {name: str(path) for name, path in paths.items()}
+
+
 def generate_comparison_heatmaps(
     baseline_run_id: str,
     comparison_run_id: str,
@@ -379,6 +445,31 @@ def generate_comparison_heatmaps(
         return {"success": False, "error": "One or both saved run folders could not be found."}
 
     try:
+        # Reuse a complete saved set instead of redrawing the same three maps.
+        saved_paths = get_saved_comparison_heatmap_paths(
+            baseline_folder,
+            comparison_folder,
+            baseline_run_id,
+            metric,
+            focus,
+        )
+        if saved_paths is not None:
+            _, context = build_heatmap_comparison_metrics(
+                baseline_folder,
+                comparison_folder,
+                metric,
+            )
+            return {
+                "success": True,
+                "baseline_run_id": baseline_run_id,
+                "comparison_run_id": comparison_run_id,
+                "metric": metric,
+                "focus": focus,
+                **saved_paths,
+                "shared_roads": context["shared_roads"],
+                "reused_saved_maps": True,
+            }
+
         baseline_result = generate_single_heatmap(baseline_run_id, metric, focus)
         comparison_result = generate_single_heatmap(comparison_run_id, metric, focus)
         if not baseline_result.get("success"):
@@ -413,6 +504,7 @@ def generate_comparison_heatmaps(
             "comparison_path": comparison_result["heatmap_path"],
             "change_path": str(change_path),
             "shared_roads": context["shared_roads"],
+            "reused_saved_maps": False,
         }
     except (FileNotFoundError, ValueError, KeyError, pd.errors.ParserError) as error:
         return {"success": False, "error": str(error)}
@@ -943,12 +1035,12 @@ def main() -> int:
     print(f"Created telemetry run: {run_id}")
     print(f"Run folder: {run_folder}")
 
-    # Save a copy of the raw simulation CSV inside this run folder.
-    # This lets us keep the original telemetry data that belongs to each run.
+    # Give this run ownership of the raw simulation CSV. A same-drive move is
+    # fast, while the helper falls back to copying if Windows blocks the move.
     saved_simulation_csv = run_folder / "simulation_output.csv"
-    shutil.copy2(simulation_csv, saved_simulation_csv)
+    csv_save_method = save_simulation_csv(simulation_csv, saved_simulation_csv)
 
-    print(f"Saved simulation CSV: {saved_simulation_csv}")
+    print(f"Saved simulation CSV ({csv_save_method}): {saved_simulation_csv}")
 
     # Build the heatmap-ready network graph directly from the same active
     # node and edge JSONL files used by the C++ simulation.
