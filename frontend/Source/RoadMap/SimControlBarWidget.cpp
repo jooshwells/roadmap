@@ -231,6 +231,26 @@ TSharedRef<SWidget> USimControlBarWidget::RebuildWidget()
 			StatusSlot->SetVerticalAlignment(VAlign_Center);
 		}
 		AddCell(StatusSizer, 12.0f);
+
+		AddSeparator();
+
+		// --- Back to main menu ------------------------------------------------
+		MenuButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), TEXT("Menu"));
+		MenuButton->SetStyle(TransportButtonStyle(false));
+
+		UTextBlock* MenuLabel = MakeLabel(TEXT("MENU"), FName("Bold"), 10, TextPrimary);
+		FSlateFontInfo MenuFont = FCoreStyle::GetDefaultFontStyle("Bold", 10);
+		MenuFont.LetterSpacing = 200;
+		MenuLabel->SetFont(MenuFont);
+
+		MenuButton->AddChild(MenuLabel);
+		if (UButtonSlot* ContentSlot = Cast<UButtonSlot>(MenuLabel->Slot))
+		{
+			ContentSlot->SetPadding(FMargin(0.0f));
+			ContentSlot->SetHorizontalAlignment(HAlign_Center);
+			ContentSlot->SetVerticalAlignment(VAlign_Center);
+		}
+		AddCell(MenuButton, 12.0f);
 	}
 
 	return Super::RebuildWidget();
@@ -242,6 +262,7 @@ void USimControlBarWidget::NativeConstruct()
 
 	if (PlayPauseButton) PlayPauseButton->OnClicked.AddUniqueDynamic(this, &USimControlBarWidget::HandlePlayPauseClicked);
 	if (StopButton) StopButton->OnClicked.AddUniqueDynamic(this, &USimControlBarWidget::HandleStopClicked);
+	if (MenuButton) MenuButton->OnClicked.AddUniqueDynamic(this, &USimControlBarWidget::HandleMenuClicked);
 
 	ASimulationManager* Sim = ResolveSimManager();
 	const bool bRunning = Sim && Sim->bSimulationRunning;
@@ -291,6 +312,18 @@ void USimControlBarWidget::HandleStopClicked()
 		Sim->StopSimulation();
 		RefreshVisuals(false, false, LastSpeedIndex);
 	}
+}
+
+void USimControlBarWidget::HandleMenuClicked()
+{
+	// Same full reset as the stop button (telemetry pipeline included) so a
+	// run in progress is flushed before the level is torn down.
+	ASimulationManager* Sim = ResolveSimManager();
+	if (Sim && Sim->bSimulationRunning)
+	{
+		Sim->StopSimulation();
+	}
+	UGameplayStatics::OpenLevel(this, MainMenuLevelName);
 }
 
 void USimControlBarWidget::HandleSpeedSelected(int32 PresetIndex)

@@ -51,6 +51,11 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Roadmap")
 	bool LoadRoadmap(const FRoadmapEntry& Saved, FString& OutError);
 
+	// Permanently removes a user save folder from Saved/RoadMaps. Refuses
+	// anything outside the saves dir, so templates can never be deleted.
+	UFUNCTION(BlueprintCallable, Category = "Roadmap")
+	bool DeleteRoadmap(const FRoadmapEntry& Saved, FString& OutError);
+
 	UFUNCTION(BlueprintPure, Category = "Roadmap")
 	bool HasActiveRoadmap() const { return bHasActiveRoadmap; }
 
