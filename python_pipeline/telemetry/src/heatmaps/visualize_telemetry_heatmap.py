@@ -34,7 +34,7 @@ import matplotlib.backends.backend_svg
 import matplotlib.colors as colors
 import matplotlib.patheffects as path_effects
 from matplotlib.collections import LineCollection
-from matplotlib.patches import FancyBboxPatch, Rectangle, Circle, Polygon
+from matplotlib.patches import Rectangle, Circle, Polygon
 
 
 MAJOR_ROAD_TYPES = {"motorway", "trunk", "primary", "secondary"}
@@ -849,94 +849,6 @@ def set_tight_map_bounds(ax, segments, pad_ratio=0.035):
     ax.set_ylim(min_y - pad, max_y + pad)
 
 
-# Draw the small dashboard-style summary card.
-def add_stats_card(ax, metric, heat_values, background_count, heat_count, merged_df, focus="all"):
-    """Draw the summary card in the upper-left corner."""
-    if not heat_values:
-        return
-
-    title = "Run Comparison" if metric == "comparison_delta" else "Simulation Summary"
-    rows = summary_rows_for_metric(
-        metric,
-        heat_values,
-        background_count,
-        heat_count,
-        merged_df,
-        focus,
-    )
-
-    # Separate text calls make the spacing look cleaner than one big multiline string.
-    x0, y0 = 0.018, 0.965
-    card_width = 0.215
-    card_height = 0.082 + (0.029 * len(rows))
-
-    card = FancyBboxPatch(
-        (x0 - 0.004, y0 - card_height),
-        card_width,
-        card_height,
-        transform=ax.transAxes,
-        boxstyle="round,pad=0.008,rounding_size=0.004",
-        facecolor="#0B1220",
-        edgecolor="#334155",
-        linewidth=1.1,
-        alpha=0.92,
-        zorder=58,
-    )
-    ax.add_patch(card)
-
-    ax.text(
-        x0,
-        y0 - 0.004,
-        title,
-        transform=ax.transAxes,
-        ha="left",
-        va="top",
-        fontsize=14,
-        fontweight="bold",
-        color="#F9FAFB",
-        zorder=60,
-    )
-
-    ax.text(
-        x0,
-        y0 - 0.033,
-        metric_display_name(metric),
-        transform=ax.transAxes,
-        ha="left",
-        va="top",
-        fontsize=11,
-        color="#94A3B8",
-        zorder=60,
-    )
-
-    y = y0 - 0.066
-    for label, value in rows:
-        ax.text(
-            x0,
-            y,
-            label,
-            transform=ax.transAxes,
-            ha="left",
-            va="top",
-            fontsize=11,
-            color="#CBD5E1",
-            zorder=60,
-        )
-        ax.text(
-            x0 + card_width - 0.014,
-            y,
-            str(value),
-            transform=ax.transAxes,
-            ha="right",
-            va="top",
-            fontsize=11.5,
-            fontweight="bold",
-            color="#FFFFFF",
-            zorder=60,
-        )
-        y -= 0.029
-
-
 # Add extra glow to the roads with the strongest heatmap values.
 def add_value_weighted_glow(ax, heat_segments, heat_widths, values, cmap_name, norm, metric):
     """Add extra glow to the roads that matter most for the selected metric."""
@@ -1308,7 +1220,7 @@ def save_heatmap_display_info(
         json.dump(display_info, file, indent=2)
 
 
-# Build the full PNG plus a map-only SVG for Unreal's hybrid viewer.
+# Build the SVG and JSON used by Unreal's interactive viewer.
 def plot_heatmap(
     network_df: pd.DataFrame,
     metrics_df: pd.DataFrame,
@@ -1320,7 +1232,7 @@ def plot_heatmap(
     show_markers=False,
     focus="all",
 ):
-    """Draw one complete heatmap and save its PNG, SVG, and display JSON."""
+    """Draw one complete heatmap and save its SVG and display JSON."""
     if metric not in metrics_df.columns:
         raise ValueError(
             f"Metric '{metric}' was not found in edge_metrics.csv. "
@@ -1539,13 +1451,6 @@ def plot_heatmap(
     # Keep the fixed canvas; bbox_inches="tight" would change the aspect ratio
     # for each map and cause Unreal to stretch compact maps such as Downtown.
     plt.savefig(svg_output_path, format="svg", transparent=True)
-    if colorbar is not None:
-        colorbar.ax.set_visible(True)
-
-    # The PNG remains a full dashboard/export fallback, so restore its wider
-    # landscape canvas after the fixed-aspect map-only SVG has been written.
-    fig.set_size_inches(20, 10.5, forward=True)
-    fig.subplots_adjust(left=0.0, right=1.0, bottom=0.0, top=1.0)
 
     rows = summary_rows_for_metric(
         metric,
@@ -1581,49 +1486,12 @@ def plot_heatmap(
         map_rect,
     )
 
-    # Add the full title, summary, and colorbar to the PNG fallback/export image.
-    add_stats_card(
-        ax,
-        metric,
-        heat_values,
-        background_count=len(background_segments),
-        heat_count=len(heat_segments),
-        merged_df=labeled_network_df,
-        focus=focus,
-    )
-    ax.set_title(
-        f"RoadMap\n{title}",
-        fontsize=24,
-        color="white",
-        weight="bold",
-        pad=24,
-    )
-
-    ax.text(
-        0.99,
-        0.01,
-        "RoadMap  •  Summer 2026",
-        transform=ax.transAxes,
-        ha="right",
-        va="bottom",
-        fontsize=11,
-        color="#888888",
-        zorder=40,
-    )
-
-    # Remove the old duplicate filename when this metric is regenerated.
-    legacy_transparent_path = output_path.with_name(
-        output_path.stem + "_transparent" + output_path.suffix
-    )
-    legacy_transparent_path.unlink(missing_ok=True)
-
-    plt.tight_layout(pad=0.35)
-    plt.savefig(output_path, dpi=180, transparent=True, bbox_inches="tight", pad_inches=0.06)
+    # Regenerating an older heatmap also removes its obsolete PNG fallback.
+    output_path.with_suffix(".png").unlink(missing_ok=True)
 
     plt.close()
 
-    print(f"Saved heatmap to: {output_path}")
-    print(f"Saved vector heatmap to: {svg_output_path}")
+    print(f"Saved heatmap to: {svg_output_path}")
 
 # Draw simple route shields for common roads like I-4, 50, 417, and 528.
 # Route shields are drawn last so they stay visible over the road lines.
@@ -1724,7 +1592,7 @@ def main():
     parser.add_argument(
         "--output",
         default=None,
-        help="Output PNG filename. If omitted, one is created automatically.",
+        help="Output SVG filename. If omitted, one is created automatically.",
     )
 
     parser.add_argument(
@@ -1756,7 +1624,7 @@ def main():
     output_path = (
         Path(args.output)
         if args.output
-        else BASE_DIR / f"outputs/heatmaps/heatmap_{args.metric}.png"
+        else BASE_DIR / f"outputs/heatmaps/heatmap_{args.metric}.svg"
     )
 
     network_df, metrics_df = load_files(Path(args.network), Path(args.edge_metrics))

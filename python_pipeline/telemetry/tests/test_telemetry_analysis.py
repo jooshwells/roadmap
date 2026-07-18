@@ -245,4 +245,6 @@ def test_run_analysis_writes_output_files(tmp_path):
     assert (output_dir / "bottleneck_edges.csv").exists()
     assert (output_dir / "telemetry_flags.csv").exists()
     assert (output_dir / "run_summary.txt").exists()
+    assert not (output_dir / "heatmap_frames").exists()
     assert "edge_metrics" in results
+    assert "frame_manifest" not in results

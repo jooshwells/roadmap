@@ -11,14 +11,10 @@ Main outputs:
     telemetry_outputs/od_metrics.csv
     telemetry_outputs/bottleneck_edges.csv
     telemetry_outputs/telemetry_flags.csv
-    telemetry_outputs/heatmap_frames/frame_000.csv
-    telemetry_outputs/heatmap_frames/all_frames.csv
-    telemetry_outputs/heatmap_frames/frame_manifest.json
 
 Run examples:
     python telemetry_analysis.py
     python telemetry_analysis.py --input simulation_output.csv --output telemetry_outputs
-    python telemetry_analysis.py --input larger_run.csv --output telemetry_outputs --frame-seconds 30
 
 Note:
     I kept this script focused on post-processing. The simulation team exports the
@@ -42,7 +38,6 @@ LOW_SPEED_MPS = 2.2352          # about 5 mph
 BAD_ACCEL_LIMIT = 20.0          # anything over +/-20 m/s^2 is probably a bug/spike
 BAD_JUMP_M = 200.0              # suspicious position jump on the same edge
 MIN_EDGE_SAMPLES = 5            # keeps tiny sample edges from dominating bottlenecks
-DEFAULT_FRAME_SECONDS = 30.0     # used for animated/replay heatmap frames
 BOTTLENECK_WAIT_REFERENCE_S = 30.0  # 30 seconds fills the stopped-time part of the index
 
 REQUIRED_COLS = [
@@ -123,24 +118,32 @@ def validate_telemetry(df: pd.DataFrame) -> list[str]:
 
 def add_derived_columns(df: pd.DataFrame) -> pd.DataFrame:
     """Add helper columns used by the metric builders."""
-    df = df.sort_values(["VehicleID", "Time", "SourceRow"]).copy()
+    # The logger already writes frames in time order. Keeping that order avoids
+    # sorting a very large run again after it is loaded.
+    df = df.copy()
 
     df["Speed_mph"] = df["Speed_mps"] * MPS_TO_MPH
 
     # WaitTime_s appears to be cumulative per vehicle, so the diff tells us how
     # much new wait time was added at this exact sample.
-    wait_delta = df.groupby("VehicleID")["WaitTime_s"].diff()
+    vehicles = df.groupby("VehicleID", sort=False)
+    wait_delta = vehicles["WaitTime_s"].diff()
     df["WaitDelta_s"] = wait_delta.fillna(df["WaitTime_s"]).clip(lower=0)
 
     # These columns help catch sim issues like teleporting, time bugs, or bad edge transitions.
-    df["TimeDelta_s"] = df.groupby("VehicleID")["Time"].diff()
-    df["PosDelta_m"] = df.groupby("VehicleID")["Pos_m"].diff()
-    df["PrevEdgeID"] = df.groupby("VehicleID")["EdgeID"].shift(1)
+    df["TimeDelta_s"] = vehicles["Time"].diff()
+    df["PosDelta_m"] = vehicles["Pos_m"].diff()
+    df["PrevEdgeID"] = vehicles["EdgeID"].shift(1)
     df["SameEdgeAsPrevious"] = df["EdgeID"] == df["PrevEdgeID"]
 
     # EdgeEntry is True when a vehicle first appears on an edge. This is a better
     # count for volume/flow than just counting every telemetry row.
     df["EdgeEntry"] = df["PrevEdgeID"].isna() | (df["EdgeID"] != df["PrevEdgeID"])
+
+    # Store these checks once so the road summary and flag file can reuse them.
+    df["LowSpeedSample"] = df["Speed_mps"] < LOW_SPEED_MPS
+    df["StoppedSample"] = df["Speed_mps"] == 0
+    df["BadAccelSample"] = df["Accel_mps2"].abs() > BAD_ACCEL_LIMIT
     return df
 
 
@@ -211,7 +214,7 @@ def build_run_summary(df: pd.DataFrame) -> tuple[dict[str, Any], float]:
 
 def build_edge_metrics(df: pd.DataFrame, sim_duration_hr: float) -> pd.DataFrame:
     """Summarize traffic by road edge."""
-    grouped = df.groupby("EdgeID")
+    grouped = df.groupby("EdgeID", sort=False)
 
     edge_metrics = grouped.agg(
         sample_count=("Time", "count"),
@@ -231,6 +234,9 @@ def build_edge_metrics(df: pd.DataFrame, sim_duration_hr: float) -> pd.DataFrame
         first_seen_s=("Time", "min"),
         last_seen_s=("Time", "max"),
         lanes_used=("LaneIndex", "nunique"),
+        low_speed_sample_ratio=("LowSpeedSample", "mean"),
+        zero_speed_sample_ratio=("StoppedSample", "mean"),
+        bad_accel_count=("BadAccelSample", "sum"),
     ).reset_index()
 
     for col in ["avg", "median", "min", "max"]:
@@ -250,26 +256,6 @@ def build_edge_metrics(df: pd.DataFrame, sim_duration_hr: float) -> pd.DataFrame
         edge_metrics["total_wait_added_s"] / safe_entry_count
     ).fillna(0.0)
 
-    low_speed_ratio = grouped["Speed_mps"].apply(lambda s: (s < LOW_SPEED_MPS).mean())
-    zero_speed_ratio = grouped["Speed_mps"].apply(lambda s: (s == 0).mean())
-    bad_accel_count = grouped["Accel_mps2"].apply(lambda s: (s.abs() > BAD_ACCEL_LIMIT).sum())
-
-    edge_metrics = edge_metrics.merge(
-        low_speed_ratio.rename("low_speed_sample_ratio").reset_index(),
-        on="EdgeID",
-        how="left",
-    )
-    edge_metrics = edge_metrics.merge(
-        zero_speed_ratio.rename("zero_speed_sample_ratio").reset_index(),
-        on="EdgeID",
-        how="left",
-    )
-    edge_metrics = edge_metrics.merge(
-        bad_accel_count.rename("bad_accel_count").reset_index(),
-        on="EdgeID",
-        how="left",
-    )
-
     # This student-built index ranks possible trouble spots. It uses values per
     # vehicle entry so a longer or busier run does not score worse just for size.
     edge_metrics["bottleneck_score"] = calculate_bottleneck_index(
@@ -279,167 +265,6 @@ def build_edge_metrics(df: pd.DataFrame, sim_duration_hr: float) -> pd.DataFrame
     )
 
     return edge_metrics.sort_values("EdgeID").reset_index(drop=True)
-
-
-# Replay frames split the same run into smaller time windows.
-
-def build_heatmap_frames(df: pd.DataFrame, frame_seconds: float) -> tuple[pd.DataFrame, list[pd.DataFrame]]:
-    """
-    Build time-based edge metrics for heatmap replay.
-
-    The normal edge_metrics.csv summarizes the full simulation. These frame
-    metrics split the same idea into smaller time windows so Unreal can replay
-    how traffic changes over time. Each frame can be loaded in order and matched
-    back to road segments using EdgeID.
-    """
-    if frame_seconds <= 0:
-        raise ValueError("frame_seconds must be greater than 0")
-
-    sim_start = float(df["Time"].min())
-    sim_end = float(df["Time"].max())
-
-    if sim_end <= sim_start:
-        return pd.DataFrame(), []
-
-    frame_rows = []
-    frame_tables: list[pd.DataFrame] = []
-    frame_index = 0
-    frame_start = sim_start
-
-    while frame_start <= sim_end:
-        frame_end = frame_start + frame_seconds
-
-        # Include the left side of the window and exclude the right side. This
-        # avoids counting the same telemetry row in two replay frames.
-        if frame_end > sim_end:
-            frame_df = df[(df["Time"] >= frame_start) & (df["Time"] <= sim_end)].copy()
-        else:
-            frame_df = df[(df["Time"] >= frame_start) & (df["Time"] < frame_end)].copy()
-
-        if frame_df.empty:
-            frame_start = frame_end
-            frame_index += 1
-            continue
-
-        frame_duration_hr = (frame_df["Time"].max() - frame_df["Time"].min()) / 3600
-        if not frame_duration_hr or frame_duration_hr <= 0:
-            frame_duration_hr = frame_seconds / 3600
-
-        grouped = frame_df.groupby("EdgeID")
-
-        frame_metrics = grouped.agg(
-            sample_count=("Time", "count"),
-            vehicle_count=("VehicleID", "nunique"),
-            edge_entry_count=("EdgeEntry", "sum"),
-            avg_speed_mps=("Speed_mps", "mean"),
-            total_wait_added_s=("WaitDelta_s", "sum"),
-            avg_wait_added_per_sample_s=("WaitDelta_s", "mean"),
-            first_seen_s=("Time", "min"),
-            last_seen_s=("Time", "max"),
-        ).reset_index()
-
-        frame_metrics["FrameIndex"] = frame_index
-        frame_metrics["FrameStart_s"] = frame_start
-        frame_metrics["FrameEnd_s"] = min(frame_end, sim_end)
-        frame_metrics["avg_speed_mph"] = frame_metrics["avg_speed_mps"] * MPS_TO_MPH
-        frame_metrics["estimated_flow_veh_per_hr"] = frame_metrics["edge_entry_count"] / frame_duration_hr
-
-        # Replay frames use the same wait measurement as the normal heatmap.
-        safe_entry_count = frame_metrics["edge_entry_count"].replace(0, np.nan)
-        frame_metrics["avg_wait_per_vehicle_s"] = (
-            frame_metrics["total_wait_added_s"] / safe_entry_count
-        ).fillna(0.0)
-
-        low_speed_ratio = grouped["Speed_mps"].apply(lambda s: (s < LOW_SPEED_MPS).mean())
-        zero_speed_ratio = grouped["Speed_mps"].apply(lambda s: (s == 0).mean())
-
-        frame_metrics = frame_metrics.merge(
-            low_speed_ratio.rename("low_speed_sample_ratio").reset_index(),
-            on="EdgeID",
-            how="left",
-        )
-        frame_metrics = frame_metrics.merge(
-            zero_speed_ratio.rename("zero_speed_sample_ratio").reset_index(),
-            on="EdgeID",
-            how="left",
-        )
-
-        # Replay frames use the exact same 0-100 index as the full run.
-        frame_metrics["bottleneck_score"] = calculate_bottleneck_index(
-            frame_metrics["avg_wait_per_vehicle_s"],
-            frame_metrics["low_speed_sample_ratio"],
-            frame_metrics["zero_speed_sample_ratio"],
-        )
-
-        ordered_cols = [
-            "FrameIndex", "FrameStart_s", "FrameEnd_s", "EdgeID",
-            "sample_count", "vehicle_count", "edge_entry_count",
-            "avg_speed_mph", "estimated_flow_veh_per_hr",
-            "total_wait_added_s", "avg_wait_per_vehicle_s", "low_speed_sample_ratio",
-            "zero_speed_sample_ratio", "bottleneck_score",
-            "first_seen_s", "last_seen_s",
-        ]
-        frame_metrics = frame_metrics[ordered_cols].sort_values("EdgeID").reset_index(drop=True)
-
-        frame_tables.append(frame_metrics)
-        frame_rows.append({
-            "FrameIndex": frame_index,
-            "FrameStart_s": frame_start,
-            "FrameEnd_s": min(frame_end, sim_end),
-            "Rows": len(frame_df),
-            "Edges": frame_metrics["EdgeID"].nunique(),
-        })
-
-        frame_start = frame_end
-        frame_index += 1
-
-    manifest = pd.DataFrame(frame_rows)
-    return manifest, frame_tables
-
-
-def write_heatmap_frames(
-    df: pd.DataFrame,
-    output_dir: str | Path,
-    frame_seconds: float = DEFAULT_FRAME_SECONDS,
-) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Write replay heatmap frames for Unreal or a Python preview."""
-    output_dir = Path(output_dir)
-    frames_dir = output_dir / "heatmap_frames"
-    frames_dir.mkdir(parents=True, exist_ok=True)
-
-    manifest, frame_tables = build_heatmap_frames(df, frame_seconds)
-
-    all_frames = pd.concat(frame_tables, ignore_index=True) if frame_tables else pd.DataFrame()
-
-    for frame_index, frame_df in enumerate(frame_tables):
-        frame_df.to_csv(frames_dir / f"frame_{frame_index:03d}.csv", index=False)
-
-    manifest.to_csv(frames_dir / "frame_manifest.csv", index=False)
-    all_frames.to_csv(frames_dir / "all_frames.csv", index=False)
-
-    # JSON is useful for Unreal because it can read one manifest and know which
-    # frame files exist without guessing filenames.
-    manifest_json = {
-        "frame_seconds": frame_seconds,
-        "frame_count": len(frame_tables),
-        "frames": [
-            {
-                "frame_index": int(row.FrameIndex),
-                "frame_start_s": float(row.FrameStart_s),
-                "frame_end_s": float(row.FrameEnd_s),
-                "file": f"frame_{int(row.FrameIndex):03d}.csv",
-            }
-            for row in manifest.itertuples(index=False)
-        ],
-    }
-
-    import json
-    (frames_dir / "frame_manifest.json").write_text(
-        json.dumps(manifest_json, indent=2),
-        encoding="utf-8",
-    )
-
-    return manifest, all_frames
 
 
 # Vehicle, trip, and data-quality outputs
@@ -544,7 +369,6 @@ def write_summary_file(summary: dict[str, Any], output_path: str | Path, validat
         "- od_metrics.csv groups trips by origin/destination pair.",
         "- bottleneck_edges.csv highlights likely congestion locations.",
         "- telemetry_flags.csv lists suspicious rows that may point to simulation bugs.",
-        "- heatmap_frames/ stores time-windowed edge metrics for replay in Unreal.",
     ]
 
     Path(output_path).write_text("\n".join(lines), encoding="utf-8")
@@ -555,7 +379,6 @@ def write_summary_file(summary: dict[str, Any], output_path: str | Path, validat
 def run_analysis(
     input_file: str | Path = INPUT_FILE,
     output_dir: str | Path = OUTPUT_DIR,
-    frame_seconds: float = DEFAULT_FRAME_SECONDS,
 ) -> dict[str, pd.DataFrame]:
     """Run the full analysis and write output files."""
     output_dir = Path(output_dir)
@@ -582,7 +405,6 @@ def run_analysis(
     bottlenecks.to_csv(output_dir / "bottleneck_edges.csv", index=False)
     flags.to_csv(output_dir / "telemetry_flags.csv", index=False)
     write_summary_file(summary, output_dir / "run_summary.txt", validation_issues)
-    frame_manifest, all_frames = write_heatmap_frames(df, output_dir, frame_seconds)
 
     return {
         "raw": df,
@@ -592,8 +414,6 @@ def run_analysis(
         "od_metrics": od_metrics,
         "bottlenecks": bottlenecks,
         "flags": flags,
-        "frame_manifest": frame_manifest,
-        "all_frames": all_frames,
     }
 
 
@@ -602,19 +422,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Analyze RoadMap telemetry CSV output.")
     parser.add_argument("--input", default=INPUT_FILE, help="Path to simulation_output.csv")
     parser.add_argument("--output", default=OUTPUT_DIR, help="Folder for output CSV files")
-    parser.add_argument(
-        "--frame-seconds",
-        type=float,
-        default=DEFAULT_FRAME_SECONDS,
-        help="Length of each heatmap replay frame in seconds.",
-    )
     args = parser.parse_args()
 
-    results = run_analysis(args.input, args.output, args.frame_seconds)
+    results = run_analysis(args.input, args.output)
 
     print("Telemetry analysis complete.")
     print(f"Outputs saved in: {args.output}")
-    print(f"Heatmap replay frames: {len(results['frame_manifest'])}")
     print()
     print("Top 10 bottleneck edges:")
     cols = [

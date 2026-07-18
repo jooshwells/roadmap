@@ -57,6 +57,8 @@ public:
     virtual void NativeConstruct() override;
     // Restores game controls when the panel closes.
     virtual void NativeDestruct() override;
+    // Keeps the automatic metric marker lined up with a zoomed or moved map.
+    virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
     // Zooms the heatmap with the mouse wheel.
     virtual FReply NativeOnMouseWheel(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
     // Starts a heatmap click or drag.
@@ -144,6 +146,16 @@ private:
     void ClearHeatmapRoadInteraction();
     // Moves the road marker to the correct place.
     void UpdateHeatmapRoadMarker();
+    // Finds the road with the highest or lowest value for the current metric.
+    void SelectHeatmapExtremeRoad();
+    // Moves the automatic high or low marker to its road.
+    void UpdateHeatmapExtremeMarker();
+    // Places one marker over a normalized point on the SVG map.
+    void PlaceHeatmapMarker(
+        UWidget* MarkerWidget,
+        const FVector2D& NormalizedPoint,
+        const FVector2D& MarkerHalfSize
+    ) const;
     // Formats a road value with the right unit.
     FString FormatHeatmapRoadValue(const FTelemetryHeatmapRoad& Road) const;
     // Loads one heatmap into the full-screen viewer.
@@ -347,8 +359,10 @@ private:
     FVector2D LastHeatmapPointerScreenPosition = FVector2D::ZeroVector;
     FVector2D HoveredRoadNormalizedPoint = FVector2D::ZeroVector;
     FVector2D PinnedRoadNormalizedPoint = FVector2D::ZeroVector;
+    FVector2D ExtremeRoadNormalizedPoint = FVector2D::ZeroVector;
     int32 HoveredHeatmapRoadIndex = INDEX_NONE;
     int32 PinnedHeatmapRoadIndex = INDEX_NONE;
+    int32 ExtremeHeatmapRoadIndex = INDEX_NONE;
     FTelemetryHeatmapDisplayInfo CurrentHeatmapDisplayInfo;
 
     // Saved-run widgets.
@@ -476,6 +490,9 @@ private:
     TObjectPtr<UWidget> HeatmapRoadMarker;
 
     UPROPERTY()
+    TObjectPtr<UWidget> HeatmapExtremeMarker;
+
+    UPROPERTY()
     TObjectPtr<UBorder> HeatmapRoadCard;
 
     UPROPERTY()
@@ -509,10 +526,7 @@ private:
     UPROPERTY()
     TObjectPtr<UWidget> HeatmapLegendCard;
 
-    // Unreal keeps these textures alive while the panel is open.
-    UPROPERTY()
-    TObjectPtr<UTexture2D> LoadedHeatmapTexture;
-
+    // Unreal keeps the legend texture alive while the panel is open.
     UPROPERTY()
     TObjectPtr<UTexture2D> LoadedLegendTexture;
 

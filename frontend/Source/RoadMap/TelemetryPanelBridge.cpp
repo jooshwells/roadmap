@@ -6,7 +6,6 @@
 #include "Misc/FileHelper.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
-#include "ImageUtils.h"
 
 namespace
 {
@@ -666,7 +665,7 @@ bool UTelemetryPanelBridge::GetGeneratedHeatmapPath(
         RunFolderPath,
         TEXT("heatmaps"),
         FString::Printf(
-            TEXT("heatmap_%s%s.png"),
+            TEXT("heatmap_%s%s.svg"),
             *Metric,
             *FocusSuffix
         )
@@ -697,7 +696,7 @@ bool UTelemetryPanelBridge::GetGeneratedHeatmapPath(
         return false;
     }
 
-    // Return the complete PNG path so the panel can load the image.
+    // Return the complete SVG path so the panel can open the vector map.
     OutHeatmapPath = HeatmapPath;
 
     return true;
@@ -864,55 +863,6 @@ bool UTelemetryPanelBridge::GetHeatmapDisplayInfo(
     }
 
     return true;
-}
-
-// Loads a heatmap PNG file into a texture that an Unreal Image widget can display.
-UTexture2D* UTelemetryPanelBridge::LoadHeatmapTexture(
-    const FString& HeatmapPath,
-    FString& OutError
-)
-{
-    // Clear any previous error before attempting to load the image.
-    OutError.Empty();
-
-    if (HeatmapPath.IsEmpty())
-    {
-        OutError = TEXT("The heatmap file path is empty.");
-        return nullptr;
-    }
-
-    IPlatformFile& PlatformFile =
-        FPlatformFileManager::Get().GetPlatformFile();
-
-    // Make sure the PNG still exists before Unreal tries to load it.
-    if (!PlatformFile.FileExists(*HeatmapPath))
-    {
-        OutError = FString::Printf(
-            TEXT("Heatmap image was not found: %s"),
-            *HeatmapPath
-        );
-
-        return nullptr;
-    }
-
-    // Load the PNG into an Unreal image that only needs to last while the game runs.
-    UTexture2D* LoadedTexture =
-        FImageUtils::ImportFileAsTexture2D(HeatmapPath);
-
-    if (LoadedTexture == nullptr)
-    {
-        OutError = TEXT("Unreal could not load the heatmap PNG as a texture.");
-        return nullptr;
-    }
-
-    // Mark the heatmap as a UI image so Unreal keeps its detail and color.
-    LoadedTexture->LODGroup = TEXTUREGROUP_UI;
-    LoadedTexture->NeverStream = true;
-    LoadedTexture->Filter = TF_Bilinear;
-    LoadedTexture->SRGB = true;
-    LoadedTexture->UpdateResource();
-
-    return LoadedTexture;
 }
 
 // Commands that ask the packaged Python tool to do longer work

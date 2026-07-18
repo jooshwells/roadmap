@@ -208,10 +208,9 @@ def test_selected_run_stores_results_inside_run(tmp_path, monkeypatch):
     assert result["success"] is True
     assert (run_folder / "fdot" / "fdot_vs_simulation.csv").exists()
     assert (run_folder / "fdot" / "fdot_summary.json").exists()
-    assert (run_folder / "heatmaps" / "heatmap_fdot_geh_score.png").exists()
     assert (run_folder / "heatmaps" / "heatmap_fdot_geh_score.svg").exists()
     assert (run_folder / "heatmaps" / "heatmap_fdot_geh_score.json").exists()
-    assert result["heatmap_path"].endswith("heatmap_fdot_geh_score.png")
+    assert result["heatmap_path"].endswith("heatmap_fdot_geh_score.svg")
     assert result["summary"]["total_road_directions"] == 4
     assert result["summary"]["unmatched_road_directions"] == 1
     assert result["summary"]["coverage_percent"] == pytest.approx(75.0)

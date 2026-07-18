@@ -202,6 +202,16 @@ void UTelemetryPanelWidget::NativeDestruct()
     Super::NativeDestruct();
 }
 
+// Updates the permanent metric marker after Slate finishes laying out the map.
+void UTelemetryPanelWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
+{
+    Super::NativeTick(MyGeometry, InDeltaTime);
+    if (HeatmapViewer && HeatmapViewer->IsVisible())
+    {
+        UpdateHeatmapExtremeMarker();
+    }
+}
+
 // Stops camera movement while still allowing the user to click the panel.
 void UTelemetryPanelWidget::SuppressGameInput()
 {
@@ -1085,7 +1095,7 @@ void UTelemetryPanelWidget::BuildWidgetTree()
     ImageFrame->SetClipping(EWidgetClipping::ClipToBounds);
     HeatmapViewport = ImageFrame;
 
-    // Limit the displayed PNG so Unreal does not spread it across the full viewport.
+    // Limit the displayed map so it stays inside the viewer area.
     USizeBox* ImageSizer = WidgetTree->ConstructWidget<USizeBox>();
     ImageSizer->SetMaxDesiredWidth(1600.0f);
     ImageSizer->SetMaxDesiredHeight(850.0f);
@@ -1134,6 +1144,23 @@ void UTelemetryPanelWidget::BuildWidgetTree()
     {
         MarkerSlot->SetAutoSize(true);
         MarkerSlot->SetZOrder(5);
+    }
+
+    // This small arrow points to the summary road without covering the road itself.
+    USizeBox* ExtremeMarkerSizer = WidgetTree->ConstructWidget<USizeBox>();
+    ExtremeMarkerSizer->SetWidthOverride(18.0f);
+    ExtremeMarkerSizer->SetHeightOverride(20.0f);
+    UTextBlock* ExtremeMarkerArrow = MakeText(TEXT("\u25BC"), 15, Accent, FName("Bold"));
+    ExtremeMarkerArrow->SetJustification(ETextJustify::Center);
+    ExtremeMarkerArrow->SetShadowColorAndOpacity(FLinearColor(0.0f, 0.0f, 0.0f, 0.9f));
+    ExtremeMarkerArrow->SetShadowOffset(FVector2D(1.0f, 1.0f));
+    ExtremeMarkerSizer->SetContent(ExtremeMarkerArrow);
+    ExtremeMarkerSizer->SetVisibility(ESlateVisibility::Collapsed);
+    HeatmapExtremeMarker = ExtremeMarkerSizer;
+    if (UCanvasPanelSlot* ExtremeSlot = HeatmapMarkerLayer->AddChildToCanvas(ExtremeMarkerSizer))
+    {
+        ExtremeSlot->SetAutoSize(true);
+        ExtremeSlot->SetZOrder(4);
     }
 
     // This card appears when the user hovers over or pins a road.
@@ -1729,6 +1756,7 @@ void UTelemetryPanelWidget::ApplyHeatmapViewTransform()
     }
 
     UpdateHeatmapRoadMarker();
+    UpdateHeatmapExtremeMarker();
 }
 
 // Changes map zoom and keeps the point under the mouse in the same place.
@@ -1972,10 +2000,37 @@ void UTelemetryPanelWidget::ShowHeatmapRoadDetails(int32 RoadIndex, bool bPinned
     HeatmapRoadCard->SetVisibility(ESlateVisibility::HitTestInvisible);
 }
 
+// Places one marker over a point stored in the heatmap JSON.
+void UTelemetryPanelWidget::PlaceHeatmapMarker(
+    UWidget* MarkerWidget,
+    const FVector2D& NormalizedPoint,
+    const FVector2D& MarkerHalfSize
+) const
+{
+    if (!MarkerWidget || !HeatmapMarkerLayer || !HeatmapImage)
+    {
+        return;
+    }
+    const FGeometry ImageGeometry = HeatmapImage->GetCachedGeometry();
+    const FVector2D ImageSize = ImageGeometry.GetLocalSize();
+    const FVector4 Rect = CurrentHeatmapDisplayInfo.MapRect;
+    const FVector2D ImageLocal(
+        (Rect.X + NormalizedPoint.X * Rect.Z) * ImageSize.X,
+        (Rect.Y + (1.0f - NormalizedPoint.Y) * Rect.W) * ImageSize.Y
+    );
+    const FVector2D ScreenPosition = ImageGeometry.LocalToAbsolute(ImageLocal);
+    const FVector2D MarkerLocal = HeatmapMarkerLayer->GetCachedGeometry().AbsoluteToLocal(ScreenPosition);
+    if (UCanvasPanelSlot* MarkerSlot = Cast<UCanvasPanelSlot>(MarkerWidget->Slot))
+    {
+        MarkerSlot->SetPosition(MarkerLocal - MarkerHalfSize);
+    }
+    MarkerWidget->SetVisibility(ESlateVisibility::HitTestInvisible);
+}
+
 // Places the small marker over the hovered or pinned road.
 void UTelemetryPanelWidget::UpdateHeatmapRoadMarker()
 {
-    if (!HeatmapRoadMarker || !HeatmapMarkerLayer || !HeatmapImage)
+    if (!HeatmapRoadMarker)
     {
         return;
     }
@@ -1992,20 +2047,80 @@ void UTelemetryPanelWidget::UpdateHeatmapRoadMarker()
     const FVector2D NormalizedPoint = PinnedHeatmapRoadIndex != INDEX_NONE
         ? PinnedRoadNormalizedPoint
         : HoveredRoadNormalizedPoint;
-    const FGeometry ImageGeometry = HeatmapImage->GetCachedGeometry();
-    const FVector2D ImageSize = ImageGeometry.GetLocalSize();
-    const FVector4 Rect = CurrentHeatmapDisplayInfo.MapRect;
-    const FVector2D ImageLocal(
-        (Rect.X + NormalizedPoint.X * Rect.Z) * ImageSize.X,
-        (Rect.Y + (1.0f - NormalizedPoint.Y) * Rect.W) * ImageSize.Y
-    );
-    const FVector2D ScreenPosition = ImageGeometry.LocalToAbsolute(ImageLocal);
-    const FVector2D MarkerLocal = HeatmapMarkerLayer->GetCachedGeometry().AbsoluteToLocal(ScreenPosition);
-    if (UCanvasPanelSlot* MarkerSlot = Cast<UCanvasPanelSlot>(HeatmapRoadMarker->Slot))
+    PlaceHeatmapMarker(HeatmapRoadMarker, NormalizedPoint, FVector2D(9.0f, 9.0f));
+}
+
+// Finds the current metric's highest value, or its lowest value for speed.
+void UTelemetryPanelWidget::SelectHeatmapExtremeRoad()
+{
+    ExtremeHeatmapRoadIndex = INDEX_NONE;
+    ExtremeRoadNormalizedPoint = FVector2D::ZeroVector;
+    if (HeatmapExtremeMarker)
     {
-        MarkerSlot->SetPosition(MarkerLocal - FVector2D(9.0f, 9.0f));
+        HeatmapExtremeMarker->SetVisibility(ESlateVisibility::Collapsed);
     }
-    HeatmapRoadMarker->SetVisibility(ESlateVisibility::HitTestInvisible);
+
+    const bool bChooseLowest = CurrentHeatmapMetric == TEXT("avg_speed_mph");
+    const bool bChooseLargestChange = CurrentHeatmapMetric == TEXT("comparison_delta");
+    float BestScore = -TNumericLimits<float>::Max();
+
+    for (int32 RoadIndex = 0; RoadIndex < CurrentHeatmapDisplayInfo.Roads.Num(); ++RoadIndex)
+    {
+        const FTelemetryHeatmapRoad& Road = CurrentHeatmapDisplayInfo.Roads[RoadIndex];
+        if (Road.Points.Num() < 2)
+        {
+            continue;
+        }
+
+        const float Score = bChooseLargestChange
+            ? FMath::Abs(Road.MetricValue)
+            : bChooseLowest ? -Road.MetricValue : Road.MetricValue;
+        if (Score <= BestScore)
+        {
+            continue;
+        }
+
+        // Use the middle of the longest line so the arrow does not land on a corner.
+        float LongestSegment = -1.0f;
+        FVector2D BestPoint = Road.Points[0];
+        for (int32 PointIndex = 1; PointIndex < Road.Points.Num(); ++PointIndex)
+        {
+            const FVector2D First = Road.Points[PointIndex - 1];
+            const FVector2D Second = Road.Points[PointIndex];
+            const float SegmentLength = FVector2D::DistSquared(First, Second);
+            if (SegmentLength > LongestSegment)
+            {
+                LongestSegment = SegmentLength;
+                BestPoint = (First + Second) * 0.5f;
+            }
+        }
+
+        BestScore = Score;
+        ExtremeHeatmapRoadIndex = RoadIndex;
+        ExtremeRoadNormalizedPoint = BestPoint;
+    }
+
+    UpdateHeatmapExtremeMarker();
+}
+
+// Keeps the automatic metric arrow attached to its road while the map moves.
+void UTelemetryPanelWidget::UpdateHeatmapExtremeMarker()
+{
+    if (!HeatmapExtremeMarker ||
+        !CurrentHeatmapDisplayInfo.Roads.IsValidIndex(ExtremeHeatmapRoadIndex))
+    {
+        if (HeatmapExtremeMarker)
+        {
+            HeatmapExtremeMarker->SetVisibility(ESlateVisibility::Collapsed);
+        }
+        return;
+    }
+
+    PlaceHeatmapMarker(
+        HeatmapExtremeMarker,
+        ExtremeRoadNormalizedPoint,
+        FVector2D(9.0f, 20.0f)
+    );
 }
 
 // Clears road hover and pin data when the map changes or the user clicks away.
@@ -2902,8 +3017,7 @@ void UTelemetryPanelWidget::HandleViewFDOTHeatmapClicked()
     SelectedFocus = PreviousFocus;
 }
 
-// Prefer the sharp SVG map but keep the PNG as a backup.
-// Finds and opens the current run's selected heatmap.
+// Finds and opens the current run's selected SVG heatmap.
 void UTelemetryPanelWidget::HandleViewHeatmapClicked()
 {
     if (!SavedRuns.IsValidIndex(SelectedRunIndex))
@@ -2957,21 +3071,30 @@ bool UTelemetryPanelWidget::OpenHeatmapPath(
 {
     // The SVG keeps roads and labels sharp. The JSON beside it gives Unreal the
     // title, legend, summary values, and road shapes used for mouse interaction.
-    FString ErrorMessage;
-    const FString SvgPath = FPaths::ChangeExtension(HeatmapPath, TEXT("svg"));
+    const FString SvgPath = HeatmapPath;
     FTelemetryHeatmapDisplayInfo DisplayInfo;
     FString DisplayInfoError;
-    const bool bUseHybridViewer = FPaths::FileExists(SvgPath) &&
-        UTelemetryPanelBridge::GetHeatmapDisplayInfo(HeatmapPath, DisplayInfo, DisplayInfoError);
+    if (!FPaths::FileExists(SvgPath))
+    {
+        SetStatus(FString::Printf(TEXT("Heatmap SVG was not found: %s"), *SvgPath), true);
+        return false;
+    }
+    if (!UTelemetryPanelBridge::GetHeatmapDisplayInfo(HeatmapPath, DisplayInfo, DisplayInfoError))
+    {
+        SetStatus(DisplayInfoError, true);
+        return false;
+    }
     CurrentHeatmapMetric = Metric;
     CurrentHeatmapDisplayInfo = FTelemetryHeatmapDisplayInfo();
+    ExtremeHeatmapRoadIndex = INDEX_NONE;
+    if (HeatmapExtremeMarker)
+    {
+        HeatmapExtremeMarker->SetVisibility(ESlateVisibility::Collapsed);
+    }
     ClearHeatmapRoadInteraction();
 
-    // Prefer the sharp SVG map when its extra display information is available.
-    if (bUseHybridViewer)
-    {
-        CurrentHeatmapDisplayInfo = DisplayInfo;
-        LoadedHeatmapTexture = nullptr;
+    // Display the sharp SVG and build the extra panels from its JSON file.
+    CurrentHeatmapDisplayInfo = DisplayInfo;
         const FSlateVectorImageBrush SvgBrush(
             SvgPath,
             FVector2D(1600.0f, 1128.0f)
@@ -3053,27 +3176,10 @@ bool UTelemetryPanelWidget::OpenHeatmapPath(
                     : TEXT("HOVER ROAD  |  CLICK TO PIN  |  SCROLL TO ZOOM  |  DRAG TO PAN")
             ));
         }
-    }
-    else
-    {
-        LoadedHeatmapTexture = UTelemetryPanelBridge::LoadHeatmapTexture(HeatmapPath, ErrorMessage);
-        if (!LoadedHeatmapTexture)
-        {
-            SetStatus(ErrorMessage, true);
-            return false;
-        }
-
-        HeatmapImage->SetBrushFromTexture(LoadedHeatmapTexture, true);
-        HeatmapSummaryCard->SetVisibility(ESlateVisibility::Collapsed);
-        HeatmapLegendCard->SetVisibility(ESlateVisibility::Collapsed);
-        if (HeatmapInteractionHint)
-        {
-            HeatmapInteractionHint->SetText(FText::FromString(TEXT("SCROLL TO ZOOM  |  DRAG TO PAN")));
-        }
-    }
 
     HeatmapTitleText->SetText(FText::FromString(Title));
     HeatmapViewer->SetVisibility(ESlateVisibility::Visible);
+    SelectHeatmapExtremeRoad();
     return true;
 }
 

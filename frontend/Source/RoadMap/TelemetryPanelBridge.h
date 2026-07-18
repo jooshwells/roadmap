@@ -2,7 +2,6 @@
 
 #include "CoreMinimal.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
-#include "Engine/Texture2D.h"
 #include "TelemetryPanelBridge.generated.h"
 
 // Basic information used to build one row in the saved-runs list.
@@ -362,13 +361,6 @@ public:
     static bool GetHeatmapDisplayInfo(
         const FString& HeatmapPath,
         FTelemetryHeatmapDisplayInfo& OutInfo,
-        FString& OutError
-    );
-
-    // Loads a generated heatmap PNG from disk as an Unreal texture.
-    UFUNCTION(BlueprintCallable, Category = "RoadMap Telemetry")
-    static UTexture2D* LoadHeatmapTexture(
-        const FString& HeatmapPath,
         FString& OutError
     );
 

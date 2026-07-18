@@ -395,7 +395,7 @@ def generate_comparison_heatmaps(
         change_stem = f"comparison_{baseline_run_id}_{metric}"
         if focus != "all":
             change_stem += f"_{focus}"
-        change_path = comparison_folder / "heatmaps" / f"{change_stem}.png"
+        change_path = comparison_folder / "heatmaps" / f"{change_stem}.svg"
         plot_heatmap(
             comparison_network,
             change_metrics,
@@ -434,7 +434,7 @@ def delete_saved_run(run_id: str) -> dict:
         return {"success": False, "error": f"Could not delete the selected run: {error}"}
 
 
-# Returns the expected heatmap PNG path for one run and metric.
+# Returns the expected heatmap SVG path for one run and metric.
 def get_heatmap_path(run_id: str, metric: str) -> dict:
     """Return an existing SVG heatmap path for one run and metric."""
     run_folder = find_run_folder(run_id)
@@ -448,7 +448,7 @@ def get_heatmap_path(run_id: str, metric: str) -> dict:
             "run_folder": "",
         }
 
-    heatmap_path = run_folder / "heatmaps" / f"heatmap_{metric}.png"
+    heatmap_path = run_folder / "heatmaps" / f"heatmap_{metric}.svg"
 
     if not heatmap_path.exists():
         return {
@@ -464,7 +464,7 @@ def get_heatmap_path(run_id: str, metric: str) -> dict:
         "success": True,
         "run_id": run_id,
         "metric": metric,
-        "relative_path": f"heatmaps/heatmap_{metric}.png",
+        "relative_path": f"heatmaps/heatmap_{metric}.svg",
         "full_path": str(heatmap_path),
     }
 
@@ -515,7 +515,7 @@ def heatmap_file_stem(metric: str, focus: str) -> str:
 
 
 def generate_single_heatmap(run_id: str, metric: str, focus: str = "all") -> dict:
-    """Generate one SVG and PNG heatmap for a saved run."""
+    """Generate one SVG heatmap and its display JSON for a saved run."""
     run_folder = find_run_folder(run_id)
 
     if run_folder is None:
@@ -551,7 +551,7 @@ def generate_single_heatmap(run_id: str, metric: str, focus: str = "all") -> dic
     heatmap_dir = run_folder / "heatmaps"
     heatmap_dir.mkdir(parents=True, exist_ok=True)
 
-    output_path = heatmap_dir / f"{heatmap_file_stem(metric, focus)}.png"
+    output_path = heatmap_dir / f"{heatmap_file_stem(metric, focus)}.svg"
 
     network_df, metrics_df = load_files(network_path, edge_metrics_path)
 
@@ -670,7 +670,7 @@ def compare_run_with_fdot(run_id: str, mapping_path: str | None = None) -> dict:
 
     heatmap_dir = run_folder / "heatmaps"
     heatmap_dir.mkdir(parents=True, exist_ok=True)
-    heatmap_path = heatmap_dir / "heatmap_fdot_geh_score.png"
+    heatmap_path = heatmap_dir / "heatmap_fdot_geh_score.svg"
 
     network_df = pd.read_csv(network_path)
     network_edge_column = "edge_id" if "edge_id" in network_df.columns else "EdgeID"
