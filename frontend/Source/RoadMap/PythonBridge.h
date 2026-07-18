@@ -8,7 +8,8 @@ public:
     static bool RunTelemetryAnalysis(
         const FString& PipelineExePath,
         const FString& SimulationCsvPath,
-        const FString& NetworkGraphCsvPath,
-        const FString& EdgesJsonlPath
+        const FString& NodesJsonlPath,
+        const FString& EdgesJsonlPath,
+        const FString& MapName
     );
 };

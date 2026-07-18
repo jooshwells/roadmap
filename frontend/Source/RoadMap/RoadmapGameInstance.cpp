@@ -179,6 +179,34 @@ bool URoadmapGameInstance::LoadRoadmap(const FRoadmapEntry& Saved, FString& OutE
 	return true;
 }
 
+bool URoadmapGameInstance::DeleteRoadmap(const FRoadmapEntry& Saved, FString& OutError)
+{
+	FString SaveDir = FPaths::ConvertRelativePathToFull(FPaths::GetPath(Saved.NodesPath));
+	const FString SavesRoot = GetSavesDir();
+	if (SaveDir == SavesRoot || !FPaths::IsUnderDirectory(SaveDir, SavesRoot))
+	{
+		OutError = FString::Printf(TEXT("'%s' is not a user save and cannot be deleted."), *Saved.DisplayName);
+		return false;
+	}
+
+	if (!IFileManager::Get().DeleteDirectory(*SaveDir, /*RequireExists=*/false, /*Tree=*/true))
+	{
+		OutError = FString::Printf(TEXT("Could not delete '%s' \u2014 a file may be in use."), *Saved.DisplayName);
+		return false;
+	}
+
+	if (bHasActiveRoadmap && ActiveNodesPath == Saved.NodesPath)
+	{
+		bHasActiveRoadmap = false;
+		ActiveRoadmapName.Empty();
+		ActiveNodesPath.Empty();
+		ActiveEdgesPath.Empty();
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("Roadmap '%s' deleted (%s)"), *Saved.DisplayName, *SaveDir);
+	return true;
+}
+
 void URoadmapGameInstance::SetActiveRoadmap(const FString& Name, const FString& NodesPath, const FString& EdgesPath)
 {
 	bHasActiveRoadmap = true;

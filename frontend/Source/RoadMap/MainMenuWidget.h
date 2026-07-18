@@ -71,6 +71,7 @@ private:
 	UFUNCTION() void OnBackClicked();
 	UFUNCTION() void OnCreateAndStartClicked();
 	UFUNCTION() void OnOpenSaveClicked();
+	UFUNCTION() void OnDeleteSaveClicked();
 	UFUNCTION() void OnNameCommitted(const FText& Text, ETextCommit::Type CommitMethod);
 
 	void OnTemplateRowSelected(int32 Index);
@@ -79,6 +80,10 @@ private:
 	void ShowError(const FString& Message);
 	void ClearError();
 	void StartSimulation();
+
+	// Delete is a two-click flow: the first click arms the button (turns it
+	// solid red), the second actually deletes. Anything else disarms it.
+	void ResetDeleteConfirm();
 
 	URoadmapGameInstance* GetRoadmapGameInstance() const;
 
@@ -100,6 +105,7 @@ private:
 	TArray<FRoadmapEntry> Saves;
 	int32 SelectedTemplateIndex = INDEX_NONE;
 	int32 SelectedSaveIndex = INDEX_NONE;
+	bool bDeleteArmed = false;
 
 	// --- Widgets kept for updates after construction -------------------------
 	UPROPERTY() TObjectPtr<UWidgetSwitcher> PageSwitcher;
@@ -112,6 +118,8 @@ private:
 	UPROPERTY() TObjectPtr<UTextBlock> LoadPageErrorText;
 	UPROPERTY() TObjectPtr<UButton> CreateButton;
 	UPROPERTY() TObjectPtr<UButton> OpenButton;
+	UPROPERTY() TObjectPtr<UButton> DeleteButton;
+	UPROPERTY() TObjectPtr<UTextBlock> DeleteButtonText;
 	UPROPERTY() TArray<TObjectPtr<URoadmapRowButton>> TemplateRows;
 	UPROPERTY() TArray<TObjectPtr<URoadmapRowButton>> SaveRows;
 };

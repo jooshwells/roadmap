@@ -11,8 +11,12 @@ telemetry_done.txt
 # Simulation input (changes every run)
 data/simulation/
 
-# FDOT source data (large reference files)
-data/fdot/
+# FDOT source data stays local, but generated per-map edge mappings are small
+# runtime inputs that need to ship with the packaged telemetry pipeline.
+data/fdot/*
+!data/fdot/*/
+data/fdot/*/*
+!data/fdot/*/fdot_edge_mapping.csv
 
 # VS Code
 .vscode/

@@ -251,13 +251,8 @@ void ASimulationManager::Tick(float DeltaTime)
 	{
 		bWaitingForTelemetry = false;
 
-		if (TelemetryStatusWidget)
-		{
-			TelemetryStatusWidget->RemoveFromParent();
-			TelemetryStatusWidget = nullptr;
-		}
-
-		ShowHeatmapOverlay();
+		// The run is ready for the user to open from the telemetry panel.
+		UE_LOG(LogTemp, Log, TEXT("Telemetry run saved and ready in the telemetry panel."));
 	}
 
 	if (!TrafficSimEngine || !bSimulationRunning || bSimulationPaused) return;
@@ -391,6 +386,17 @@ void ASimulationManager::StopSimulation()
 	// heatmaps draw on the active map instead of the bundled Waterford default.
 	FString NodesPath, EdgesPath;
 	ResolveActiveMapPaths(NodesPath, EdgesPath);
+	FString ActiveMapName = TEXT("Waterford (Default)");
+	if (const UWorld* World = GetWorld())
+	{
+		if (const URoadmapGameInstance* GameInstance = World->GetGameInstance<URoadmapGameInstance>())
+		{
+			if (GameInstance->HasActiveRoadmap())
+			{
+				ActiveMapName = GameInstance->GetActiveRoadmapName();
+			}
+		}
+	}
 
 	FString NetworkGraphCsvPath = FPaths::ConvertRelativePathToFull(
 		FPaths::Combine(TelemetryDir, TEXT("data/network/network_graph_active.csv"))
@@ -411,33 +417,16 @@ void ASimulationManager::StopSimulation()
 		IFileManager::Get().Delete(*TelemetryDonePath);
 	}
 
-	// Show a small status widget while Python generates the telemetry outputs.
-	if (TelemetryStatusClass)
-	{
-		TelemetryStatusWidget = CreateWidget<UUserWidget>(GetWorld(), TelemetryStatusClass);
-
-		if (TelemetryStatusWidget)
-		{
-			TelemetryStatusWidget->AddToViewport(100);
-		}
-	}
-	else
-	{
-		UE_LOG(LogTemp, Warning, TEXT("TelemetryStatusClass is not assigned."));
-	}
-
-	// Run the Python telemetry pipeline after the simulation has finished.
-	// Hand it the sim-generated graph CSV and the active roadmap's edge JSONL so
-	// its heatmaps and road labels match the map that was actually simulated.
+	// Run telemetry from the active roadmap JSONL files. The shared active graph
+	// above remains available, while Python stores its own graph with this run.
 	PythonBridge::RunTelemetryAnalysis(
 		PipelineExePath,
 		SimulationCsvPath,
-		NetworkGraphCsvPath,
-		EdgesPath
+		NodesPath,
+		EdgesPath,
+		ActiveMapName
 	);
 
-	//ShowHeatmapOverlay();
-	
 	//TrafficSimEngine = new TrafficSimulation();
 	//TrafficSimEngine->Initialize();
 	InterpolationData.Empty();
@@ -545,22 +534,6 @@ void ASimulationManager::UpdateVehicleVisuals(float Alpha, bool bDidPhysicsStep)
 		{
 			VehicleISM->UpdateInstanceTransform(i, FTransform(FRotator::ZeroRotator, FVector::ZeroVector, FVector::ZeroVector), false, true, false);
 		}
-	}
-}
-
-void ASimulationManager::ShowHeatmapOverlay()
-{
-	if (!HeatmapOverlayClass)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("HeatmapOverlayClass is not assigned."));
-		return;
-	}
-
-	UUserWidget* HeatmapWidget = CreateWidget<UUserWidget>(GetWorld(), HeatmapOverlayClass);
-
-	if (HeatmapWidget)
-	{
-		HeatmapWidget->AddToViewport(100);
 	}
 }
 

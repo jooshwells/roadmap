@@ -437,6 +437,15 @@ UWidget* UMainMenuWidget::BuildLoadPage()
 	BackButton->OnClicked.AddDynamic(this, &UMainMenuWidget::OnBackClicked);
 	Actions->AddChildToHorizontalBox(WrapMinWidth(BackButton, 130.0f));
 
+	DeleteButton = MakeActionButton(TEXT("Delete"), false);
+	DeleteButton->SetStyle(DangerButtonStyle(false));
+	DeleteButtonText = Cast<UTextBlock>(DeleteButton->GetChildAt(0));
+	DeleteButton->OnClicked.AddDynamic(this, &UMainMenuWidget::OnDeleteSaveClicked);
+	if (UHorizontalBoxSlot* DeleteSlot = Actions->AddChildToHorizontalBox(WrapMinWidth(DeleteButton, 130.0f)))
+	{
+		DeleteSlot->SetPadding(FMargin(12.0f, 0.0f, 0.0f, 0.0f));
+	}
+
 	OpenButton = MakeActionButton(TEXT("Open Road Map"), true);
 	OpenButton->OnClicked.AddDynamic(this, &UMainMenuWidget::OnOpenSaveClicked);
 	if (UHorizontalBoxSlot* OpenSlot = Actions->AddChildToHorizontalBox(OpenButton))
@@ -461,6 +470,7 @@ UWidget* UMainMenuWidget::BuildLoadPage()
 void UMainMenuWidget::ShowPage(EMenuPage Page)
 {
 	ClearError();
+	ResetDeleteConfirm();
 	if (PageSwitcher)
 	{
 		PageSwitcher->SetActiveWidgetIndex(static_cast<int32>(Page));
@@ -567,6 +577,8 @@ void UMainMenuWidget::RefreshSaveList()
 	Saves = GameInstance->GetSavedRoadmaps();
 	const bool bHasSaves = Saves.Num() > 0;
 	OpenButton->SetIsEnabled(bHasSaves);
+	DeleteButton->SetIsEnabled(bHasSaves);
+	ResetDeleteConfirm();
 	NoSavesText->SetVisibility(bHasSaves ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
 	SaveScrollBox->SetVisibility(bHasSaves ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
 
@@ -598,6 +610,7 @@ void UMainMenuWidget::OnSaveRowSelected(int32 Index)
 	SelectedSaveIndex = Index;
 	ApplyRowSelection(SaveRows, Index);
 	ClearError();
+	ResetDeleteConfirm();
 }
 
 void UMainMenuWidget::ApplyRowSelection(const TArray<TObjectPtr<URoadmapRowButton>>& Rows, int32 SelectedIndex)
@@ -650,6 +663,49 @@ void UMainMenuWidget::OnOpenSaveClicked()
 		return;
 	}
 	StartSimulation();
+}
+
+void UMainMenuWidget::OnDeleteSaveClicked()
+{
+	URoadmapGameInstance* GameInstance = GetRoadmapGameInstance();
+	if (!GameInstance || !Saves.IsValidIndex(SelectedSaveIndex))
+	{
+		ShowError(TEXT("Pick a road map first."));
+		return;
+	}
+
+	if (!bDeleteArmed)
+	{
+		bDeleteArmed = true;
+		DeleteButton->SetStyle(DangerButtonStyle(true));
+		if (DeleteButtonText)
+		{
+			DeleteButtonText->SetText(FText::FromString(TEXT("REALLY DELETE?")));
+		}
+		return;
+	}
+
+	FString ErrorMessage;
+	if (!GameInstance->DeleteRoadmap(Saves[SelectedSaveIndex], ErrorMessage))
+	{
+		ResetDeleteConfirm();
+		ShowError(ErrorMessage);
+		return;
+	}
+	RefreshSaveList();
+}
+
+void UMainMenuWidget::ResetDeleteConfirm()
+{
+	bDeleteArmed = false;
+	if (DeleteButton)
+	{
+		DeleteButton->SetStyle(DangerButtonStyle(false));
+	}
+	if (DeleteButtonText)
+	{
+		DeleteButtonText->SetText(FText::FromString(TEXT("DELETE")));
+	}
 }
 
 void UMainMenuWidget::StartSimulation()
