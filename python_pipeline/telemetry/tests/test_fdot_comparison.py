@@ -93,6 +93,8 @@ def test_build_comparison_calculates_expected_categories():
     assert summary["poor_edges"] == 1
     assert summary["k_factor_edges"] == 3
     assert summary["fallback_edges"] == 0
+    assert "directional reference" in summary["hourly_conversion_method"]
+    assert "50/50 directional split" in summary["directional_assumption"]
     assert [item["road_name"] for item in summary["top_road_differences"]] == [
         "Poor Road",
         "Review Road",
@@ -206,10 +208,9 @@ def test_selected_run_stores_results_inside_run(tmp_path, monkeypatch):
     assert result["success"] is True
     assert (run_folder / "fdot" / "fdot_vs_simulation.csv").exists()
     assert (run_folder / "fdot" / "fdot_summary.json").exists()
-    assert (run_folder / "heatmaps" / "heatmap_fdot_geh_score.png").exists()
     assert (run_folder / "heatmaps" / "heatmap_fdot_geh_score.svg").exists()
     assert (run_folder / "heatmaps" / "heatmap_fdot_geh_score.json").exists()
-    assert result["heatmap_path"].endswith("heatmap_fdot_geh_score.png")
+    assert result["heatmap_path"].endswith("heatmap_fdot_geh_score.svg")
     assert result["summary"]["total_road_directions"] == 4
     assert result["summary"]["unmatched_road_directions"] == 1
     assert result["summary"]["coverage_percent"] == pytest.approx(75.0)

@@ -23,6 +23,7 @@ from pathlib import Path
 # folder to the import path before running the tests.
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
+sys.path.insert(0, str(PROJECT_ROOT))
 sys.path.insert(
     0,
     str(PROJECT_ROOT / "src" / "telemetry")
@@ -30,11 +31,13 @@ sys.path.insert(
 
 import pandas as pd
 import pytest
+import run_pipeline
 
 from telemetry_analysis import (
     load_telemetry,
     validate_telemetry,
     add_derived_columns,
+    calculate_bottleneck_index,
     build_run_summary,
     build_edge_metrics,
     build_vehicle_metrics,
@@ -138,6 +141,65 @@ def test_load_telemetry_checks_required_columns(tmp_path):
         load_telemetry(bad_file)
 
 
+def test_load_telemetry_still_cleans_unexpected_numeric_text(tmp_path):
+    """Unexpected text should still become a validation error instead of crashing."""
+    input_file = tmp_path / "simulation_output.csv"
+    df = sample_df().drop(columns=["SourceRow"])
+    df["Speed_mps"] = df["Speed_mps"].astype(object)
+    df.loc[0, "Speed_mps"] = "bad speed"
+    df.to_csv(input_file, index=False)
+
+    loaded = load_telemetry(input_file)
+
+    assert pd.isna(loaded.loc[0, "Speed_mps"])
+    assert any("Speed_mps" in issue for issue in validate_telemetry(loaded))
+
+
+def test_simulation_csv_is_moved_into_its_run(tmp_path):
+    """A normal same-drive save should move the raw CSV instead of copying it."""
+    source = tmp_path / "simulation_output.csv"
+    saved = tmp_path / "run" / "simulation_output.csv"
+    saved.parent.mkdir()
+    source.write_text("Time,VehicleID\n0,1\n", encoding="utf-8")
+
+    method = run_pipeline.save_simulation_csv(source, saved)
+
+    assert method == "moved"
+    assert saved.exists()
+    assert not source.exists()
+
+
+def test_simulation_csv_uses_copy_when_move_fails(tmp_path, monkeypatch):
+    """A blocked move should preserve the old safe copy behavior."""
+    source = tmp_path / "simulation_output.csv"
+    saved = tmp_path / "run" / "simulation_output.csv"
+    saved.parent.mkdir()
+    source.write_text("Time,VehicleID\n0,1\n", encoding="utf-8")
+    original_replace = Path.replace
+
+    def blocked_replace(path, target):
+        if path == source:
+            raise OSError("test move failure")
+        return original_replace(path, target)
+
+    monkeypatch.setattr(Path, "replace", blocked_replace)
+
+    method = run_pipeline.save_simulation_csv(source, saved)
+
+    assert method == "copied"
+    assert saved.read_bytes() == source.read_bytes()
+
+
+def test_main_analysis_can_add_columns_without_copying():
+    """The owned analysis table can be updated without making a full duplicate."""
+    df = sample_df()
+
+    result = add_derived_columns(df, copy_data=False)
+
+    assert result is df
+    assert "WaitDelta_s" in df.columns
+
+
 def test_validate_good_telemetry_has_no_issues():
     """My clean sample data should not trigger validation errors."""
     issues = validate_telemetry(sample_df())
@@ -177,8 +239,29 @@ def test_edge_metrics_are_created():
     # These are newer fields used by the updated heatmap and future FDOT comparison.
     assert "edge_entry_count" in edge_metrics.columns
     assert "estimated_flow_veh_per_hr" in edge_metrics.columns
+    assert "avg_wait_per_vehicle_s" in edge_metrics.columns
     assert "low_speed_sample_ratio" in edge_metrics.columns
     assert "bad_accel_count" in edge_metrics.columns
+
+    # The new wait value should be total added wait divided by road entries.
+    for _, row in edge_metrics.iterrows():
+        expected = row["total_wait_added_s"] / row["edge_entry_count"]
+        assert row["avg_wait_per_vehicle_s"] == pytest.approx(expected)
+
+    # The RoadMap screening index now has a fixed range that can be compared
+    # between runs instead of growing forever with total stopped time.
+    assert edge_metrics["bottleneck_score"].between(0.0, 100.0).all()
+
+
+def test_bottleneck_index_uses_fixed_per_entry_parts():
+    """The index should cap its stopped-time part and stay on a 0-100 scale."""
+    score = calculate_bottleneck_index(
+        pd.Series([30.0, 90.0]),
+        pd.Series([0.50, 0.50]),
+        pd.Series([0.25, 0.25]),
+    )
+
+    assert score.tolist() == pytest.approx([70.0, 70.0])
 
 
 def test_vehicle_and_od_metrics_are_created():
@@ -223,4 +306,6 @@ def test_run_analysis_writes_output_files(tmp_path):
     assert (output_dir / "bottleneck_edges.csv").exists()
     assert (output_dir / "telemetry_flags.csv").exists()
     assert (output_dir / "run_summary.txt").exists()
+    assert not (output_dir / "heatmap_frames").exists()
     assert "edge_metrics" in results
+    assert "frame_manifest" not in results

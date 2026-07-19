@@ -3,16 +3,22 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 from pathlib import Path
+import shutil
+import sys
 
 import geopandas as gpd
 import pandas as pd
 from shapely.geometry import LineString
 
 
-BASE_DIR = Path(__file__).resolve().parents[2]
+if getattr(sys, "frozen", False):
+    BASE_DIR = Path(sys.executable).resolve().parent
+else:
+    BASE_DIR = Path(__file__).resolve().parents[2]
 DEFAULT_FDOT_FILE = BASE_DIR / "data" / "fdot" / "Annual_Average_Daily_Traffic_TDA_-2830269347537693947.geojson"
 DEFAULT_NETWORK_CRS = "EPSG:32617"
 DEFAULT_MATCH_DISTANCE_METERS = 30.0
@@ -20,15 +26,139 @@ DEFAULT_MAX_ANGLE_DIFFERENCE = 30.0
 MINOR_ROAD_MAX_DISTANCE_METERS = 8.0
 MINOR_ROAD_MAX_ANGLE_DIFFERENCE = 15.0
 MINOR_ROAD_TYPES = {"residential", "unclassified", "service", "living_street"}
+MATCHER_VERSION = 1
+
+
+def _file_sha256(path: Path) -> str:
+    """Return a stable fingerprint without loading a whole map into memory."""
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as file:
+        for chunk in iter(lambda: file.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def has_geographic_coordinates(nodes_path: Path) -> bool:
+    """Check that the map has real Florida coordinates instead of local-only 0,0 values."""
+    nodes_path = Path(nodes_path)
+    if not nodes_path.exists():
+        return False
+
+    with nodes_path.open("r", encoding="utf-8") as file:
+        for line in file:
+            if not line.strip():
+                continue
+            try:
+                node = json.loads(line)
+                longitude = float(node.get("lon", 0.0))
+                latitude = float(node.get("lat", 0.0))
+            except (ValueError, TypeError, json.JSONDecodeError):
+                continue
+
+            # FDOT matching is currently intended for Florida maps. This also
+            # prevents Grid City and other local-coordinate maps from receiving
+            # plausible-looking but incorrect traffic counts.
+            if -88.0 <= longitude <= -79.0 and 24.0 <= latitude <= 32.0:
+                return True
+
+    return False
+
+
+def ensure_fdot_mapping(
+    network_path: Path,
+    nodes_path: Path,
+    fdot_path: Path,
+    cache_dir: Path,
+    run_mapping_path: Path,
+    map_id: str,
+    max_distance_meters: float = DEFAULT_MATCH_DISTANCE_METERS,
+    max_angle_difference: float = DEFAULT_MAX_ANGLE_DIFFERENCE,
+    network_crs: str = DEFAULT_NETWORK_CRS,
+    county: str = "Orange",
+) -> dict:
+    """Generate or reuse the FDOT edge mapping for the active map version."""
+    network_path = Path(network_path)
+    nodes_path = Path(nodes_path)
+    fdot_path = Path(fdot_path)
+    cache_dir = Path(cache_dir)
+    run_mapping_path = Path(run_mapping_path)
+
+    if not has_geographic_coordinates(nodes_path):
+        return {
+            "status": "skipped",
+            "map_id": map_id,
+            "reason": "Map does not contain usable Florida longitude/latitude coordinates.",
+        }
+    if not network_path.exists():
+        raise FileNotFoundError(f"RoadMap network graph was not found: {network_path}")
+    if not fdot_path.exists():
+        raise FileNotFoundError(f"FDOT GeoJSON was not found: {fdot_path}")
+
+    fingerprint = {
+        "matcher_version": MATCHER_VERSION,
+        "map_id": map_id,
+        "network_sha256": _file_sha256(network_path),
+        "fdot_sha256": _file_sha256(fdot_path),
+        "max_distance_meters": float(max_distance_meters),
+        "max_angle_difference": float(max_angle_difference),
+        "network_crs": network_crs,
+        "county": county,
+    }
+    cache_mapping_path = cache_dir / "fdot_edge_mapping.csv"
+    metadata_path = cache_dir / "fdot_mapping_metadata.json"
+
+    cached_metadata = {}
+    if metadata_path.exists():
+        try:
+            cached_metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            cached_metadata = {}
+
+    if cache_mapping_path.exists() and cached_metadata.get("fingerprint") == fingerprint:
+        run_mapping_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(cache_mapping_path, run_mapping_path)
+        return {
+            "status": "reused",
+            "map_id": map_id,
+            "mapping_path": str(run_mapping_path),
+            "cache_path": str(cache_mapping_path),
+            "summary": cached_metadata.get("summary", {}),
+        }
+
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    summary = create_fdot_mapping(
+        network_path=network_path,
+        fdot_path=fdot_path,
+        output_path=cache_mapping_path,
+        max_distance_meters=max_distance_meters,
+        max_angle_difference=max_angle_difference,
+        network_crs=network_crs,
+        county=county,
+    )
+    metadata_path.write_text(
+        json.dumps({"fingerprint": fingerprint, "summary": summary}, indent=4),
+        encoding="utf-8",
+    )
+    run_mapping_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(cache_mapping_path, run_mapping_path)
+    return {
+        "status": "generated",
+        "map_id": map_id,
+        "mapping_path": str(run_mapping_path),
+        "cache_path": str(cache_mapping_path),
+        "summary": summary,
+    }
 
 
 def _clean_value(value):
+    """Replace missing table values with simple Python values."""
     if value is None or (not isinstance(value, (list, dict)) and pd.isna(value)):
         return None
     return value
 
 
 def _parse_geometry(value, row: pd.Series) -> LineString | None:
+    """Read a road shape, or fall back to its start and end points."""
     points = None
     if isinstance(value, str) and value.strip():
         try:
@@ -96,12 +226,13 @@ def load_fdot_segments(fdot_path: Path, target_crs, county: str = "Orange") -> g
     if not fdot_path.exists():
         raise FileNotFoundError(f"FDOT GeoJSON was not found: {fdot_path}")
 
-    fdot = gpd.read_file(fdot_path)
+    # Reading this known GeoJSON directly avoids requiring a full GDAL runtime
+    # in the packaged telemetry executable.
+    with fdot_path.open("r", encoding="utf-8") as file:
+        geojson = json.load(file)
+    fdot = gpd.GeoDataFrame.from_features(geojson.get("features", []), crs="EPSG:4326")
     if "AADT" not in fdot.columns:
         raise ValueError("FDOT GeoJSON must contain an AADT field.")
-    if fdot.crs is None:
-        raise ValueError("FDOT GeoJSON does not declare a coordinate reference system.")
-
     if county and "COUNTY" in fdot.columns:
         fdot = fdot[
             fdot["COUNTY"].astype(str).str.contains(county, case=False, na=False)
@@ -228,6 +359,7 @@ def match_edges_to_fdot(
 
 
 def mapping_columns(matched: pd.DataFrame) -> list[str]:
+    """Choose the columns saved in the final mapping CSV."""
     preferred = [
         "EdgeID", "u", "v", "name", "ref", "highway", "length_m",
         "fdot_aadt", "fdot_roadway", "fdot_from", "fdot_to", "fdot_year",
@@ -286,6 +418,7 @@ def create_fdot_mapping(
 
 
 def main() -> None:
+    """Run the matcher as a stand-alone development tool."""
     parser = argparse.ArgumentParser(description="Match a RoadMap network_graph.csv to FDOT AADT segments.")
     parser.add_argument("--network", type=Path, required=True)
     parser.add_argument("--fdot", type=Path, default=DEFAULT_FDOT_FILE)

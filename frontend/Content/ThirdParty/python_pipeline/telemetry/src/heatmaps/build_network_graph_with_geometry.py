@@ -1,3 +1,5 @@
+"""Build the road CSV used by telemetry heatmaps from map JSONL files."""
+
 import argparse
 import csv
 import json
@@ -26,6 +28,7 @@ def clean_csv_value(value):
 
 
 def load_nodes(path: Path) -> dict:
+    """Load node positions so each road can find its two endpoints."""
     nodes = {}
 
     with path.open("r", encoding="utf-8") as file:
@@ -48,6 +51,7 @@ def load_nodes(path: Path) -> dict:
 
 
 def build_network_graph(nodes_path: Path, edges_path: Path, output_path: Path) -> None:
+    """Join nodes and edges into one heatmap-ready network CSV."""
     nodes = load_nodes(nodes_path)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -125,6 +129,7 @@ def build_network_graph(nodes_path: Path, edges_path: Path, output_path: Path) -
 
 
 def main() -> None:
+    """Read command-line paths and build a network graph."""
     parser = argparse.ArgumentParser(description="Build a RoadMap network_graph CSV from node/edge JSONL files.")
     parser.add_argument("--nodes", default=DEFAULT_NODES_PATH, help="Path to nodes JSONL file.")
     parser.add_argument("--edges", default=DEFAULT_EDGES_PATH, help="Path to edges JSONL file.")
