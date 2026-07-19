@@ -128,4 +128,7 @@ private:
     TrafficManager* spawner;
 
     float currentTime;
+
+    // Last whole sim-second a telemetry frame was logged for (-1 = none yet).
+    int lastLoggedSecond;
 };

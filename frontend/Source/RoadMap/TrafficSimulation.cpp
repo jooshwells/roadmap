@@ -9,7 +9,7 @@
 #include "Misc/Paths.h"
 #include "HAL/FileManager.h"
 
-TrafficSimulation::TrafficSimulation() : currentTime(0.0f), orlandoMap(nullptr), logger(nullptr), spatialHash(nullptr), controller(nullptr), spawner(nullptr)
+TrafficSimulation::TrafficSimulation() : orlandoMap(nullptr), logger(nullptr), spatialHash(nullptr), controller(nullptr), spawner(nullptr), currentTime(0.0f), lastLoggedSecond(-1)
 {
 }
 
@@ -25,6 +25,7 @@ TrafficSimulation::~TrafficSimulation()
 
 void TrafficSimulation::Initialize(const std::string& nodesPath, const std::string& edgesPath) {
     currentTime = 0.0f;
+    lastLoggedSecond = -1;
 
     // 1. Instantiate the network map on the heap
     orlandoMap = new Network(NetworkBuilder::buildNetworkFromJSONL(nodesPath, edgesPath));
@@ -105,9 +106,15 @@ void TrafficSimulation::Step(float dt)
     // Notice we use the arrow operator (->) because they are now pointers.
     spawner->update(dt);
     controller->update(dt);
-    // Record the current state of all active vehicles for this frame.
-    logger->logFrame(currentTime, controller->getActiveVehicles());
-
+    // Record vehicle telemetry at 1 Hz of sim time: log the first step at or
+    // after each whole second. currentTime moves on a fixed 33.3 ms grid, so
+    // an epsilon window around integers would miss most second boundaries.
+    const int wholeSecond = static_cast<int>(currentTime);
+    if (wholeSecond > lastLoggedSecond)
+    {
+        lastLoggedSecond = wholeSecond;
+        logger->logFrame(currentTime, controller->getActiveVehicles());
+    }
     currentTime += dt;
 }
 
