@@ -281,7 +281,6 @@ FReply UTelemetryPanelWidget::NativeOnMouseWheel(
 )
 {
     using namespace TelemetryPalette;
-
     const FVector2D ScreenPosition = InMouseEvent.GetScreenSpacePosition();
     if (!IsPointerOverHeatmap(ScreenPosition))
     {
@@ -303,7 +302,6 @@ FReply UTelemetryPanelWidget::NativeOnMouseButtonDown(
 )
 {
     using namespace TelemetryPalette;
-
     if (InMouseEvent.GetEffectingButton() != EKeys::LeftMouseButton)
     {
         return Super::NativeOnMouseButtonDown(InGeometry, InMouseEvent);
@@ -490,6 +488,7 @@ UTelemetryRunButton* UTelemetryPanelWidget::MakeRunRow(
 // Builds the full panel, its four tabs, and the heatmap viewer.
 void UTelemetryPanelWidget::BuildWidgetTree()
 {
+    using namespace TelemetryPalette;
     // The whole panel is created here instead of depending on a large widget file.
     // Keeping each tab in one tree also makes it easy to share the selected run.
     using namespace TelemetryPalette;
@@ -1485,7 +1484,6 @@ void UTelemetryPanelWidget::RefreshComparisonOptions(int32 PreferredRunIndex)
 void UTelemetryPanelWidget::RenderComparisonResult(const FTelemetryRunComparisonResult& Result)
 {
     using namespace TelemetryPalette;
-
     if (!ComparisonResultsBox)
     {
         return;
@@ -1794,7 +1792,6 @@ void UTelemetryPanelWidget::SetHeatmapZoom(
 )
 {
     using namespace TelemetryPalette;
-
     const float ClampedZoom = FMath::Clamp(
         NewZoom,
         MinimumHeatmapZoom,
@@ -1825,7 +1822,6 @@ void UTelemetryPanelWidget::SetHeatmapZoom(
 void UTelemetryPanelWidget::ResetHeatmapView()
 {
     using namespace TelemetryPalette;
-
     bIsHeatmapPanning = false;
     bHeatmapPointerPressed = false;
     bHeatmapDragMoved = false;
@@ -1839,7 +1835,6 @@ void UTelemetryPanelWidget::ResetHeatmapView()
 FVector2D UTelemetryPanelWidget::ClampHeatmapPan(const FVector2D& RequestedPan) const
 {
     using namespace TelemetryPalette;
-
     if (!HeatmapViewport || HeatmapZoom <= MinimumHeatmapZoom)
     {
         return FVector2D::ZeroVector;
@@ -2518,7 +2513,6 @@ void UTelemetryPanelWidget::FinishRunComparison(
 )
 {
     using namespace TelemetryPalette;
-
     SetTelemetryTaskRunning(false);
     if (!bSucceeded)
     {
@@ -2633,7 +2627,6 @@ void UTelemetryPanelWidget::HandleViewComparisonHeatmapsClicked()
 void UTelemetryPanelWidget::ShowComparisonHeatmapMode(int32 ModeIndex)
 {
     using namespace TelemetryPalette;
-
     FString Path;
     FString ModeLabel;
     FString Metric = SelectedComparisonMetric;
@@ -3112,7 +3105,6 @@ bool UTelemetryPanelWidget::OpenHeatmapPath(
 )
 {
     using namespace TelemetryPalette;
-
     // The SVG keeps roads and labels sharp. The JSON beside it gives Unreal the
     // title, legend, summary values, and road shapes used for mouse interaction.
     const FString SvgPath = HeatmapPath;
@@ -3242,7 +3234,6 @@ void UTelemetryPanelWidget::HandleCloseHeatmapClicked()
 void UTelemetryPanelWidget::HandleZoomInClicked()
 {
     using namespace TelemetryPalette;
-
     SetHeatmapZoom(HeatmapZoom + HeatmapZoomStep);
 }
 
@@ -3250,7 +3241,6 @@ void UTelemetryPanelWidget::HandleZoomInClicked()
 void UTelemetryPanelWidget::HandleZoomOutClicked()
 {
     using namespace TelemetryPalette;
-
     SetHeatmapZoom(HeatmapZoom - HeatmapZoomStep);
 }
 
