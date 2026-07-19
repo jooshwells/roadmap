@@ -202,12 +202,13 @@ void UTelemetryPanelWidget::NativeDestruct()
     Super::NativeDestruct();
 }
 
-// Gives Slate a few frames to finish laying out a newly opened map.
+// Gives Slate a few frames to finish moving the map before placing its markers.
 void UTelemetryPanelWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
     Super::NativeTick(MyGeometry, InDeltaTime);
     if (HeatmapMarkerLayoutFramesRemaining > 0 && HeatmapViewer && HeatmapViewer->IsVisible())
     {
+        UpdateHeatmapRoadMarker();
         UpdateHeatmapExtremeMarker();
         --HeatmapMarkerLayoutFramesRemaining;
     }
@@ -1151,7 +1152,9 @@ void UTelemetryPanelWidget::BuildWidgetTree()
     USizeBox* ExtremeMarkerSizer = WidgetTree->ConstructWidget<USizeBox>();
     ExtremeMarkerSizer->SetWidthOverride(18.0f);
     ExtremeMarkerSizer->SetHeightOverride(20.0f);
-    UTextBlock* ExtremeMarkerArrow = MakeText(TEXT("\u25BC"), 15, Accent, FName("Bold"));
+    // Cyan stays easy to see over the red, yellow, and green heatmap colors.
+    const FLinearColor ExtremeMarkerColor = Hex(TEXT("32D5FF"));
+    UTextBlock* ExtremeMarkerArrow = MakeText(TEXT("\u25BC"), 15, ExtremeMarkerColor, FName("Bold"));
     ExtremeMarkerArrow->SetJustification(ETextJustify::Center);
     ExtremeMarkerArrow->SetShadowColorAndOpacity(FLinearColor(0.0f, 0.0f, 0.0f, 0.9f));
     ExtremeMarkerArrow->SetShadowOffset(FVector2D(1.0f, 1.0f));
@@ -1758,6 +1761,10 @@ void UTelemetryPanelWidget::ApplyHeatmapViewTransform()
 
     UpdateHeatmapRoadMarker();
     UpdateHeatmapExtremeMarker();
+
+    // The cached image position can be one frame behind its render transform.
+    // Check it again briefly so both markers finish on the correct road.
+    HeatmapMarkerLayoutFramesRemaining = 3;
 }
 
 // Changes map zoom and keeps the point under the mouse in the same place.
