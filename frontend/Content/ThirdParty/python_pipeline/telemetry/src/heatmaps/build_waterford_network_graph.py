@@ -1,3 +1,5 @@
+"""Older Waterford-only helper kept for rebuilding its network graph by hand."""
+
 import json
 import csv
 from pathlib import Path
@@ -12,6 +14,7 @@ OUTPUT_PATH = TELEMETRY_DIR / "data" / "network" / "network_graph_waterford.csv"
 
 
 def load_nodes(path: Path) -> dict:
+    """Load Waterford node positions from JSONL."""
     nodes = {}
 
     with path.open("r", encoding="utf-8") as file:
@@ -34,6 +37,7 @@ def load_nodes(path: Path) -> dict:
 
 
 def main() -> None:
+    """Write the fixed Waterford network graph CSV."""
     nodes = load_nodes(NODES_PATH)
 
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)

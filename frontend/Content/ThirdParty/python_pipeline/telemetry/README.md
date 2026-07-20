@@ -19,10 +19,10 @@ Generated files in `outputs/`, `.venv/`, `build/`, `dist/`, `__pycache__/`, and 
 The Unreal panel has three workspaces:
 
 - **Overview** shows the main run statistics in plain language.
-- **Heatmaps** generates bottleneck, speed, flow, and wait-time maps on demand. Both PNG and SVG versions are kept; Unreal prefers SVG and uses PNG as a fallback.
+- **Heatmaps** generates sharp SVG bottleneck, speed, flow, and wait-time maps on demand. A JSON file beside each map stores its summary, legend, and road interaction data.
 - **FDOT** compares a run with map-specific FDOT design-hour estimates. GEH is included for engineers, with plain-language result labels for other users.
 
-FDOT comparison requires a mapping CSV in `data/fdot/mappings/` for the selected map. `src/fdot/fdot_option_a_matcher.py` is a development utility for creating mappings for additional maps. The animation and PDF validation-report scripts are also optional developer tools; they are not called by Unreal.
+FDOT comparison requires a mapping CSV in `data/fdot/mappings/` for the selected map. `src/fdot/fdot_option_a_matcher.py` is a development utility for creating mappings for additional maps.
 
 ## Development
 

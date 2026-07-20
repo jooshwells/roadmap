@@ -1,3 +1,5 @@
+"""Create saved-run folders and keep a small history for each map."""
+
 from pathlib import Path
 from datetime import datetime
 import json
@@ -20,6 +22,7 @@ def make_map_id(map_name: str) -> str:
 
 
 def create_run_folder(outputs_root: Path, map_name: str) -> tuple[str, Path]:
+    """Create the folders and starting metadata for one simulation run."""
     runs_root = outputs_root / "runs"
     map_runs_root = runs_root / make_map_id(map_name)
     map_runs_root.mkdir(parents=True, exist_ok=True)
@@ -61,6 +64,7 @@ def create_run_folder(outputs_root: Path, map_name: str) -> tuple[str, Path]:
 # Deletes the oldest run folders when we have more than the allowed amount.
 # This keeps storage under control for now.
 def cleanup_old_runs(runs_root: Path, map_name: str) -> None:
+    """Remove the oldest runs for this map when it passes the saved limit."""
     run_folders = []
     candidates = list(runs_root.glob("run_*"))
     candidates.extend((runs_root / make_map_id(map_name)).glob("run_*"))

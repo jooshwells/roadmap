@@ -12,9 +12,13 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.fdot.fdot_option_a_matcher import (
+    ensure_fdot_mapping,
+    has_geographic_coordinates,
+    load_fdot_segments,
     load_roadmap_network,
     match_edges_to_fdot,
 )
+from src.fdot import fdot_option_a_matcher
 
 
 def test_network_loader_preserves_real_edge_ids(tmp_path):
@@ -117,3 +121,126 @@ def test_minor_road_does_not_inherit_distant_parallel_corridor_count():
     matched = match_edges_to_fdot(roads, fdot, max_distance_meters=30)
 
     assert pd.isna(matched.iloc[0]["fdot_aadt"])
+
+
+def _write_nodes(path: Path, longitude: float, latitude: float) -> None:
+    path.write_text(
+        json.dumps({"id": 1, "lon": longitude, "lat": latitude}) + "\n",
+        encoding="utf-8",
+    )
+
+
+def test_geographic_coordinate_check_skips_synthetic_maps(tmp_path):
+    real_nodes = tmp_path / "real_nodes.jsonl"
+    synthetic_nodes = tmp_path / "synthetic_nodes.jsonl"
+    _write_nodes(real_nodes, -81.38, 28.54)
+    _write_nodes(synthetic_nodes, 0.0, 0.0)
+
+    assert has_geographic_coordinates(real_nodes)
+    assert not has_geographic_coordinates(synthetic_nodes)
+
+
+def test_fdot_geojson_loads_without_gdal_file_reader(tmp_path, monkeypatch):
+    fdot_path = tmp_path / "fdot.geojson"
+    fdot_path.write_text(json.dumps({
+        "type": "FeatureCollection",
+        "features": [{
+            "type": "Feature",
+            "properties": {"AADT": 12000, "COUNTY": "Orange"},
+            "geometry": {
+                "type": "LineString",
+                "coordinates": [[-81.38, 28.54], [-81.379, 28.54]],
+            },
+        }],
+    }), encoding="utf-8")
+
+    monkeypatch.setattr(gpd, "read_file", lambda *args, **kwargs: pytest.fail("GDAL reader used"))
+    segments = load_fdot_segments(fdot_path, "EPSG:32617")
+
+    assert len(segments) == 1
+    assert segments.iloc[0]["AADT"] == 12000
+    assert segments.crs.to_string() == "EPSG:32617"
+
+
+def test_ensure_mapping_generates_then_reuses_matching_cache(tmp_path, monkeypatch):
+    network_path = tmp_path / "network_graph.csv"
+    nodes_path = tmp_path / "nodes.jsonl"
+    fdot_path = tmp_path / "fdot.geojson"
+    cache_dir = tmp_path / "cache"
+    first_run_path = tmp_path / "run_one" / "fdot_edge_mapping.csv"
+    second_run_path = tmp_path / "run_two" / "fdot_edge_mapping.csv"
+    network_path.write_text("EdgeID\n1\n", encoding="utf-8")
+    fdot_path.write_text("fdot-v1", encoding="utf-8")
+    _write_nodes(nodes_path, -81.38, 28.54)
+    calls = []
+
+    def fake_create_fdot_mapping(**kwargs):
+        calls.append(kwargs)
+        Path(kwargs["output_path"]).write_text("EdgeID,fdot_aadt\n1,12000\n", encoding="utf-8")
+        return {"total_edges": 1, "matched_edges": 1}
+
+    monkeypatch.setattr(fdot_option_a_matcher, "create_fdot_mapping", fake_create_fdot_mapping)
+
+    generated = ensure_fdot_mapping(
+        network_path, nodes_path, fdot_path, cache_dir, first_run_path, "test-map"
+    )
+    reused = ensure_fdot_mapping(
+        network_path, nodes_path, fdot_path, cache_dir, second_run_path, "test-map"
+    )
+
+    assert generated["status"] == "generated"
+    assert reused["status"] == "reused"
+    assert len(calls) == 1
+    assert first_run_path.read_text(encoding="utf-8") == second_run_path.read_text(encoding="utf-8")
+
+
+def test_ensure_mapping_regenerates_when_map_changes(tmp_path, monkeypatch):
+    network_path = tmp_path / "network_graph.csv"
+    nodes_path = tmp_path / "nodes.jsonl"
+    fdot_path = tmp_path / "fdot.geojson"
+    cache_dir = tmp_path / "cache"
+    network_path.write_text("EdgeID\n1\n", encoding="utf-8")
+    fdot_path.write_text("fdot-v1", encoding="utf-8")
+    _write_nodes(nodes_path, -81.38, 28.54)
+    calls = []
+
+    def fake_create_fdot_mapping(**kwargs):
+        calls.append(kwargs)
+        Path(kwargs["output_path"]).write_text(f"version-{len(calls)}", encoding="utf-8")
+        return {"matched_edges": len(calls)}
+
+    monkeypatch.setattr(fdot_option_a_matcher, "create_fdot_mapping", fake_create_fdot_mapping)
+
+    ensure_fdot_mapping(
+        network_path, nodes_path, fdot_path, cache_dir,
+        tmp_path / "run_one" / "mapping.csv", "test-map",
+    )
+    network_path.write_text("EdgeID\n1\n2\n", encoding="utf-8")
+    result = ensure_fdot_mapping(
+        network_path, nodes_path, fdot_path, cache_dir,
+        tmp_path / "run_two" / "mapping.csv", "test-map",
+    )
+
+    assert result["status"] == "generated"
+    assert len(calls) == 2
+
+
+def test_ensure_mapping_skips_map_without_real_coordinates(tmp_path, monkeypatch):
+    network_path = tmp_path / "network_graph.csv"
+    nodes_path = tmp_path / "nodes.jsonl"
+    fdot_path = tmp_path / "fdot.geojson"
+    output_path = tmp_path / "run" / "mapping.csv"
+    network_path.write_text("EdgeID\n1\n", encoding="utf-8")
+    fdot_path.write_text("fdot-v1", encoding="utf-8")
+    _write_nodes(nodes_path, 0.0, 0.0)
+
+    def unexpected_match(**kwargs):
+        pytest.fail("Synthetic maps should not run the FDOT spatial matcher.")
+
+    monkeypatch.setattr(fdot_option_a_matcher, "create_fdot_mapping", unexpected_match)
+    result = ensure_fdot_mapping(
+        network_path, nodes_path, fdot_path, tmp_path / "cache", output_path, "grid-city"
+    )
+
+    assert result["status"] == "skipped"
+    assert not output_path.exists()

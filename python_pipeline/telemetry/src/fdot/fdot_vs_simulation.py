@@ -21,7 +21,7 @@ MIN_RECOMMENDED_SIMULATION_DURATION_SECONDS = 15 * 60
 
 
 def classify_geh(score: float) -> str:
-    """Turn a GEH score into the standard RoadMap review category."""
+    """Turn a GEH difference score into RoadMap's plain review category."""
     if pd.isna(score):
         return "No Data"
     if score < 5:
@@ -32,18 +32,21 @@ def classify_geh(score: float) -> str:
 
 
 def _load_csv(path: Path, description: str) -> pd.DataFrame:
+    """Load a required CSV with a useful error when it is missing."""
     if not path.exists():
         raise FileNotFoundError(f"{description} was not found: {path}")
     return pd.read_csv(path)
 
 
 def _require_columns(dataframe: pd.DataFrame, required: set[str], description: str) -> None:
+    """Check that a CSV has the columns needed for the comparison."""
     missing = sorted(required.difference(dataframe.columns))
     if missing:
         raise ValueError(f"{description} is missing required columns: {', '.join(missing)}")
 
 
 def _normalize_edge_ids(dataframe: pd.DataFrame) -> pd.DataFrame:
+    """Store edge IDs as whole numbers so the two files join correctly."""
     result = dataframe.copy()
     result["EdgeID"] = pd.to_numeric(result["EdgeID"], errors="coerce")
     result = result.dropna(subset=["EdgeID"])
@@ -55,7 +58,7 @@ def build_fdot_comparison(
     fdot_mapping: pd.DataFrame,
     simulation_metrics: pd.DataFrame,
 ) -> pd.DataFrame:
-    """Return edge-level FDOT validation values without writing files."""
+    """Return edge-level FDOT reference comparison values without writing files."""
     _require_columns(fdot_mapping, FDOT_REQUIRED_COLUMNS, "FDOT mapping")
     _require_columns(simulation_metrics, SIM_REQUIRED_COLUMNS, "Simulation metrics")
 
@@ -218,7 +221,7 @@ def summarize_fdot_comparison(
         "k_factor_edges": k_factor_edges,
         "fallback_edges": fallback_edges,
         "hourly_conversion_method": (
-            "FDOT two-way design-hour volume = AADT × K factor; RoadMap directional target = design-hour volume ÷ 2."
+            "FDOT two-way design-hour volume = AADT x K factor; RoadMap directional reference = design-hour volume / 2."
         ),
         "directional_assumption": (
             "Neutral 50/50 directional split because the FDOT peak-direction orientation is not available."
@@ -258,6 +261,7 @@ def compare_fdot_to_simulation(
 
 
 def main() -> None:
+    """Run an FDOT comparison from the command line."""
     parser = argparse.ArgumentParser(description="Compare one RoadMap run with FDOT AADT data.")
     parser.add_argument("--fdot-mapping", type=Path, default=DEFAULT_FDOT_MAPPING_FILE)
     parser.add_argument("--simulation-metrics", type=Path, default=DEFAULT_SIM_METRICS_FILE)
