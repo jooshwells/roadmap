@@ -33,6 +33,8 @@ ASimulationManager::ASimulationManager()
 
 	// Disable shadows for the MVP to guarantee maximum GPU performance
 	VehicleISM->SetCastShadow(false);
+
+
 }
 
 void ASimulationManager::BeginPlay()

@@ -61,6 +61,7 @@ Network NetworkBuilder::buildNetworkFromJSONL(const std::string& nodePath, const
             {
                 json j = json::parse(line); // parse object
                 int lanes = j.value("lanes", 1);
+                std::string name = j.value("name", ""); // default to empty string if "name" key is missing
 
                 // Optional real-world centerline shape. The y flip matches the
                 // node convention above (-j["y"]).
@@ -86,7 +87,8 @@ Network NetworkBuilder::buildNetworkFromJSONL(const std::string& nodePath, const
                     j["length_m"],
                     j["speed_mps"],
                     lanes,
-                    std::move(geometry)
+                    std::move(geometry),
+                    name
                 );
             }
             catch(const json::exception& e)

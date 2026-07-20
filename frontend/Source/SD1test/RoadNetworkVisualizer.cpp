@@ -35,6 +35,16 @@ ARoadNetworkVisualizer::ARoadNetworkVisualizer()
     JunctionMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     JunctionMesh->SetCastShadow(false);
 
+    GroundMesh = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("GroundMesh"));
+    WaterMesh = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("WaterMesh"));
+    TreeHISM = CreateDefaultSubobject<UHierarchicalInstancedStaticMeshComponent>(TEXT("TreeHISM"));
+    GrassHISM = CreateDefaultSubobject<UHierarchicalInstancedStaticMeshComponent>(TEXT("GrassHISM"));
+
+    GroundMesh->SetupAttachment(RootComponent);
+    WaterMesh->SetupAttachment(RootComponent);
+    TreeHISM->SetupAttachment(RootComponent);
+    GrassHISM->SetupAttachment(RootComponent);
+
     // Default the junction material to the project's plain-asphalt asset via a
     // constructor-time hard reference. This is what gets the asset cooked into
     // packaged builds -- a runtime LoadObject on a string path is invisible to
@@ -49,6 +59,7 @@ ARoadNetworkVisualizer::ARoadNetworkVisualizer()
 
 void ARoadNetworkVisualizer::BuildVisualNetwork(Network* RoadNetwork, FString InNodesPath, FString InEdgesPath)
 {
+
     if (!RoadNetwork) return;
 
     // 1. Store the paths for later exporting
@@ -109,7 +120,7 @@ void ARoadNetworkVisualizer::BuildVisualNetwork(Network* RoadNetwork, FString In
 
         FVector NodeLoc((OriginNode.getX() - OriginOffsetX) * 100.0,
             (OriginNode.getY() - OriginOffsetY) * 100.0,
-            -2.0f);
+            23.0f);
 
         if (bSetbackAtIntersections)
         {
@@ -119,7 +130,7 @@ void ARoadNetworkVisualizer::BuildVisualNetwork(Network* RoadNetwork, FString In
             {
                 // Just below the road surface (z=0) so short-edge overlap hides
                 // under the roads, but above typical floor/ground actors.
-                const FVector JunctionCenter(NodeLoc.X, NodeLoc.Y, -0.2f);
+                const FVector JunctionCenter(NodeLoc.X, NodeLoc.Y, 24.0f); 
                 AppendJunctionPolygon(RoadNetwork, OriginNode, JunctionCenter,
                     JunctionVerts, JunctionTris, JunctionNormals, JunctionUVs);
             }
@@ -143,14 +154,16 @@ void ARoadNetworkVisualizer::BuildVisualNetwork(Network* RoadNetwork, FString In
             // Force Z to 0.0. Subtracting Origin forces the geographic center to 0,0.
             FVector StartLoc((OriginNode.getX() - OriginOffsetX) * 100.0,
                 (OriginNode.getY() - OriginOffsetY) * 100.0,
-                0.0);
+                25.0);
 
             FVector EndLoc((DestNode->getX() - OriginOffsetX) * 100.0,
                 (DestNode->getY() - OriginOffsetY) * 100.0,
-                0.0);
+                25.0);
 
             // Ensure we always have at least 1 lane to prevent divide-by-zero in the shader
             int32 SafeLanes = FMath::Max(1, Edge.getLanes());
+
+            EdgeIdToName.Add(Edge.getEdgeId(), FString(Edge.getName().c_str()));
 
             // --- Real-world centerline (OSM geometry_xy) ------------------------
             // Curved edges render as a chain of straight pieces that follow the
@@ -166,7 +179,7 @@ void ARoadNetworkVisualizer::BuildVisualNetwork(Network* RoadNetwork, FString In
                 for (const RoadGeomPoint& P : Geom)
                 {
                     Pts.Add(FVector((P.x - OriginOffsetX) * 100.0,
-                                    (P.y - OriginOffsetY) * 100.0, 0.0));
+                                    (P.y - OriginOffsetY) * 100.0, 25.0));
                 }
             }
             else
@@ -442,104 +455,82 @@ void ARoadNetworkVisualizer::BuildVisualNetwork(Network* RoadNetwork, FString In
                 }
             };
 
-            // Taper lengths at each end, only where a neighbour has fewer lanes.
-            float StartTaper = (UpstreamLanes   < SafeLanes) ? TaperLengthCm : 0.0f;
-            float EndTaper   = (DownstreamLanes < SafeLanes) ? TaperLengthCm : 0.0f;
+            const float UpstreamWidth = UpstreamLanes * 350.0f;
+            const float DownstreamWidth = DownstreamLanes * 350.0f;
 
-            // If both zones are present, shrink them proportionally so they fit.
-            const float TotalTaper = StartTaper + EndTaper;
-            if (TotalTaper > DrawLenCm && TotalTaper > 0.0f)
+            float CurrentAlong = 0.0f;
+            float RemainingLen = DrawLenCm;
+
+            // Start taper zone
+            if (UpstreamLanes != SafeLanes && RemainingLen > TaperLengthCm)
             {
-                const float Scale = DrawLenCm / TotalTaper;
-                StartTaper *= Scale;
-                EndTaper   *= Scale;
+                AddTaperZone(CurrentAlong, TaperLengthCm, UpstreamWidth, FullWidthCm);
+                CurrentAlong += TaperLengthCm;
+                RemainingLen -= TaperLengthCm;
             }
 
-            if (StartTaper <= 0.0f && EndTaper <= 0.0f)
+            // Determine if there is space for an end taper zone
+            float MidZoneLen = RemainingLen;
+            bool bHasEndTaper = (DownstreamLanes != SafeLanes && RemainingLen > TaperLengthCm);
+            if (bHasEndTaper)
             {
-                // No lane change: full width along the whole centerline.
-                AddSeg(0.0f, DrawLenCm, FullWidthCm, static_cast<float>(SafeLanes));
+                MidZoneLen -= TaperLengthCm;
             }
-            else
+
+            // Middle constant zone
+            if (MidZoneLen > 0.01f)
             {
-                const float UpWidthCm   = UpstreamLanes   * 350.0f;
-                const float DownWidthCm = DownstreamLanes * 350.0f;
+                AddSeg(CurrentAlong, MidZoneLen, FullWidthCm, (float)SafeLanes);
+                CurrentAlong += MidZoneLen;
+            }
 
-                // Widening taper at the start (a lane opens up).
-                AddTaperZone(0.0f, StartTaper, UpWidthCm, FullWidthCm);
-
-                // Full-width body between the two taper zones.
-                const float BodyLen = DrawLenCm - StartTaper - EndTaper;
-                if (BodyLen > 1.0f)
-                {
-                    AddSeg(StartTaper, BodyLen, FullWidthCm, static_cast<float>(SafeLanes));
-                }
-
-                // Narrowing taper at the end (a lane drops).
-                AddTaperZone(DrawLenCm - EndTaper, EndTaper, FullWidthCm, DownWidthCm);
+            // End taper zone
+            if (bHasEndTaper)
+            {
+                AddTaperZone(CurrentAlong, TaperLengthCm, FullWidthCm, DownstreamWidth);
             }
         }
     }
 
-    NodeHISM->ClearInstances();
-    if (NodeTransforms.Num() > 0)
+    // Node rendering fallback (if setbacks are disabled)
+    if (!bSetbackAtIntersections && NodeHISM && NodeTransforms.Num() > 0)
     {
         NodeHISM->AddInstances(NodeTransforms, false);
     }
 
-    JunctionMesh->ClearAllMeshSections();
-    if (JunctionTris.Num() > 0)
+    // Batch add the accumulated road transforms to the HISM
+    for (int32 i = 0; i < Transforms.Num(); i++)
     {
-        JunctionMesh->CreateMeshSection(0, JunctionVerts, JunctionTris, JunctionNormals, JunctionUVs,
-            TArray<FColor>(), TArray<FProcMeshTangent>(), false);
+        int32 NewIndex = RoadHISM->AddInstance(Transforms[i]);
+        InstanceIndexToEdgeId.Add(NewIndex, TempEdgeIds[i]);
+        RoadHISM->SetCustomDataValue(NewIndex, 0, TempLanes[i], false);
+        RoadHISM->SetCustomDataValue(NewIndex, 1, TempScaleX[i], false);
+    }
+    RoadHISM->MarkRenderStateDirty();
 
+    // Create Junction procedural mesh if setback is enabled
+    if (bSetbackAtIntersections && JunctionMesh && JunctionVerts.Num() > 0)
+    {
+        TArray<FProcMeshTangent> Tangents;
+        JunctionMesh->CreateMeshSection(0, JunctionVerts, JunctionTris, JunctionNormals, JunctionUVs, TArray<FColor>(), Tangents, false);
         if (JunctionMaterial)
         {
             JunctionMesh->SetMaterial(0, JunctionMaterial);
         }
-        else if (!JunctionMesh->GetMaterial(0))
-        {
-            // No material assigned: prefer the project's junction asphalt
-            // (samples the same /Game/Asphalt texture as the roads, minus the
-            // lane-divider logic, which needs per-instance custom data that
-            // procedural meshes don't have). Fall back to a dark grey tint of
-            // the engine's basic shape material if the asset is missing.
-            if (UMaterialInterface* ProjectAsphalt = LoadObject<UMaterialInterface>(nullptr,
-                TEXT("/Game/M_JunctionAsphalt.M_JunctionAsphalt")))
-            {
-                JunctionMesh->SetMaterial(0, ProjectAsphalt);
-            }
-            else if (UMaterialInterface* Base = LoadObject<UMaterialInterface>(nullptr,
-                TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial")))
-            {
-                UMaterialInstanceDynamic* Asphalt = UMaterialInstanceDynamic::Create(Base, this);
-                Asphalt->SetVectorParameterValue(TEXT("Color"), FLinearColor(0.015f, 0.015f, 0.017f));
-                JunctionMesh->SetMaterial(0, Asphalt);
-            }
-        }
     }
 
-    TArray<int32> AddedIndices = RoadHISM->AddInstances(Transforms, true);
-
-    for (int32 i = 0; i < AddedIndices.Num(); i++)
-    {
-        InstanceIndexToEdgeId.Add(AddedIndices[i], TempEdgeIds[i]);
-
-        // Push the custom data to the GPU
-        // Index 0: The number of lanes (used to draw the Y-axis dividers)
-        RoadHISM->SetCustomDataValue(AddedIndices[i], 0, TempLanes[i], false);
-
-        // Index 1: The X-scale (used to keep dashed lines a standard length)
-        RoadHISM->SetCustomDataValue(AddedIndices[i], 1, TempScaleX[i], false);
-    }
-
-    RoadHISM->MarkRenderStateDirty();
+    // --- TRIGGER ENVIRONMENT GENERATION ---
+    // Generate Ground, Lakes, and Foliage based on the finalized network
+    GenerateEnvironment(RoadNetwork);
 }
 
 // Position + unit tangent at 'ArcM' meters along an edge's raw shape polyline
 // (map coordinates). Unlike Road::samplePointAt this measures true polyline
 // arc length -- the same measure the visualizer trims setbacks with -- so a
 // junction face lands exactly on the trimmed road end.
+
+#pragma optimize("", off)
+
 static bool SampleGeometryAtArcMeters(const std::vector<RoadGeomPoint>& G, double ArcM,
     double& OutX, double& OutY, double& OutTanX, double& OutTanY)
 {
@@ -553,10 +544,16 @@ static bool SampleGeometryAtArcMeters(const std::vector<RoadGeomPoint>& G, doubl
 
     const double SegLen = G[i + 1].s - G[i].s;
     const double T = (SegLen > 0.0) ? (S - G[i].s) / SegLen : 0.0;
-    OutX = G[i].x + (G[i + 1].x - G[i].x) * T;
-    OutY = G[i].y + (G[i + 1].y - G[i].y) * T;
-    OutTanX = (G[i + 1].x - G[i].x) / SegLen;
-    OutTanY = (G[i + 1].y - G[i].y) / SegLen;
+
+    const double DeltaX = G[i + 1].x - G[i].x;
+    const double DeltaY = G[i + 1].y - G[i].y;
+
+    OutX = G[i].x + DeltaX * T;
+    OutY = G[i].y + DeltaY * T;
+
+    OutTanX = DeltaX / SegLen;
+    OutTanY = DeltaY / SegLen;
+
     return true;
 }
 
@@ -568,19 +565,29 @@ void ARoadNetworkVisualizer::AppendJunctionPolygon(Network* RoadNetwork, const N
     TMap<uint64_t, FIntPoint> NeighborLanes;
     for (const Road& E : JunctionNode.outgoingEdges)
     {
-        FIntPoint& P = NeighborLanes.FindOrAdd(E.getDest(), FIntPoint::ZeroValue);
-        P.X = FMath::Max(P.X, FMath::Max(1, E.getLanes()));
+        const uint64_t DestId = E.getDest();
+        const int32 LaneCount = E.getLanes();
+        const int32 ClampedLanes = FMath::Max(1, LaneCount);
+
+        FIntPoint& P = NeighborLanes.FindOrAdd(DestId, FIntPoint::ZeroValue);
+        const int32 NewX = FMath::Max(P.X, ClampedLanes);
+        P.X = NewX;
     }
     for (uint64_t InId : JunctionNode.incomingEdgeNodeIds)
     {
         Node* Prev = RoadNetwork->getNode(InId);
         if (!Prev) continue;
+
         for (const Road& E : Prev->outgoingEdges)
         {
             if (E.getDest() == JunctionNode.getId())
             {
+                const int32 LaneCount = E.getLanes();
+                const int32 ClampedLanes = FMath::Max(1, LaneCount);
+
                 FIntPoint& P = NeighborLanes.FindOrAdd(InId, FIntPoint::ZeroValue);
-                P.Y = FMath::Max(P.Y, FMath::Max(1, E.getLanes()));
+                const int32 NewY = FMath::Max(P.Y, ClampedLanes);
+                P.Y = NewY;
                 break;
             }
         }
@@ -699,6 +706,8 @@ void ARoadNetworkVisualizer::AppendJunctionPolygon(Network* RoadNetwork, const N
     }
 }
 
+#pragma optimize("", on)
+
 int64 ARoadNetworkVisualizer::GetEdgeIdFromHitItem(int32 HitItemIndex)
 {
     if (InstanceIndexToEdgeId.Contains(HitItemIndex))
@@ -708,8 +717,25 @@ int64 ARoadNetworkVisualizer::GetEdgeIdFromHitItem(int32 HitItemIndex)
     return -1; // Edge not found
 }
 
+FString ARoadNetworkVisualizer::GetRoadNameFromHitItem(int32 HitItemIndex)
+{
+    if (InstanceIndexToEdgeId.Contains(HitItemIndex))
+    {
+        uint64_t EdgeId = InstanceIndexToEdgeId[HitItemIndex];
+        if (const FString* Name = EdgeIdToName.Find(EdgeId))
+        {
+            return Name->IsEmpty() ? TEXT("Unnamed Road") : *Name;
+        }
+    }
+    return TEXT("Unknown Road");
+}
+
 void ARoadNetworkVisualizer::AddSingleRoadVisually(FVector StartUnrealLoc, FVector EndUnrealLoc, int32 Lanes)
 {
+
+    StartUnrealLoc.Z = 25.0f;
+    EndUnrealLoc.Z = 25.0f;
+
     FVector Direction = EndUnrealLoc - StartUnrealLoc;
     float DistanceCM = Direction.Size();
     FRotator Rotation = Direction.Rotation();
@@ -739,6 +765,10 @@ void ARoadNetworkVisualizer::AddSingleRoadVisually(FVector StartUnrealLoc, FVect
     // Push Custom Data to GPU (Index 0: Lanes, Index 1: ScaleX)
     RoadHISM->SetCustomDataValue(NewIndex, 0, static_cast<float>(SafeLanes), false);
     RoadHISM->SetCustomDataValue(NewIndex, 1, ScaleX, false);
+
+    // Update the Node visual at the end point to sit on the Node plane
+    FVector VisualNodeLoc = EndUnrealLoc;
+    VisualNodeLoc.Z = 23.0f;
 
     // Add Node visual at the end point
     FTransform NodeTransform(FRotator::ZeroRotator, EndUnrealLoc, FVector(NodeScale, NodeScale, 0.05f));
@@ -776,7 +806,7 @@ bool ARoadNetworkVisualizer::FindClosestNode(FVector SearchLocation, float SnapR
         {
             ClosestDistSq = DistSq;
             OutNodeLocation = Pair.Value; // Snap perfectly to the center of the node
-            OutNodeLocation.Z = 0.0f;          // Keep everything perfectly flat on the Z plane
+            OutNodeLocation.Z = 25.0f;          // Keep everything perfectly flat on the Z plane
             OutNodeId = Pair.Key;
             bFound = true;
         }
@@ -865,4 +895,522 @@ int64 ARoadNetworkVisualizer::ExportNewRoadSegment(int64 StartNodeId, int64 EndN
     FFileHelper::SaveStringToFile(EdgeString, *EdgesFilePath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM, &IFileManager::Get(), EFileWrite::FILEWRITE_Append);
 
     return FinalEndNodeId;
+}
+
+// ============================================================================
+// Master entry point
+// ============================================================================
+void ARoadNetworkVisualizer::GenerateEnvironment(Network* RoadNetwork)
+{
+    if (!RoadNetwork) return;
+
+    // Calculate map bounds with padding
+    FBox2D Bounds = ComputeRoadNetworkBounds(RoadNetwork);
+    if (!Bounds.bIsValid) return;
+
+    // Build the green terrain ground plane
+    GenerateGroundMesh(Bounds);
+
+    // Carve out lakes (now aware of road placement)
+    TArray<FVector4> LakeFootprints = GenerateLakes(RoadNetwork, Bounds);
+
+    // Scatter foliage (trees automatically avoid both roads and LakeFootprints)
+    ScatterFoliage(RoadNetwork, Bounds, LakeFootprints);
+}
+
+FBox2D ARoadNetworkVisualizer::ComputeRoadNetworkBounds(Network* RoadNetwork) const
+{
+    FBox2D Bounds(ForceInit);
+    if (!RoadNetwork) return Bounds;
+
+    for (const auto& NodePair : RoadNetwork->getNodes())
+    {
+        const Node& N = NodePair.second;
+        FVector2D UnrealLoc((N.getX() - OriginOffsetX) * 100.0, (N.getY() - OriginOffsetY) * 100.0);
+        Bounds += UnrealLoc;
+    }
+
+    // Apply environment padding
+    Bounds.Min -= FVector2D(EnvironmentPadding, EnvironmentPadding);
+    Bounds.Max += FVector2D(EnvironmentPadding, EnvironmentPadding);
+
+    return Bounds;
+}
+
+void ARoadNetworkVisualizer::GenerateGroundMesh(const FBox2D& Bounds)
+{
+    BuildFlatMeshSection(GroundMesh, Bounds, 0.0f, 1);
+    if (GroundMesh && GroundMaterial)
+    {
+        GroundMesh->SetMaterial(0, GroundMaterial);
+    }
+}
+
+TArray<FVector4> ARoadNetworkVisualizer::GenerateLakes(Network* RoadNetwork, const FBox2D& Bounds)
+{
+    TArray<FVector4> Footprints;
+    if (!WaterMesh || NumLakes <= 0) return Footprints;
+
+    WaterMesh->ClearAllMeshSections();
+
+    const int32 MaxAttemptsPerLake = 150;
+    const float UVScale = 0.001f;
+
+    for (int32 LakeIdx = 0; LakeIdx < NumLakes; ++LakeIdx)
+    {
+        bool bPlaced = false;
+
+        for (int32 Attempt = 0; Attempt < MaxAttemptsPerLake; ++Attempt)
+        {
+            float CandidateRadius = FMath::FRandRange(LakeMinRadius, LakeMaxRadius);
+
+            float CenterX = FMath::FRandRange(Bounds.Min.X + CandidateRadius, Bounds.Max.X - CandidateRadius);
+            float CenterY = FMath::FRandRange(Bounds.Min.Y + CandidateRadius, Bounds.Max.Y - CandidateRadius);
+            FVector2D CandidateCenter(CenterX, CenterY);
+
+            // 1. Check distance to roads (Candidate Radius + Clearance Buffer)
+            if (IsNearAnyRoad(RoadNetwork, CandidateCenter, CandidateRadius + RoadClearanceDistance))
+            {
+                continue;
+            }
+
+            // 2. Check separation from other lakes
+            bool bOverlapsOtherLake = false;
+            for (const FVector4& Existing : Footprints)
+            {
+                FVector2D ExistingCenter(Existing.X, Existing.Y);
+                float ExistingRadius = Existing.Z;
+                float MinDist = CandidateRadius + ExistingRadius + 1000.0f;
+
+                if (FVector2D::DistSquared(CandidateCenter, ExistingCenter) < FMath::Square(MinDist))
+                {
+                    bOverlapsOtherLake = true;
+                    break;
+                }
+            }
+
+            if (bOverlapsOtherLake) continue;
+
+            // Valid location found!
+            Footprints.Add(FVector4(CenterX, CenterY, CandidateRadius, 0.0f));
+            bPlaced = true;
+
+            TArray<FVector> Vertices;
+            TArray<int32> Triangles;
+            TArray<FVector> Normals;
+            TArray<FVector2D> UVs;
+            TArray<FProcMeshTangent> Tangents;
+
+            const int32 NumRadialVerts = 16;
+            const float AngleStep = UE_TWO_PI / NumRadialVerts;
+
+            // Center vertex elevated to Z = 2.0f so it renders ABOVE the grass plane (Z = 0.0f)
+            Vertices.Add(FVector(CenterX, CenterY, 2.0f));
+            Normals.Add(FVector::UpVector);
+            UVs.Add(FVector2D(CenterX, CenterY) * UVScale);
+
+            for (int32 i = 0; i < NumRadialVerts; ++i)
+            {
+                float Angle = i * AngleStep;
+                float ShorelineJitter = FMath::FRandRange(0.85f, 1.15f);
+                float VertexRadius = CandidateRadius * ShorelineJitter;
+
+                float Vx = CenterX + FMath::Cos(Angle) * VertexRadius;
+                float Vy = CenterY + FMath::Sin(Angle) * VertexRadius;
+
+                Vertices.Add(FVector(Vx, Vy, 2.0f));
+                Normals.Add(FVector::UpVector);
+                UVs.Add(FVector2D(Vx, Vy) * UVScale);
+            }
+
+            for (int32 i = 1; i <= NumRadialVerts; ++i)
+            {
+                int32 NextIdx = (i % NumRadialVerts) + 1;
+                Triangles.Add(0);
+                Triangles.Add(NextIdx);
+                Triangles.Add(i);
+            }
+
+            WaterMesh->CreateMeshSection(LakeIdx, Vertices, Triangles, Normals, UVs, TArray<FColor>(), Tangents, false);
+            if (WaterMaterial)
+            {
+                WaterMesh->SetMaterial(LakeIdx, WaterMaterial);
+            }
+
+            break;
+        }
+
+        if (!bPlaced)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("GenerateLakes: Could not find valid spot for lake %d (road network too dense)."), LakeIdx);
+        }
+    }
+
+    return Footprints;
+}
+
+void ARoadNetworkVisualizer::ScatterFoliage(Network* RoadNetwork, const FBox2D& Bounds, const TArray<FVector4>& LakeFootprints)
+{
+    if (!RoadNetwork) return;
+
+    // Clear old instances
+    if (TreeHISM) TreeHISM->ClearInstances();
+    for (auto* Variant : TreeHISMVariants)
+    {
+        if (Variant) Variant->ClearInstances();
+    }
+    if (GrassHISM) GrassHISM->ClearInstances();
+
+    // Assign meshes and apply render distances for performance
+    auto SetupHISM = [this](UHierarchicalInstancedStaticMeshComponent* HISM, UStaticMesh* Mesh) {
+        if (HISM && Mesh)
+        {
+            HISM->SetStaticMesh(Mesh);
+            HISM->SetCullDistances(0, FoliageDrawDistance);
+            HISM->SetCastShadow(false);
+        }
+        };
+
+    SetupHISM(TreeHISM, TreeMesh);
+    SetupHISM(GrassHISM, GrassClumpMesh);
+    for (auto* Variant : TreeHISMVariants)
+    {
+        if (Variant)
+        {
+            Variant->SetCullDistances(0, FoliageDrawDistance);
+            Variant->SetCastShadow(false);
+        }
+    }
+
+    // --- Fast occupancy grid setup -------------------------------------------
+    const int32 MaxGridDimension = 1024;
+    const float RawSpacingX = (Bounds.Max.X - Bounds.Min.X) / MaxGridDimension;
+    const float RawSpacingY = (Bounds.Max.Y - Bounds.Min.Y) / MaxGridDimension;
+    const float Step = FMath::Max3(FMath::Max(50.0f, FoliageSpacing), RawSpacingX, RawSpacingY);
+
+    int32 NumCols = FMath::CeilToInt((Bounds.Max.X - Bounds.Min.X) / Step) + 1;
+    int32 NumRows = FMath::CeilToInt((Bounds.Max.Y - Bounds.Min.Y) / Step) + 1;
+    if (NumCols <= 0 || NumRows <= 0) return;
+
+    UE_LOG(LogTemp, Warning, TEXT("ScatterFoliage grid: %d x %d = %lld cells, Step=%.1f"),
+        NumCols, NumRows, (int64)NumCols * (int64)NumRows, Step);
+
+    TArray<bool> RoadOccupancyGrid;
+    RoadOccupancyGrid.Init(false, NumCols * NumRows);
+
+    // Stamp roads/intersections onto the grid ONCE, instead of scanning the
+    // whole network per candidate point. Clearance radius is lane-aware so it
+    // matches the actual pavement footprint (offset by MedianGap + FullWidth
+    // in AddSeg), not just a flat distance from the centerline.
+    auto StampCircle = [&](const FVector2D& Center, float Radius)
+        {
+            const float RadiusSq = Radius * Radius;
+            int32 MinCol = FMath::Clamp(FMath::FloorToInt((Center.X - Radius - Bounds.Min.X) / Step), 0, NumCols - 1);
+            int32 MaxCol = FMath::Clamp(FMath::FloorToInt((Center.X + Radius - Bounds.Min.X) / Step), 0, NumCols - 1);
+            int32 MinRow = FMath::Clamp(FMath::FloorToInt((Center.Y - Radius - Bounds.Min.Y) / Step), 0, NumRows - 1);
+            int32 MaxRow = FMath::Clamp(FMath::FloorToInt((Center.Y + Radius - Bounds.Min.Y) / Step), 0, NumRows - 1);
+
+            for (int32 r = MinRow; r <= MaxRow; ++r)
+                for (int32 c = MinCol; c <= MaxCol; ++c)
+                {
+                    FVector2D CellPos(Bounds.Min.X + c * Step, Bounds.Min.Y + r * Step);
+                    if (FVector2D::DistSquared(CellPos, Center) <= RadiusSq)
+                        RoadOccupancyGrid[r * NumCols + c] = true;
+                }
+        };
+
+    auto EdgeClearanceRadius = [&](int32 Lanes) -> float
+        {
+            const int32 SafeLanes = FMath::Max(1, Lanes);
+            return MedianGapCm + (SafeLanes * 350.0f) + RoadClearanceDistance;
+        };
+
+    auto StampSegment = [&](const FVector2D& SegStart, const FVector2D& SegEnd, float Radius)
+        {
+            const float RadiusSq = Radius * Radius;
+            float MinX = FMath::Min(SegStart.X, SegEnd.X) - Radius;
+            float MaxX = FMath::Max(SegStart.X, SegEnd.X) + Radius;
+            float MinY = FMath::Min(SegStart.Y, SegEnd.Y) - Radius;
+            float MaxY = FMath::Max(SegStart.Y, SegEnd.Y) + Radius;
+
+            int32 MinCol = FMath::Clamp(FMath::FloorToInt((MinX - Bounds.Min.X) / Step), 0, NumCols - 1);
+            int32 MaxCol = FMath::Clamp(FMath::FloorToInt((MaxX - Bounds.Min.X) / Step), 0, NumCols - 1);
+            int32 MinRow = FMath::Clamp(FMath::FloorToInt((MinY - Bounds.Min.Y) / Step), 0, NumRows - 1);
+            int32 MaxRow = FMath::Clamp(FMath::FloorToInt((MaxY - Bounds.Min.Y) / Step), 0, NumRows - 1);
+
+            for (int32 r = MinRow; r <= MaxRow; ++r)
+                for (int32 c = MinCol; c <= MaxCol; ++c)
+                {
+                    FVector2D CellPos(Bounds.Min.X + c * Step, Bounds.Min.Y + r * Step);
+                    float DistSq = FMath::PointDistToSegmentSquared(
+                        FVector(CellPos, 0.0f), FVector(SegStart, 0.0f), FVector(SegEnd, 0.0f));
+                    if (DistSq <= RadiusSq)
+                        RoadOccupancyGrid[r * NumCols + c] = true;
+                }
+        };
+
+    for (const auto& Pair : RoadNetwork->getNodes())
+    {
+        const Node& N = Pair.second;
+        const FVector* StartLocPtr = CachedNodeLocations.Find(N.getId());
+        if (!StartLocPtr) continue;
+        FVector2D Start2D(StartLocPtr->X, StartLocPtr->Y);
+
+        int32 MaxLanesAtNode = 1;
+        for (const Road& E : N.outgoingEdges)
+        {
+            MaxLanesAtNode = FMath::Max(MaxLanesAtNode, FMath::Max(1, E.getLanes()));
+        }
+
+        if (RoadIntersectionUtil::IsIntersectionNode(N))
+        {
+            StampCircle(Start2D, EdgeClearanceRadius(MaxLanesAtNode));
+        }
+
+        for (const Road& E : N.outgoingEdges)
+        {
+            const FVector* EndLocPtr = CachedNodeLocations.Find(E.getDest());
+            if (!EndLocPtr) continue;
+            FVector2D End2D(EndLocPtr->X, EndLocPtr->Y);
+
+            const float Radius = EdgeClearanceRadius(E.getLanes());
+
+            if (E.hasCurveGeometry())
+            {
+                const std::vector<RoadGeomPoint>& Geom = E.getGeometry();
+                for (size_t i = 0; i < Geom.size() - 1; i++)
+                {
+                    FVector2D SegStart((Geom[i].x - OriginOffsetX) * 100.0, (Geom[i].y - OriginOffsetY) * 100.0);
+                    FVector2D SegEnd((Geom[i + 1].x - OriginOffsetX) * 100.0, (Geom[i + 1].y - OriginOffsetY) * 100.0);
+                    StampSegment(SegStart, SegEnd, Radius);
+                }
+            }
+            else
+            {
+                StampSegment(Start2D, End2D, Radius);
+            }
+        }
+    }
+
+    // --- Populate using the grid (O(1) road check per cell) -----------------
+    TArray<FTransform> TreeTransforms;
+    TArray<FTransform> GrassTransforms;
+    TMap<UHierarchicalInstancedStaticMeshComponent*, TArray<FTransform>> VariantTransforms;
+
+    for (int32 c = 0; c < NumCols; ++c)
+    {
+        float X = Bounds.Min.X + c * Step;
+        if (X >= Bounds.Max.X) break;
+
+        for (int32 r = 0; r < NumRows; ++r)
+        {
+            float Y = Bounds.Min.Y + r * Step;
+            if (Y >= Bounds.Max.Y) break;
+
+            float JitterX = FMath::FRandRange(-Step * 0.4f, Step * 0.4f);
+            float JitterY = FMath::FRandRange(-Step * 0.4f, Step * 0.4f);
+            FVector2D CandidatePoint(X + JitterX, Y + JitterY);
+
+            // Re-check occupancy at the JITTERED position, not the pre-jitter
+            // cell center -- otherwise a point that passed the check can still
+            // drift back onto the road.
+            int32 CheckCol = FMath::Clamp(FMath::FloorToInt((CandidatePoint.X - Bounds.Min.X) / Step), 0, NumCols - 1);
+            int32 CheckRow = FMath::Clamp(FMath::FloorToInt((CandidatePoint.Y - Bounds.Min.Y) / Step), 0, NumRows - 1);
+            if (RoadOccupancyGrid[CheckRow * NumCols + CheckCol]) continue;
+
+            bool bInLake = false;
+            for (const FVector4& Lake : LakeFootprints)
+            {
+                FVector2D LakeCenter(Lake.X, Lake.Y);
+                float LakeRadius = Lake.Z;
+                if (FVector2D::DistSquared(CandidatePoint, LakeCenter) < FMath::Square(LakeRadius + 150.0f))
+                {
+                    bInLake = true;
+                    break;
+                }
+            }
+            if (bInLake) continue;
+
+            float SpawnRoll = FMath::FRand();
+            FVector SpawnLoc(CandidatePoint.X, CandidatePoint.Y, 5.0f);
+
+            if (SpawnRoll < 0.25f) // Tree Spawn Rate
+            {
+                UHierarchicalInstancedStaticMeshComponent* SelectedTreeHISM = TreeHISM;
+                if (TreeHISMVariants.Num() > 0)
+                {
+                    int32 Index = FMath::RandRange(-1, TreeHISMVariants.Num() - 1);
+                    if (Index >= 0 && TreeHISMVariants[Index] != nullptr)
+                    {
+                        SelectedTreeHISM = TreeHISMVariants[Index];
+                    }
+                }
+
+                if (SelectedTreeHISM && SelectedTreeHISM->GetStaticMesh())
+                {
+                    float Scale = FMath::FRandRange(0.7f, 1.3f) * TreeScaleMultiplier;
+                    float Yaw = FMath::FRandRange(0.0f, 360.0f);
+                    FTransform Transform(FRotator(0.0f, Yaw, 0.0f), SpawnLoc, FVector(Scale));
+
+                    if (SelectedTreeHISM == TreeHISM)
+                    {
+                        TreeTransforms.Add(Transform);
+                    }
+                    else
+                    {
+                        VariantTransforms.FindOrAdd(SelectedTreeHISM).Add(Transform);
+                    }
+                }
+            }
+            else if (SpawnRoll < 0.40f) // Grass Spawn Rate
+            {
+                if (GrassHISM && GrassHISM->GetStaticMesh())
+                {
+                    float Scale = FMath::FRandRange(0.5f, 1.2f) * GrassScaleMultiplier;
+                    float Yaw = FMath::FRandRange(0.0f, 360.0f);
+                    FTransform Transform(FRotator(0.0f, Yaw, 0.0f), SpawnLoc, FVector(Scale));
+                    GrassTransforms.Add(Transform);
+                }
+            }
+            // remaining chance = empty clearing
+        }
+    }
+
+    UE_LOG(LogTemp, Warning, TEXT("ScatterFoliage: adding %d trees, %d grass instances in bulk..."),
+        TreeTransforms.Num(), GrassTransforms.Num());
+
+    if (TreeHISM && TreeTransforms.Num() > 0)
+    {
+        TreeHISM->AddInstances(TreeTransforms, false);
+    }
+    if (GrassHISM && GrassTransforms.Num() > 0)
+    {
+        GrassHISM->AddInstances(GrassTransforms, false);
+    }
+    for (auto& Pair : VariantTransforms)
+    {
+        if (Pair.Key && Pair.Value.Num() > 0)
+        {
+            Pair.Key->AddInstances(Pair.Value, false);
+        }
+    }
+
+    UE_LOG(LogTemp, Warning, TEXT("ScatterFoliage: done."));
+}
+
+// Fast, pure 2D mathematical projection helper 
+static float PointToSegmentDistance2DSquared(const FVector2D& Point, const FVector2D& Start, const FVector2D& End)
+{
+    const float SegLengthSq = FVector2D::DistSquared(Start, End);
+    if (SegLengthSq < 1e-4f)
+    {
+        return FVector2D::DistSquared(Point, Start);
+    }
+
+    // Projection factor t, clamped to [0, 1]
+    const float t = FMath::Clamp(FVector2D::DotProduct(Point - Start, End - Start) / SegLengthSq, 0.0f, 1.0f);
+    const FVector2D Projection = Start + t * (End - Start);
+    return FVector2D::DistSquared(Point, Projection);
+}
+
+bool ARoadNetworkVisualizer::IsNearAnyRoad(Network* RoadNetwork, const FVector2D& Point, float Distance) const
+{
+    if (!RoadNetwork) return false;
+
+    for (const auto& NodePair : RoadNetwork->getNodes())
+    {
+        const Node& OriginNode = NodePair.second;
+        const FVector2D StartLoc((OriginNode.getX() - OriginOffsetX) * 100.0, (OriginNode.getY() - OriginOffsetY) * 100.0);
+
+        for (const Road& Edge : OriginNode.outgoingEdges)
+        {
+            const Node* DestNode = RoadNetwork->getNode(Edge.getDest());
+            if (!DestNode) continue;
+
+            const FVector2D EndLoc((DestNode->getX() - OriginOffsetX) * 100.0, (DestNode->getY() - OriginOffsetY) * 100.0);
+
+            const int32 SafeLanes = FMath::Max(1, Edge.getLanes());
+            // Total clearance = Median Offset + Full Road Width + User Clearance Buffer
+            const float EdgeClearance = MedianGapCm + (SafeLanes * 350.0f) + Distance;
+            const float DistSqLimit = FMath::Square(EdgeClearance);
+
+            if (Edge.hasCurveGeometry())
+            {
+                const auto& Geom = Edge.getGeometry();
+                if (Geom.size() >= 2)
+                {
+                    for (size_t i = 0; i < Geom.size() - 1; ++i)
+                    {
+                        const FVector2D P0((Geom[i].x - OriginOffsetX) * 100.0, (Geom[i].y - OriginOffsetY) * 100.0);
+                        const FVector2D P1((Geom[i + 1].x - OriginOffsetX) * 100.0, (Geom[i + 1].y - OriginOffsetY) * 100.0);
+
+                        // Fast AABB check using Unreal's FBox2D
+                        FBox2D SegBox(ForceInit);
+                        SegBox += P0;
+                        SegBox += P1;
+                        SegBox = SegBox.ExpandBy(EdgeClearance);
+
+                        if (!SegBox.IsInside(Point))
+                        {
+                            continue;
+                        }
+
+                        if (PointToSegmentDistance2DSquared(Point, P0, P1) < DistSqLimit)
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
+            else
+            {
+                FBox2D EdgeBox(ForceInit);
+                EdgeBox += StartLoc;
+                EdgeBox += EndLoc;
+                EdgeBox = EdgeBox.ExpandBy(EdgeClearance);
+
+                if (EdgeBox.IsInside(Point))
+                {
+                    if (PointToSegmentDistance2DSquared(Point, StartLoc, EndLoc) < DistSqLimit)
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    return false;
+}
+
+void ARoadNetworkVisualizer::BuildFlatMeshSection(UProceduralMeshComponent* TargetMesh, const FBox2D& Bounds, float ZHeight, int32 Subdivisions)
+{
+    if (!TargetMesh) return;
+
+    TArray<FVector> Vertices;
+    TArray<int32> Triangles;
+    TArray<FVector> Normals;
+    TArray<FVector2D> UVs;
+    TArray<FProcMeshTangent> Tangents;
+
+    Vertices.Add(FVector(Bounds.Min.X, Bounds.Min.Y, ZHeight));
+    Vertices.Add(FVector(Bounds.Max.X, Bounds.Min.Y, ZHeight));
+    Vertices.Add(FVector(Bounds.Max.X, Bounds.Max.Y, ZHeight));
+    Vertices.Add(FVector(Bounds.Min.X, Bounds.Max.Y, ZHeight));
+
+    Triangles.Add(0); Triangles.Add(2); Triangles.Add(1);
+    Triangles.Add(0); Triangles.Add(3); Triangles.Add(2);
+
+    Normals.Add(FVector::UpVector);
+    Normals.Add(FVector::UpVector);
+    Normals.Add(FVector::UpVector);
+    Normals.Add(FVector::UpVector);
+
+    // Dynamic UV tiling based on world coords to prevent texture stretching
+    float UVScale = 0.001f; // 1 UV tile per 10 meters
+    UVs.Add(FVector2D(Bounds.Min.X * UVScale, Bounds.Min.Y * UVScale));
+    UVs.Add(FVector2D(Bounds.Max.X * UVScale, Bounds.Min.Y * UVScale));
+    UVs.Add(FVector2D(Bounds.Max.X * UVScale, Bounds.Max.Y * UVScale));
+    UVs.Add(FVector2D(Bounds.Min.X * UVScale, Bounds.Max.Y * UVScale));
+
+    TargetMesh->CreateMeshSection(0, Vertices, Triangles, Normals, UVs, TArray<FColor>(), Tangents, false);
 }

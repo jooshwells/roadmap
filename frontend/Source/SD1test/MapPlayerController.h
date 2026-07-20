@@ -25,6 +25,10 @@ public:
 	UFUNCTION(BlueprintImplementableEvent, Category = "UI")
 	void OnVehicleClickedUI(FVehicleIDMStats VehicleStats);
 
+	/** Event fired when a road segment is successfully clicked. Implemented in Blueprints. */
+	UFUNCTION(BlueprintImplementableEvent, Category = "Selection UI")
+	void OnRoadClickedUI(const FString& RoadName, int64 EdgeId);
+
 protected:
 	// Runs when the game starts
 	virtual void BeginPlay() override;

@@ -4,8 +4,9 @@
 #include <cmath>     // For std::pow
 
 // Added edgeId (eId) to the initializer list
-Road::Road(uint64_t eId, uint64_t dest, double dist, double sL, int l)
-    : edgeId(eId), destId(dest), length(dist), speedLimit(sL), lanes(l) {}
+Road::Road(uint64_t eId, uint64_t dest, double le, double sl, int l, const std::string& n)
+    : edgeId(eId), destId(dest), length(le), speedLimit(sl), lanes(l), name(n)
+{}
 
 Road::~Road() {}
 

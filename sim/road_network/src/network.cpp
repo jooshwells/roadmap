@@ -47,11 +47,11 @@ Node* Network::getRandomNode(std::mt19937& rng)
 }
 
 void Network::addDirectedEdge(uint64_t fromId, uint64_t toId, double dist, double speedLimit, int lanes,
-                              std::vector<RoadGeomPoint> geometry)
+                              std::vector<RoadGeomPoint> geometry, const std::string& name)
 {
     if (nodes.find(fromId) != nodes.end() && nodes.find(toId) != nodes.end())
     {
-        Road& edge = nodes[fromId].outgoingEdges.emplace_back(nextEdgeId++, toId, dist, speedLimit, lanes);
+        Road& edge = nodes[fromId].outgoingEdges.emplace_back(nextEdgeId++, toId, dist, speedLimit, lanes, name);
 
         nodes[toId].incomingEdgeNodeIds.push_back(fromId);
 

@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <vector>
+#include <string>
 
 // One vertex of an edge's real-world centerline polyline (OSM geometry_xy),
 // in the same projected map coordinates as Node x/y (y already sign-flipped).
@@ -22,11 +23,12 @@ class Road {
         inline double getSpeedLimit() const       { return speedLimit; }
         inline int getLanes() const               { return lanes; }
         inline double getLength() const           { return length; }
+        inline const std::string& getName() const { return name; }
 
         // Setters
         inline void setSpeedLimit(double sL) { speedLimit = sL; }
         inline void setLanes(int l)          { lanes = l; }
-
+        inline void setName(const std::string& n) { name = n; }
         // Curved centerline (empty for edges without OSM shape data, e.g.
         // runtime-created roads -- consumers fall back to a straight line).
         // Points are oriented origin -> dest and cumulative arc lengths are
@@ -50,7 +52,7 @@ class Road {
         double getDynamicCost() const;
 
         // Updated constructor signature
-        Road(uint64_t eId, uint64_t dest, double le, double sl, int l); 
+        Road(uint64_t eId, uint64_t dest, double le, double sl, int l, const std::string& n = "");
         ~Road();
 
     private:
@@ -59,6 +61,7 @@ class Road {
         double length;
         double speedLimit;
         int lanes;
+        std::string name; // NEW: The name of the road segment
         int currentVolume = 0;
         std::vector<RoadGeomPoint> geometry; // empty = straight line
         double geometryLength = 0.0;         // total polyline arc length (m)

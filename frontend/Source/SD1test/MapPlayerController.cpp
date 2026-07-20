@@ -98,10 +98,19 @@ void AMapPlayerController::OnLeftMouseClick()
 
 				if (HitInstanceIndex != INDEX_NONE)
 				{
+					// Get the backend edge ID
 					int64 EdgeId = ClickedVisualizer->GetEdgeIdFromHitItem(HitInstanceIndex);
 					UE_LOG(LogTemp, Warning, TEXT("SUCCESS! Edge ID: %lld"), EdgeId);
 
-					// Do something //				
+					// =======================================================
+					// GET THE ROAD NAME DIRECTLY FROM THE VISUALIZER
+					// =======================================================
+					FString RoadName = ClickedVisualizer->GetRoadNameFromHitItem(HitInstanceIndex);
+					UE_LOG(LogTemp, Warning, TEXT("Road Name Resolved: %s"), *RoadName);
+
+					// Send both the name and the ID to your UI Widget event!
+					OnRoadClickedUI(RoadName, EdgeId);
+					// =======================================================
 				}
 				else
 				{
