@@ -127,27 +127,37 @@ std::vector<TrafficLightRenderState> TrafficSimulation::GetTrafficLightRenderSta
         s.nodeId = pair.first;
 
         // Phase semantics live in PhysicsProcessor::updateIntersections:
-        // axis 0 runs on phases 0-3 (protected left, then straight), axis 1
-        // on phases 5-8; 4 and 9 are all-red clearance.
+        // axis 0 runs on phases 0-3, axis 1 on 5-8; 4 and 9 are all-red
+        // clearance. On a conventional axis both directions share every
+        // phase (0/5 shows green during the protected-left arrow -- the
+        // fixture has no arrow lamp). On a split-phased axis 0/5 is leg 0's
+        // solo green and 2/7 leg 1's, so opposing fixtures differ.
         const int phase = st.currentPhase;
-        auto axisColor = [phase](int axis) -> uint8_t
+        auto legColor = [phase](int axis, bool bSplit, int leg) -> uint8_t
         {
-            const int greenA = (axis == 0) ? 0 : 5; // protected left green
-            const int greenB = (axis == 0) ? 2 : 7; // straight/right green
-            const int yellowA = (axis == 0) ? 1 : 6;
-            const int yellowB = (axis == 0) ? 3 : 8;
+            const int greenA = (axis == 0) ? 0 : 5;
+            const int greenB = (axis == 0) ? 2 : 7;
+            if (bSplit)
+            {
+                const int green = (leg == 0) ? greenA : greenB;
+                if (phase == green) return TrafficLightRenderState::GREEN;
+                if (phase == green + 1) return TrafficLightRenderState::YELLOW;
+                return TrafficLightRenderState::RED;
+            }
             if (phase == greenA || phase == greenB) return TrafficLightRenderState::GREEN;
-            if (phase == yellowA || phase == yellowB) return TrafficLightRenderState::YELLOW;
+            if (phase == greenA + 1 || phase == greenB + 1) return TrafficLightRenderState::YELLOW;
             return TrafficLightRenderState::RED;
         };
 
         for (int axis = 0; axis < 2; axis++)
         {
-            s.axisColor[axis] = axisColor(axis);
-            s.axisOrigins[axis].reserve(st.axisEdges[axis].size());
-            for (Road* edge : st.axisEdges[axis])
+            for (int leg = 0; leg < 2; leg++)
             {
-                if (edge) s.axisOrigins[axis].push_back(edge->getOriginId());
+                const uint8_t color = legColor(axis, st.axisSplit[axis], leg);
+                for (Road* edge : st.axisLegEdges[axis][leg])
+                {
+                    if (edge) s.approaches.push_back({ edge->getOriginId(), color });
+                }
             }
         }
 
@@ -265,26 +275,27 @@ std::vector<VehicleRenderState> TrafficSimulation::GetVehicleRenderStates()
         return a + d * s;
     };
 
-    // Lane a movement through node 'via' lands in on edge 'onto': right turns
-    // enter the rightmost lane, left turns the leftmost, through keeps the
-    // car's lane. Must match the physics snap at edge transition (PASS 2 in
-    // PhysicsProcessor::update) or the blend endpoint pops sideways the frame
-    // the car changes edges.
-    auto MovementLane = [&](Node* from, Node* via, Node* to, const Road* onto, float throughLane) -> float
+    // Lane a movement through node 'via' lands in on edge 'onto', departing
+    // 'fromEdge' in lane 'throughLane' -- the shared rank-aware rule from
+    // intersection_geometry.h (each of two side-by-side turn lanes feeds its
+    // own arrival lane). Must match the physics snap at edge transition
+    // (PASS 2 in PhysicsProcessor::update) or the blend endpoint pops
+    // sideways the frame the car changes edges.
+    auto MovementLane = [&](Node* from, Node* via, Node* to, const Road* fromEdge,
+                            const Road* onto, float throughLane) -> float
     {
-        switch (RoadIntersectionUtil::ClassifyTurn(
-            via->getX() - from->getX(), via->getY() - from->getY(),
-            to->getX() - via->getX(), to->getY() - via->getY()))
+        // Tangent-based to match the physics snap (getTurnDirectionAt, now
+        // tangent): a curved through must classify the same both sides or the
+        // blend endpoint pops sideways the frame the car changes edges.
+        RoadIntersectionUtil::TurnDir turn = RoadIntersectionUtil::ClassifyTurnAtNodeTangent(
+            orlandoMap, from->getId(), via->getId(), to->getId());
+        if (turn == RoadIntersectionUtil::TurnDir::Through)
         {
-            case RoadIntersectionUtil::TurnDir::Right:
-                return static_cast<float>(onto->getLanes() - 1);
-            case RoadIntersectionUtil::TurnDir::Left:
-                return 0.0f;
-            default:
-                break;
+            float maxLane = static_cast<float>(std::max(0, onto->getLanes() - 1));
+            return std::clamp(throughLane, 0.0f, maxLane);
         }
-        float maxLane = static_cast<float>(std::max(0, onto->getLanes() - 1));
-        return std::clamp(throughLane, 0.0f, maxLane);
+        return static_cast<float>(RoadIntersectionUtil::GetArrivalLane(
+            turn, static_cast<int>(std::lround(throughLane)), onto->getLanes(), fromEdge));
     };
 
     for (VehicleState* v : controller->getActiveVehicles())
@@ -348,7 +359,7 @@ std::vector<VehicleRenderState> TrafficSimulation::GetVehicleRenderStates()
                 float sbNextEnd   = RoadIntersectionUtil::GetNodeSetbackMeters(orlandoMap, *nC, MEDIAN_GAP_METERS);
                 RoadIntersectionUtil::ClampSetbacksToLength(static_cast<float>(next->getLength()), sbNextStart, sbNextEnd);
 
-                float nextLane = MovementLane(nA, nB, nC, next, lane);
+                float nextLane = MovementLane(nA, nB, nC, v->getCurrentEdge(), next, lane);
                 EdgePoint exitPt, entryPt;
                 float denom = sbEnd + sbNextStart;
                 if (denom > 0.001f &&
@@ -376,10 +387,24 @@ std::vector<VehicleRenderState> TrafficSimulation::GetVehicleRenderStates()
                 float sbPrevEnd   = RoadIntersectionUtil::GetNodeSetbackMeters(orlandoMap, *nA, MEDIAN_GAP_METERS);
                 RoadIntersectionUtil::ClampSetbacksToLength(static_cast<float>(prev->getLength()), sbPrevStart, sbPrevEnd);
 
-                // Same movement rule as the physics snap: a turning car left
-                // the previous edge from the lane its turn departs from
-                // (rightmost for rights, leftmost for lefts).
-                float prevLane = MovementLane(nP, nA, nB, prev, lane);
+                // Same movement rule as the physics snap, inverted: the lane
+                // on the previous edge this car's turn departed from, given
+                // the (rank-mapped) lane it is now seated in.
+                RoadIntersectionUtil::TurnDir prevTurn =
+                    RoadIntersectionUtil::ClassifyTurnAtNodeTangent(
+                        orlandoMap, nP->getId(), nA->getId(), nB->getId());
+                float prevLane;
+                if (prevTurn == RoadIntersectionUtil::TurnDir::Through)
+                {
+                    prevLane = std::clamp(lane, 0.0f,
+                        static_cast<float>(std::max(0, prev->getLanes() - 1)));
+                }
+                else
+                {
+                    prevLane = static_cast<float>(RoadIntersectionUtil::GetDepartureLane(
+                        prevTurn, static_cast<int>(std::lround(lane)),
+                        v->getCurrentEdge()->getLanes(), prev));
+                }
                 EdgePoint exitPt, entryPt;
                 float denom = sbPrevEnd + sbStart;
                 if (sbPrevEnd + pos < 0.0f)

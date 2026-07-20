@@ -39,6 +39,13 @@ struct FVehicleIDMStats
 	UPROPERTY(BlueprintReadOnly, Category = "Vehicle Stats") float SafeBrakePower = 0.0f;
 	UPROPERTY(BlueprintReadOnly, Category = "Vehicle Stats") float SafeTimeHeadway = 0.0f;
 
+	// Driver personality: archetype name ("Aggressive" / "Average" /
+	// "Cautious"), cruise speed as a multiple of the road limit, and seconds
+	// of lag before launching from a stop. Fixed for the vehicle's lifetime.
+	UPROPERTY(BlueprintReadOnly, Category = "Vehicle Stats") FString ProfileName;
+	UPROPERTY(BlueprintReadOnly, Category = "Vehicle Stats") float SpeedFactor = 1.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Vehicle Stats") float ReactionTime = 0.0f;
+
 	// Live telemetry -- changes every sim step, so the stats panel re-polls
 	// these while open (GetVehicleStatsByID) instead of showing a snapshot.
 	UPROPERTY(BlueprintReadOnly, Category = "Vehicle Stats") float CurrentAcceleration = 0.0f; // m/s^2, negative while braking

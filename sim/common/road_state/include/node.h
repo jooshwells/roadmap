@@ -48,6 +48,17 @@ class Node
         // road edits; defaulted ones are recomputed from the new topology.
         bool controlFromData = false;
 
+        // True when 'type' was raised to TRAFFIC_LIGHT by
+        // Network::harmonizeClusteredControls -- this node's own warrant did
+        // not signalize it, but it shares one physical junction (a cluster of
+        // nodes joined by short internal legs) with a node that IS a signal,
+        // so it joins the coordinated plan instead of yielding into a road the
+        // light already meters. Only ever set on defaulted nodes, and kept
+        // distinct from a genuine signal so refreshTrafficControlAt can revert
+        // it to its base control and re-derive the promotion from scratch --
+        // one promotion never seeds another.
+        bool promotedToSignal = false;
+
         // updated constructor
         Node(std::uint64_t initId, double iLon, double iLat, double x, double y, const std::string& typeStr);
         

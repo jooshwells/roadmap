@@ -135,10 +135,12 @@ public:
     float TaperAlignmentDot = 0.7f;
 
     // Largest lane-count difference that is treated as a taper. Real lane drops/
-    // gains change by 1 (rarely 2) lanes; a bigger jump is a junction, not a taper,
+    // gains change by a single lane; a bigger jump is a junction, not a taper,
     // and is left abrupt. Prevents e.g. a 4-lane road tapering to a 1-lane ramp.
+    // Keep in sync with RoadIntersectionUtil::TaperMaxLaneDeltaDefault so the
+    // drawn pavement and the vehicle clamp taper by the same amount.
     UPROPERTY(EditAnywhere, Category = "Road Visuals|Taper")
-    int32 TaperMaxLaneDelta = 2;
+    int32 TaperMaxLaneDelta = 1;
 
     // --- Elevated road dressing ----------------------------------------------
     // Elevated spans are flat HISM ribbons; without extra geometry they read as

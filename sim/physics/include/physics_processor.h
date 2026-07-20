@@ -37,6 +37,22 @@ struct IntersectionState {
     // [0] = N/S, [1] = E/W
     std::vector<Road*> axisEdges[2];
 
+    // Axis approaches grouped by direction of travel: [axis][0] holds the
+    // legs roughly aligned with the axis reference direction (the baseline
+    // for axis 0, baseline+90 for axis 1), [axis][1] the opposing legs.
+    // Always populated; consumed by split phasing and per-approach lamp
+    // colors.
+    std::vector<Road*> axisLegEdges[2][2];
+
+    // Split ("solo") phasing: an axis whose approaches are all 1-2 lanes
+    // wide has no room for a left-turn pocket, so mirroring one green to
+    // both directions puts permissive lefts and opposing through traffic in
+    // the box together. A split axis instead serves each direction alone
+    // with every movement protected: phase 0/5 becomes the leg-0 solo green
+    // and phase 2/7 the leg-1 solo green (ring shape unchanged). Axes with a
+    // single leg (T stems, one-way pairs) are solo by construction.
+    bool axisSplit[2] = {false, false};
+
     // Multi-node junction coordination (see rebuildSignalClusters): every
     // light of one physical junction cluster mirrors the master light's
     // phase, so the perimeter nodes can never show conflicting greens into
@@ -133,6 +149,59 @@ class PhysicsProcessor
         // any perimeter node can call up its own green.
         bool clusterAxisHasDemand(Node* node, const IntersectionState& state, int axis);
         bool clusterLeftTurnDemand(Node* node, const IntersectionState& state, int axis);
+        // Per-direction demand for split-phased axes: leg 0 is the
+        // baseline-aligned direction, leg 1 the opposing one.
+        bool legHasDemand(Node* node, const IntersectionState& state, int axis, int leg);
+        bool clusterLegHasDemand(Node* node, const IntersectionState& state, int axis, int leg);
+        // Any car approaching (or nosing past) road's stop line into node --
+        // the shared sensor behind axisHasDemand and legHasDemand.
+        bool approachHasDemand(Road* road, Node* node);
+
+        // A clustered junction's perimeter lights each see only their own
+        // approaches (a divided road's two directions enter at different
+        // member nodes), so the split-phasing decision must pool the whole
+        // cluster; one member running solo phases while another mirrors
+        // conventional ones would put conflicting greens in the shared box.
+        // Runs after every full axis (re)build.
+        void syncClusterSplitPhasing();
+
+        // Seconds vhcl needs to fully clear destNode's junction box for its
+        // specific movement: path length through the box (internal cluster
+        // legs included) until the car's tail passes the exit-side boundary,
+        // covered accelerating from its current speed toward the movement's
+        // junction pacing. Gap acceptance adds this to its required gap so a
+        // granted car is fully across before conflicting traffic arrives.
+        float estimateCrossingSeconds(VehicleState* vhcl, Node* destNode);
+
+        // The movement at the end of the current edge doubles back to the
+        // node the car came from (A -> B -> A). The chord classifier cannot
+        // call this case -- an anti-parallel pair's cross product is
+        // numerical noise, splitting U-turns randomly between "left" and
+        // "right" -- so signal and gap logic ask topology instead.
+        bool isUpcomingUTurn(VehicleState* vhcl) const;
+
+        // Movement across the WHOLE junction box entered at the end of the
+        // current edge. At a multi-node cluster the immediate next hop is an
+        // internal leg that reads "through" while the actual turn happens
+        // mid-box (where nothing gates it), so the perimeter gate must
+        // classify from the approach direction to the first non-internal
+        // (box exit) edge. Plain single-node intersections fall back to the
+        // chord classifier unchanged. outUTurn is set for topological
+        // U-turns and for box paths that reverse direction; callers treat
+        // those as lefts with the box swept edge-to-edge.
+        std::string getUpcomingBoxMovement(VehicleState* vhcl, bool& outUTurn);
+        // getUpcomingBoxMovement generalized to any node path: the movement
+        // at route[i+1] entered from route[i], walking internal legs to the
+        // box exit. Lets the wrong-lane reroute classify a candidate tail
+        // with exactly the gate's rule.
+        std::string boxMovementOnRoute(const std::vector<uint64_t>& route, size_t i, bool& outUTurn);
+
+        // Dest node id of the first non-internal edge along vhcl's route
+        // from its next hop onward -- where the car re-emerges from the
+        // junction fabric (at a plain node: simply route[i+2]). 0 when the
+        // route ends first. Used to compare paths across a cluster, where
+        // route[i+2] alone is an internal node id.
+        uint64_t boxExitDestId(VehicleState* vhcl);
 
         bool canVehicleEnter(VehicleState* vhcl, Node* destNode);
         // Signal/right-of-way decision for destNode: traffic-light phase,

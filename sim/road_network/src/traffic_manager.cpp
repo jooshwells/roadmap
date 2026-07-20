@@ -112,10 +112,12 @@ bool TrafficManager::spawnRandomVehicle()
     // Abort spawn if the intersection is blocked
     if (!isSpawnClear) return false; 
 
-    // Jitter politeness per driver so some cars merge quickly and others
-    // drift over slowly (also weights their MOBIL incentive).
-    IDMParameters params = IDM_Profiles::getBasicDriverProfile();
-    params.politeness = std::clamp(params.politeness + politenessSpread(rng), 0.0f, 1.0f);
+    // Roll a driver personality (cautious / average / aggressive) and sample
+    // every IDM parameter from that archetype's range, so the population has
+    // real spread: tailgating speeders, textbook drivers, and slowpokes who
+    // ease away from every light.
+    const DriverType driverType = IDM_Profiles::rollDriverType(rng);
+    IDMParameters params = IDM_Profiles::sampleProfile(driverType, rng);
 
     // Tune the spawn to the road being entered instead of materializing at a
     // hardcoded 30 m/s in lane 0: enter at half the first edge's speed limit
@@ -143,7 +145,8 @@ bool TrafficManager::spawnRandomVehicle()
             if (n1 && n2)
             {
                 const RoadIntersectionUtil::TurnDir firstTurn =
-                    RoadIntersectionUtil::ClassifyTurnAtNode(*origin, *n1, *n2);
+                    RoadIntersectionUtil::ClassifyTurnAtNodeTangent(
+                        network, origin->getId(), n1->getId(), n2->getId());
                 const uint8_t movement =
                       (firstTurn == RoadIntersectionUtil::TurnDir::Left)  ? TurnLane::Left
                     : (firstTurn == RoadIntersectionUtil::TurnDir::Right) ? TurnLane::Right

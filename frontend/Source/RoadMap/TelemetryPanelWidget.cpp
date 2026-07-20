@@ -280,6 +280,8 @@ FReply UTelemetryPanelWidget::NativeOnMouseWheel(
     const FPointerEvent& InMouseEvent
 )
 {
+    using namespace TelemetryPalette;
+
     const FVector2D ScreenPosition = InMouseEvent.GetScreenSpacePosition();
     if (!IsPointerOverHeatmap(ScreenPosition))
     {
@@ -300,6 +302,8 @@ FReply UTelemetryPanelWidget::NativeOnMouseButtonDown(
     const FPointerEvent& InMouseEvent
 )
 {
+    using namespace TelemetryPalette;
+
     if (InMouseEvent.GetEffectingButton() != EKeys::LeftMouseButton)
     {
         return Super::NativeOnMouseButtonDown(InGeometry, InMouseEvent);
@@ -1476,6 +1480,8 @@ void UTelemetryPanelWidget::RefreshComparisonOptions(int32 PreferredRunIndex)
 // Turns the comparison result into simple cards and road-change rows.
 void UTelemetryPanelWidget::RenderComparisonResult(const FTelemetryRunComparisonResult& Result)
 {
+    using namespace TelemetryPalette;
+
     if (!ComparisonResultsBox)
     {
         return;
@@ -1783,6 +1789,8 @@ void UTelemetryPanelWidget::SetHeatmapZoom(
     const FVector2D* CursorScreenPosition
 )
 {
+    using namespace TelemetryPalette;
+
     const float ClampedZoom = FMath::Clamp(
         NewZoom,
         MinimumHeatmapZoom,
@@ -1812,6 +1820,8 @@ void UTelemetryPanelWidget::SetHeatmapZoom(
 // Returns the map to its starting size and center position.
 void UTelemetryPanelWidget::ResetHeatmapView()
 {
+    using namespace TelemetryPalette;
+
     bIsHeatmapPanning = false;
     bHeatmapPointerPressed = false;
     bHeatmapDragMoved = false;
@@ -1824,6 +1834,8 @@ void UTelemetryPanelWidget::ResetHeatmapView()
 // Limits map movement so the user cannot drag it completely off screen.
 FVector2D UTelemetryPanelWidget::ClampHeatmapPan(const FVector2D& RequestedPan) const
 {
+    using namespace TelemetryPalette;
+
     if (!HeatmapViewport || HeatmapZoom <= MinimumHeatmapZoom)
     {
         return FVector2D::ZeroVector;
@@ -2501,6 +2513,8 @@ void UTelemetryPanelWidget::FinishRunComparison(
     const FString& ErrorMessage
 )
 {
+    using namespace TelemetryPalette;
+
     SetTelemetryTaskRunning(false);
     if (!bSucceeded)
     {
@@ -2614,6 +2628,8 @@ void UTelemetryPanelWidget::HandleViewComparisonHeatmapsClicked()
 // Switches the viewer between baseline, second-run, and change maps.
 void UTelemetryPanelWidget::ShowComparisonHeatmapMode(int32 ModeIndex)
 {
+    using namespace TelemetryPalette;
+
     FString Path;
     FString ModeLabel;
     FString Metric = SelectedComparisonMetric;
@@ -3091,6 +3107,8 @@ bool UTelemetryPanelWidget::OpenHeatmapPath(
     const FString& Metric
 )
 {
+    using namespace TelemetryPalette;
+
     // The SVG keeps roads and labels sharp. The JSON beside it gives Unreal the
     // title, legend, summary values, and road shapes used for mouse interaction.
     const FString SvgPath = HeatmapPath;
@@ -3219,12 +3237,16 @@ void UTelemetryPanelWidget::HandleCloseHeatmapClicked()
 // Moves the map one zoom step closer.
 void UTelemetryPanelWidget::HandleZoomInClicked()
 {
+    using namespace TelemetryPalette;
+
     SetHeatmapZoom(HeatmapZoom + HeatmapZoomStep);
 }
 
 // Moves the map one zoom step farther away.
 void UTelemetryPanelWidget::HandleZoomOutClicked()
 {
+    using namespace TelemetryPalette;
+
     SetHeatmapZoom(HeatmapZoom - HeatmapZoomStep);
 }
 

@@ -98,6 +98,19 @@ class Network {
         void applyDefaultTrafficControls();
         void calculateIntersectionPriorities();
 
+        // Reconcile control types across each physical junction. OSM maps a
+        // divided-road signal as 2-4 nodes joined by short internal legs; the
+        // geometric signal warrant in applyDefaultControlAt only fires on the
+        // corners that see the full crossing, so the median-tee corners
+        // default to a yield beside their signalized siblings. A junction that
+        // runs half-signal, half-yield stalls the yield approaches -- they
+        // hunt for a gap across an arterial the light is already metering. If
+        // any node of a junction cluster is a signal, promote every defaulted
+        // controlled node in it to a signal so the whole box runs the one
+        // coordinated plan the physics builds for the cluster. Run after
+        // applyDefaultTrafficControls + calculateIntersectionPriorities.
+        void harmonizeClusteredControls();
+
         // Re-derives one node's traffic control after a runtime topology
         // change (road drawn, edge split/deleted, lanes/speed edited), giving
         // it exactly what the load-time defaulting pipeline would: defaulted
@@ -130,6 +143,26 @@ class Network {
         // classification can never disagree.
         void applyDefaultControlAt(Node& node);
         void assignYieldPriorityAt(Node& node);
+
+        // One node's control from its own warrant/data ONLY (no cluster
+        // promotion): undoes any prior promotion, then rebuilds the defaulted
+        // type from topology (or keeps the explicit dataset control) and
+        // recomputes its yield priority. Shared by the harmonize pass and
+        // refreshTrafficControlAt so a promotion is always re-derived from
+        // base types, never compounded.
+        void recomputeBaseControlAt(Node& node);
+
+        // Connected component of startId through internal junction legs (short
+        // controlled-to-controlled edges) -- the nodes making up one physical
+        // junction. Same leg test the physics signal-cluster union-find uses,
+        // so both agree on junction boundaries. Undirected: incoming and
+        // outgoing legs alike.
+        std::vector<uint64_t> collectJunctionCluster(uint64_t startId);
+
+        // If any member of cluster is a genuine (non-promoted) signal, raise
+        // every defaulted controlled member to TRAFFIC_LIGHT. No-op for a
+        // cluster with no signal, or a lone node.
+        void promoteClusterIfSignalized(const std::vector<uint64_t>& cluster);
         
 };
 

@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <unordered_set>
 
 namespace RoadIntersectionUtil
@@ -48,6 +49,50 @@ namespace RoadIntersectionUtil
         return sinTheta > 0.0 ? TurnDir::Right : TurnDir::Left;
     }
 
+    // --- Relative through-continuation recovery ------------------------
+    // The strict cone above calls anything past ~20 degrees a turn. But a
+    // gently CURVED main road can deflect further than that at a junction --
+    // its endpoint tangents are single polyline chords whose angles compound
+    // across the node -- while still being the road's continuation, not a
+    // turn. When the cone finds no through at an approach, its straightest
+    // FORWARD exit is promoted to Through if it sits within this wider ceiling
+    // AND clearly beats the next-straightest forward exit. So a curved arterial
+    // keeps its through, while a symmetric Y-fork (two similar shallow angles)
+    // still resolves to two turns. Shared by the lane-turn inference
+    // (assignInferredTurnLanes) and the physics/route tangent classifier
+    // (ClassifyTurnAtNodeTangent) so the lane a car is guided into and the
+    // movement it is judged to make can never disagree. Tunable: raise the
+    // ceiling to catch sharper curves, raise the margin to be stricter about
+    // what counts as a clear continuation.
+    constexpr double RelativeThroughCeilingRad     = 0.698; // 40 deg
+    constexpr double RelativeThroughClearMarginRad = 0.262; // 15 deg
+
+    // Signed deflection (radians) of the turn from heading v1 to heading v2:
+    // magnitude is the turn angle, sign follows ClassifyTurn (positive =
+    // right here). Returns 0 for a degenerate vector.
+    inline double SignedDeflection(double v1x, double v1y, double v2x, double v2y)
+    {
+        const double len1 = std::sqrt(v1x * v1x + v1y * v1y);
+        const double len2 = std::sqrt(v2x * v2x + v2y * v2y);
+        if (len1 < 1e-9 || len2 < 1e-9) return 0.0;
+        const double sinTheta = (v1x * v2y - v1y * v2x) / (len1 * len2);
+        const double cosTheta = (v1x * v2x + v1y * v2y) / (len1 * len2);
+        return std::atan2(sinTheta, cosTheta);
+    }
+
+    // True when a candidate exit (its |deflection| = CandidateAbsDefl) is the
+    // through-continuation, given the smallest |deflection| among the OTHER
+    // forward exits at the node (BestOtherForwardAbsDefl; pass +inf when the
+    // candidate is the only forward exit). The candidate must sit within the
+    // ceiling and beat the runner-up by the clear margin. A candidate already
+    // inside the through cone never needs this; callers only ask when the cone
+    // found no through.
+    inline bool PromoteExitToThrough(double CandidateAbsDefl, double BestOtherForwardAbsDefl)
+    {
+        if (CandidateAbsDefl > RelativeThroughCeilingRad) return false;
+        return (BestOtherForwardAbsDefl - CandidateAbsDefl) >= RelativeThroughClearMarginRad;
+    }
+
     // Movement made at route node Curr, entering from Prev and leaving toward
     // Next. Convenience wrapper so route walkers don't hand-roll the chords.
     inline TurnDir ClassifyTurnAtNode(const Node& Prev, const Node& Curr, const Node& Next)
@@ -56,18 +101,72 @@ namespace RoadIntersectionUtil
                             Next.getX() - Curr.getX(), Next.getY() - Curr.getY());
     }
 
-    // Lane a movement lands in on its destination edge: right turns enter the
-    // rightmost lane, left turns the leftmost, through keeps its lane clamped
-    // to the new road's width. Single source of truth shared by the physics
-    // edge transition and the spatial hash's route-following sensors -- if
-    // they disagreed, a car could clear one lane with its sensor and then be
-    // seated in another on top of a queue it never saw.
-    inline int GetArrivalLane(TurnDir Turn, int FromLane, int DestLanes)
+    // Rank of the departing lane among its approach's turn lanes for
+    // Movement: the count of lanes permitting Movement strictly left of
+    // FromLane (FromRight=false, for lefts) or strictly right of it
+    // (FromRight=true, for rights). Rank 0 is the outermost turn lane. A
+    // wrong-lane turner still gets a rank past the legal turn lanes, so it
+    // lands beside them, not on top of them. 0 when the edge has no map.
+    inline int TurnLaneRankBefore(const Road* Approach, int FromLane, uint8_t Movement, bool FromRight)
+    {
+        if (Approach == nullptr || !Approach->hasLaneTurnData()) return 0;
+        const std::vector<uint8_t>& Masks = Approach->getLaneTurns();
+        const int N = static_cast<int>(Masks.size());
+        int Rank = 0;
+        if (FromRight)
+        {
+            for (int i = N - 1; i > FromLane; --i)
+                if (Masks[i] & Movement) ++Rank;
+        }
+        else
+        {
+            for (int i = 0; i < FromLane && i < N; ++i)
+                if (Masks[i] & Movement) ++Rank;
+        }
+        return Rank;
+    }
+
+    // Lane a movement lands in on its destination edge. Turns land offset by
+    // the departing lane's rank among the approach's turn lanes: with dual
+    // left-turn lanes the leftmost feeds lane 0 and the second feeds lane 1
+    // (mirrored for dual rights), so side-by-side turners sweep into
+    // DIFFERENT lanes instead of colliding in the same one. Without a turn
+    // map (Approach null or unmapped) rank is 0 -- rights enter the
+    // rightmost lane, lefts lane 0, as before. Through keeps its lane
+    // clamped to the new road's width. Single source of truth shared by the
+    // physics edge transition, the spatial hash's route-following sensors,
+    // and the renderer's junction blend -- if they disagreed, a car could
+    // clear one lane with its sensor and then be seated in another on top
+    // of a queue it never saw.
+    inline int GetArrivalLane(TurnDir Turn, int FromLane, int DestLanes, const Road* Approach = nullptr)
     {
         if (DestLanes <= 0) return 0;
-        if (Turn == TurnDir::Right) return DestLanes - 1;
-        if (Turn == TurnDir::Left)  return 0;
+        if (Turn == TurnDir::Right)
+        {
+            const int Rank = TurnLaneRankBefore(Approach, FromLane, TurnLane::Right, true);
+            return std::clamp(DestLanes - 1 - Rank, 0, DestLanes - 1);
+        }
+        if (Turn == TurnDir::Left)
+        {
+            const int Rank = TurnLaneRankBefore(Approach, FromLane, TurnLane::Left, false);
+            return std::clamp(Rank, 0, DestLanes - 1);
+        }
         return std::clamp(FromLane, 0, DestLanes - 1);
+    }
+
+    // Inverse of GetArrivalLane for the renderer's entry-side blend: the
+    // lane on Approach a car now seated in ArrivalLane departed from. Scans
+    // the approach's lanes for the first one the forward mapping sends to
+    // ArrivalLane; falls back to the outermost turn lane when none does
+    // (an arrival lane produced by a clamp).
+    inline int GetDepartureLane(TurnDir Turn, int ArrivalLane, int DestLanes, const Road* Approach)
+    {
+        const int N = (Approach != nullptr) ? std::max(1, Approach->getLanes()) : 1;
+        for (int FromLane = 0; FromLane < N; ++FromLane)
+            if (GetArrivalLane(Turn, FromLane, DestLanes, Approach) == ArrivalLane) return FromLane;
+        if (Turn == TurnDir::Right) return N - 1;
+        if (Turn == TurnDir::Left)  return 0;
+        return std::clamp(ArrivalLane, 0, N - 1);
     }
 
     // Keep in sync with the 350 cm lane width used by the road HISM scaling.
@@ -154,7 +253,18 @@ namespace RoadIntersectionUtil
     // TaperLengthCm default (3000 cm).
     constexpr float TaperLenMeters = 30.0f;
     constexpr double TaperAlignmentDotDefault = 0.7;
-    constexpr int TaperMaxLaneDeltaDefault = 2;
+    // A lane drop of more than one lane across a single junction is almost
+    // always a junction topology (a fork, or a mainline meeting a separate
+    // node) rather than a genuine taper -- collapsing e.g. 3 lanes straight to
+    // 1 both looks wrong and forces cars to slide across multiple lanes at the
+    // approach. Cap real tapers at a single dropped lane; larger jumps stay
+    // abrupt and are handled as junctions.
+    constexpr int TaperMaxLaneDeltaDefault = 1;
+    // Master switch for pulling VEHICLES onto the narrowed pavement
+    // (GetTaperedMaxLaneAt). Keep in sync with the road visualizer's
+    // bTaperLaneDrops so the drawn pavement and the cars on it agree; flip to
+    // false to leave cars in their physics lane regardless of the drawn taper.
+    constexpr bool TaperVehiclesEnabled = true;
 
     // Unit 2D direction Edge leaves its origin with (AtEnd=false) or arrives
     // at its dest with (AtEnd=true): the curve tangent when the edge has
@@ -181,6 +291,65 @@ namespace RoadIntersectionUtil
         return true;
     }
 
+    // Movement made at Curr, arriving from Prev and leaving toward Next, using
+    // the connecting edges' geometry TANGENTS instead of the node-to-node
+    // chords ClassifyTurnAtNode uses. A curved through road leaves its origin
+    // at an angle the straight chord never sees, so the chord classifier reads
+    // it as a slight turn: the through movement is then dropped from the lane
+    // map (a lane gets left+right and no through) and, on a route, a genuine
+    // turn can read as "through" and be granted across opposing traffic with
+    // no gap check. Same lesson as legBearingAt in network.cpp. Falls back per
+    // edge to the chord when shape data is missing, and to the pure chord
+    // classifier when either connecting edge can't be found.
+    inline TurnDir ClassifyTurnAtNodeTangent(Network* Net, uint64_t PrevId,
+                                             uint64_t CurrId, uint64_t NextId)
+    {
+        Node* Prev = Net->getNode(PrevId);
+        Node* Curr = Net->getNode(CurrId);
+        Node* Next = Net->getNode(NextId);
+        if (Prev == nullptr || Curr == nullptr || Next == nullptr) return TurnDir::Through;
+
+        const Road* In = nullptr;
+        for (const Road& e : Prev->outgoingEdges)
+            if (e.getDest() == CurrId) { In = &e; break; }
+        const Road* Out = nullptr;
+        for (const Road& e : Curr->outgoingEdges)
+            if (e.getDest() == NextId) { Out = &e; break; }
+
+        double ix, iy, ox, oy;
+        if (In != nullptr && Out != nullptr &&
+            GetEdgeEndDirection(Net, *In,  /*AtEnd=*/true,  ix, iy) &&
+            GetEdgeEndDirection(Net, *Out, /*AtEnd=*/false, ox, oy))
+        {
+            const TurnDir Cone = ClassifyTurn(ix, iy, ox, oy);
+            if (Cone == TurnDir::Through) return Cone;
+
+            // Relative through recovery, mirroring assignInferredTurnLanes so
+            // the movement a car is judged to make matches the lane map it was
+            // routed into. Without it a curved continuation is marked through
+            // in the lane map but reads as a turn here, and the wrong-lane gate
+            // stalls a car going straight. Enumerate this node's other forward
+            // exits; promote when the candidate is the clear straightest.
+            const double CandDefl = std::abs(SignedDeflection(ix, iy, ox, oy));
+            if (CandDefl <= RelativeThroughCeilingRad)
+            {
+                double bestOther = std::numeric_limits<double>::infinity();
+                for (const Road& e : Curr->outgoingEdges)
+                {
+                    if (e.getDest() == NextId || e.getDest() == PrevId) continue; // candidate / U-turn twin
+                    double ex, ey;
+                    if (!GetEdgeEndDirection(Net, e, /*AtEnd=*/false, ex, ey)) continue;
+                    if (ix * ex + iy * ey <= 0.0) continue; // only forward exits compete
+                    bestOther = std::min(bestOther, std::abs(SignedDeflection(ix, iy, ex, ey)));
+                }
+                if (PromoteExitToThrough(CandDefl, bestOther)) return TurnDir::Through;
+            }
+            return Cone;
+        }
+
+        return ClassifyTurnAtNode(*Prev, *Curr, *Next);
+    }
+
     // Lane count of the through-continuation Edge visually tapers to at the
     // given end -- Edge's own lane count when there is none, or when the
     // jump is junction-sized. Among roughly-aligned neighbours (dot above
@@ -201,6 +370,10 @@ namespace RoadIntersectionUtil
 
         auto Consider = [&](const Road& Neighbor, bool NeighborAtEnd)
         {
+            // A *_link (ramp / turn slip) is never the mainline continuation --
+            // it just happens to leave the node roughly aligned. Letting it win
+            // the pick is what tapered full roads down to a single slip lane.
+            if (Neighbor.isLink()) return;
             double nx, ny;
             if (!GetEdgeEndDirection(Net, Neighbor, NeighborAtEnd, nx, ny)) return;
             const double Dot = ex * nx + ey * ny;
@@ -259,6 +432,7 @@ namespace RoadIntersectionUtil
         const int OwnLanes = std::max(1, Edge.getLanes());
         const float FullMaxLane = static_cast<float>(OwnLanes - 1);
         if (OwnLanes <= 1) return 0.0f;
+        if (!TaperVehiclesEnabled) return FullMaxLane;
 
         const int DownLanes = GetTaperNeighborLanes(Net, Edge, true);
         const int UpLanes = GetTaperNeighborLanes(Net, Edge, false);

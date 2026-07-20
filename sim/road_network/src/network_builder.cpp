@@ -198,6 +198,10 @@ Network NetworkBuilder::buildNetworkFromJSONL(const std::string& nodePath, const
 
     roadNetwork.applyDefaultTrafficControls();
     roadNetwork.calculateIntersectionPriorities();
+    // Divided-road junctions map to several nodes; the per-node warrant can
+    // signalize some corners and yield others of the same physical junction.
+    // Unify them so the whole box runs one control regime (see the method).
+    roadNetwork.harmonizeClusteredControls();
     roadNetwork.assignInferredTurnLanes();
 
     return roadNetwork; // successfully loaded network

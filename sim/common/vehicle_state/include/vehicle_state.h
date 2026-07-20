@@ -14,6 +14,13 @@ struct IDMParameters {
     float safeTimeHeadway;
     float length;
     float politeness;      // MOBIL p: 0 = selfish, 1 = selfless
+
+    // Driver personality. Defaulted so existing positional brace-inits of the
+    // eight original fields keep compiling (ghost cars, tests).
+    const char* profileName = "Average"; // static string; shown by the stats panel
+    float speedFactor = 1.0f;       // desired speed as a multiple of the road limit
+    float reactionTime = 0.0f;      // s of lag before pulling away from a stop
+    float launchBoostFactor = 2.0f; // standing-start accel multiplier (see getLaunchBoost)
 };
 
 class VehicleState {
@@ -34,8 +41,16 @@ class VehicleState {
         void updateLaneChange(float dt);
         
         // NEW: Allow physics engine to update these values
-        void setAcceleration(float accel); 
+        void setAcceleration(float accel);
         void updateWaitTime(float dt, float speedThreshold = 0.5f);
+
+        // Per-driver reaction lag: while the car sits at a full stop and the
+        // physics first asks it to go (light turned green, the queue ahead
+        // moved), the requested acceleration is held at zero until the go
+        // condition has persisted for this driver's reactionTime. Called once
+        // per physics tick with the frame's intended acceleration; returns
+        // the (possibly suppressed) acceleration to apply.
+        float applyReactionDelay(float accel, float dt);
 
         /* Read Functions */
         inline int   getId() const                { return id; }
@@ -82,6 +97,9 @@ class VehicleState {
         inline void incrementRerouteCount()        { ++m_rerouteCount; }
         inline float getLength() const            { return m_length;}
         inline float getPoliteness() const        { return politeness; }
+        inline const char* getProfileName() const { return m_profileName; }
+        inline float getSpeedFactor() const       { return m_speedFactor; }
+        inline float getReactionTime() const      { return m_reactionTime; }
 
         // Lane transition state (m_lane is always the committed target lane)
         inline bool  isChangingLanes() const      { return m_laneChangeElapsed < m_laneChangeDuration; }
@@ -125,12 +143,18 @@ class VehicleState {
         // band than the wait-time threshold because a car held at a stop
         // line creeps against its ghost leader (oscillating ~0-0.8 m/s)
         // rather than resting at exactly zero -- that creep is still a stop.
-        static constexpr float LaunchBoostFactor   = 2.0f;
         static constexpr float LaunchBoostEndSpeed = 9.0f;  // m/s, ~20 mph
         static constexpr float LaunchArmSpeed      = 1.0f;  // m/s, counts as stopped
         static constexpr float LaunchArmStopTime   = 0.5f;  // s below that to arm
         float m_stopDuration = 0.0f;
         bool  m_launchBoostArmed = false;
+
+        // Driver personality (fixed at spawn from IDMParameters).
+        const char* m_profileName = "Average";
+        float m_speedFactor = 1.0f;       // scales every desired-speed target
+        float m_reactionTime = 0.0f;      // s (see applyReactionDelay)
+        float m_launchBoostFactor = 2.0f; // per-driver standing-start kick
+        float m_reactionElapsed = 0.0f;   // s the current go condition has persisted
 
         // Wrong-lane hold state (see hasServedWrongLaneHold); cleared by
         // setCurrentEdge at every edge transition.

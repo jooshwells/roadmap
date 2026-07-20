@@ -128,12 +128,12 @@ private:
         uint64 ApproachOriginId = 0;
         int32 LampIndex[3] = { INDEX_NONE, INDEX_NONE, INDEX_NONE }; // red, yellow, green
         FTransform LampTransform[3];                                 // full-size transforms
+        uint8 LastColor = 255;                                       // 255 forces first update
     };
 
     struct FSignalNodeVisual
     {
         TArray<FSignalLampSet> Approaches;
-        uint8 LastColor[2] = { 255, 255 }; // per axis; 255 forces first update
     };
 
     TMap<uint64, FSignalNodeVisual> SignalVisuals;

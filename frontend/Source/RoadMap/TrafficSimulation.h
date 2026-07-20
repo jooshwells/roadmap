@@ -28,16 +28,24 @@ struct VehicleRenderState
     int id; // vhcl id in sim backend
 };
 
-// Per-frame signal color of one traffic-light node, per axis. Approaches are
-// identified by the origin node id of their incoming edge, which is how the
-// visualizer maps its own network's fixtures onto the sim's axis grouping.
+// Per-frame signal color of one traffic-light node, per approach. Approaches
+// are identified by the origin node id of their incoming edge, which is how
+// the visualizer maps its own network's fixtures onto the sim's grouping.
+// Per-approach rather than per-axis because a split-phased axis serves its
+// two directions in different phases, so opposing fixtures show different
+// colors.
 struct TrafficLightRenderState
 {
     enum Color : uint8_t { RED = 0, YELLOW = 1, GREEN = 2 };
 
+    struct Approach
+    {
+        uint64_t originId; // origin node of the incoming edge
+        uint8_t color;
+    };
+
     uint64_t nodeId;
-    uint8_t axisColor[2];                  // [0] = main axis, [1] = cross axis
-    std::vector<uint64_t> axisOrigins[2];  // incoming-edge origin node ids per axis
+    std::vector<Approach> approaches;
 };
 
 class TrafficSimulation 

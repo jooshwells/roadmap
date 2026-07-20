@@ -17,9 +17,12 @@ void VehicleState::setPos(float new_pos)
     m_pos = new_pos;
 }
 
+// Every speed target (road limit, junction turn pacing) is filtered through
+// the driver's personality: aggressive drivers cruise over the limit and
+// sweep turns harder, cautious ones sit under it.
 void VehicleState::setDesiredSpeed(float new_des_speed)
 {
-    desiredSpeed = new_des_speed;
+    desiredSpeed = new_des_speed * m_speedFactor;
 }
 
 void VehicleState::setLeader(VehicleState* newLeader) 
@@ -60,7 +63,32 @@ float VehicleState::getLaunchBoost() const
 {
     if (!m_launchBoostArmed || m_speed >= LaunchBoostEndSpeed) return 1.0f;
     const float t = std::max(0.0f, m_speed) / LaunchBoostEndSpeed;
-    return LaunchBoostFactor - (LaunchBoostFactor - 1.0f) * t;
+    return m_launchBoostFactor - (m_launchBoostFactor - 1.0f) * t;
+}
+
+float VehicleState::applyReactionDelay(float accel, float dt)
+{
+    // Only launches from a genuine stop are gated (same arming as the launch
+    // boost); rolling drivers respond through their time headway instead.
+    if (m_launchBoostArmed && m_speed < LaunchArmSpeed)
+    {
+        if (accel > 0.05f)
+        {
+            m_reactionElapsed += dt;
+            if (m_reactionElapsed < m_reactionTime) return 0.0f;
+        }
+        else
+        {
+            // Go condition vanished (light back to red, queue re-compressed):
+            // the driver will need a fresh reaction next time.
+            m_reactionElapsed = 0.0f;
+        }
+    }
+    else
+    {
+        m_reactionElapsed = 0.0f;
+    }
+    return accel;
 }
 
 // NEW: Safely get the current road's ID
@@ -80,14 +108,18 @@ VehicleState::VehicleState(uint64_t originNode, uint64_t destNode, float iS, flo
     m_destination(destNode),    // INITIALIZE
     accelExp(params.accelExp),
     maxAccel(params.maxAccel),
-    desiredSpeed(params.desiredSpeed),
+    desiredSpeed(params.desiredSpeed * params.speedFactor),
     minGap(params.minGap),
     safeBrakePower(params.safeBrakePower),
     safeTimeHeadway(params.safeTimeHeadway),
     id(count),
     m_length(params.length),
     politeness(params.politeness),
-    m_laneFrom(startingLane)
+    m_laneFrom(startingLane),
+    m_profileName(params.profileName),
+    m_speedFactor(params.speedFactor),
+    m_reactionTime(params.reactionTime),
+    m_launchBoostFactor(params.launchBoostFactor)
 {
     count++;
 }

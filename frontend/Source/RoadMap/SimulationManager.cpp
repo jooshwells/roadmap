@@ -562,6 +562,9 @@ bool ASimulationManager::GetVehicleStatsByID(int32 VehicleID, FVehicleIDMStats& 
 			OutStats.MinGap = v->getMinGap();
 			OutStats.SafeBrakePower = v->getSafeBrakePower();
 			OutStats.SafeTimeHeadway = v->getSafeTimeHeadway();
+			OutStats.ProfileName = FString(UTF8_TO_TCHAR(v->getProfileName()));
+			OutStats.SpeedFactor = v->getSpeedFactor();
+			OutStats.ReactionTime = v->getReactionTime();
 
 			OutStats.CurrentAcceleration = v->getAcceleration();
 			OutStats.WaitTime = v->getWaitTime();

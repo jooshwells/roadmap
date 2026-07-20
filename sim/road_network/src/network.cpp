@@ -436,6 +436,68 @@ namespace
         outBearing = std::atan2(dy, dx);
         return true;
     }
+
+    // Distance down a leg for its second bearing sample (chord from the
+    // junction mouth). Far enough to see past a short skewed mouth segment,
+    // short enough that a genuinely parallel fork branch hasn't wandered.
+    constexpr double LegBearingSampleMeters = 25.0;
+
+    // All bearings a leg presents at 'node': the mouth tangent, plus the
+    // chord from the node to the point LegBearingSampleMeters down the
+    // leg's geometry. One sample point can't classify both curved shapes a
+    // leg takes: a side street may depart square and bend parallel (mouth
+    // tangent sees the crossing, the chord doesn't), or depart shallow and
+    // straighten square -- a skewed crossroads whose mouth tangents all
+    // fold within 45 degrees and read as one roadway. Legs count as
+    // crossing when ANY combination of their bearings crosses, so both
+    // shapes register.
+    std::vector<double> legBearingsAt(const Node& node, const Node& neighbor)
+    {
+        std::vector<double> bearings;
+        double bearing;
+        if (legBearingAt(node, neighbor, bearing))
+        {
+            bearings.push_back(bearing);
+        }
+
+        auto addChordSample = [&](const Road& e, bool fromNodeEnd)
+        {
+            const double arc = std::min(LegBearingSampleMeters, e.getLength());
+            double sx, sy, stx, sty, sz;
+            if (!e.samplePointAt(fromNodeEnd ? arc : e.getLength() - arc,
+                                 sx, sy, stx, sty, sz)) return;
+            const double dx = sx - node.getX();
+            const double dy = sy - node.getY();
+            if (dx == 0.0 && dy == 0.0) return;
+            bearings.push_back(std::atan2(dy, dx));
+        };
+
+        for (const Road& e : node.outgoingEdges)
+        {
+            if (e.getDest() != neighbor.getId()) continue;
+            addChordSample(e, true);
+            return bearings;
+        }
+        for (const Road& e : neighbor.outgoingEdges)
+        {
+            if (e.getDest() != node.getId()) continue;
+            addChordSample(e, false);
+            return bearings;
+        }
+        return bearings;
+    }
+
+    bool legsCrossAny(const std::vector<double>& a, const std::vector<double>& b)
+    {
+        for (double ba : a)
+        {
+            for (double bb : b)
+            {
+                if (legsCross(ba, bb)) return true;
+            }
+        }
+        return false;
+    }
 }
 
 // OSM rarely tags stop signs (and tags that exist usually sit on approach
@@ -495,17 +557,17 @@ void Network::applyDefaultControlAt(Node& node)
     // Only a node where two legs actually cross is an intersection. Bearings
     // toward every distinct neighbor (incoming or outgoing) count, so a
     // one-way side street of either direction still registers.
-    std::vector<double> legBearings;
+    std::vector<std::vector<double>> legBearings;
     legBearings.reserve(neighbors.size());
     for (uint64_t neighborId : neighbors)
     {
         Node* neighborNode = getNode(neighborId);
         if (!neighborNode) continue;
 
-        double bearing;
-        if (legBearingAt(node, *neighborNode, bearing))
+        std::vector<double> bearings = legBearingsAt(node, *neighborNode);
+        if (!bearings.empty())
         {
-            legBearings.push_back(bearing);
+            legBearings.push_back(std::move(bearings));
         }
     }
 
@@ -514,7 +576,7 @@ void Network::applyDefaultControlAt(Node& node)
     {
         for (size_t j = i + 1; j < legBearings.size(); ++j)
         {
-            if (legsCross(legBearings[i], legBearings[j]))
+            if (legsCrossAny(legBearings[i], legBearings[j]))
             {
                 hasCrossing = true;
                 break;
@@ -554,10 +616,10 @@ void Network::applyDefaultControlAt(Node& node)
     }
     if (nonLinkNeighbors < 4) return;
 
-    // Bearing (radians), speed limit, and lane count of each incoming
+    // Bearings (radians), speed limit, and lane count of each incoming
     // approach. Link approaches never warrant a signal, so they are skipped
     // here too.
-    struct Approach { double bearing; double speed; int lanes; };
+    struct Approach { std::vector<double> bearings; double speed; int lanes; };
     std::vector<Approach> approaches;
     for (uint64_t incomingId : node.incomingEdgeNodeIds)
     {
@@ -572,11 +634,12 @@ void Network::applyDefaultControlAt(Node& node)
             if (edge.getSpeedLimit() > approachSpeed) approachSpeed = edge.getSpeedLimit();
             if (edge.getLanes() > approachLanes) approachLanes = edge.getLanes();
         }
+        if (approachSpeed <= 0.0) continue;
 
-        double bearing;
-        if (approachSpeed <= 0.0 || !legBearingAt(node, *predNode, bearing)) continue;
+        std::vector<double> bearings = legBearingsAt(node, *predNode);
+        if (bearings.empty()) continue;
 
-        approaches.push_back({bearing, approachSpeed, approachLanes});
+        approaches.push_back({std::move(bearings), approachSpeed, approachLanes});
     }
 
     // Any crossing pair of approaches that is fast-over-fast or involves a
@@ -587,7 +650,7 @@ void Network::applyDefaultControlAt(Node& node)
         {
             const Approach& a = approaches[i];
             const Approach& b = approaches[j];
-            if (!legsCross(a.bearing, b.bearing)) continue;
+            if (!legsCrossAny(a.bearings, b.bearings)) continue;
 
             const bool bothFast = a.speed >= SIGNAL_SPEED_THRESHOLD_MPS &&
                                   b.speed >= SIGNAL_SPEED_THRESHOLD_MPS;
@@ -625,7 +688,7 @@ void Network::assignYieldPriorityAt(Node& node)
     // change to yield stop
     node.type = Node::YIELD_STOP;
 
-    struct Approach { uint64_t originId; double bearing; double speed; int lanes; };
+    struct Approach { uint64_t originId; std::vector<double> bearings; double speed; int lanes; };
     std::vector<Approach> approaches;
     std::unordered_set<uint64_t> seenOrigins;
     for (uint64_t incomingId : node.incomingEdgeNodeIds)
@@ -644,10 +707,10 @@ void Network::assignYieldPriorityAt(Node& node)
             if (edge.getLanes() > approachLanes) approachLanes = edge.getLanes();
         }
 
-        double bearing;
-        if (!legBearingAt(node, *predNode, bearing)) continue;
+        std::vector<double> bearings = legBearingsAt(node, *predNode);
+        if (bearings.empty()) continue;
 
-        approaches.push_back({incomingId, bearing, approachSpeed, approachLanes});
+        approaches.push_back({incomingId, std::move(bearings), approachSpeed, approachLanes});
     }
 
     // The major road is the fastest (then widest) approach. Only approaches
@@ -668,7 +731,7 @@ void Network::assignYieldPriorityAt(Node& node)
     for (const Approach& a : approaches)
     {
         if (&a == major) continue;
-        if (legsCross(a.bearing, major->bearing))
+        if (legsCrossAny(a.bearings, major->bearings))
         {
             node.minorRoadOriginIds.push_back(a.originId);
         }
@@ -688,26 +751,149 @@ void Network::assignYieldPriorityAt(Node& node)
     }
 }
 
+void Network::recomputeBaseControlAt(Node& node)
+{
+    // A prior harmonize only ever promotes DEFAULTED nodes, so clearing the
+    // flag and letting the defaulted branch below rebuild from topology fully
+    // undoes it -- a promotion is re-derived from base types, never compounded.
+    node.promotedToSignal = false;
+
+    if (!node.controlFromData)
+    {
+        // Defaulted (or so-far-uncontrolled) node: rebuild the control from
+        // the current topology, exactly as the load-time pipeline would.
+        node.type = Node::PASS_THROUGH;
+        applyDefaultControlAt(node);
+    }
+    else if (node.type == Node::YIELD_STOP && node.incomingEdgeNodeIds.size() > 3)
+    {
+        // A dataset stop that the <=3-approach rule downgraded to a yield has
+        // gained enough approaches to be a full all-way stop again.
+        node.type = Node::FOUR_WAY_STOP;
+    }
+
+    assignYieldPriorityAt(node);
+}
+
+std::vector<uint64_t> Network::collectJunctionCluster(uint64_t startId)
+{
+    std::vector<uint64_t> cluster;
+    if (!getNode(startId)) return cluster;
+
+    std::unordered_set<uint64_t> visited{startId};
+    std::vector<uint64_t> stack{startId};
+    while (!stack.empty())
+    {
+        const uint64_t id = stack.back();
+        stack.pop_back();
+        cluster.push_back(id);
+
+        Node* node = getNode(id);
+        if (!node) continue;
+
+        auto consider = [&](uint64_t neighborId)
+        {
+            if (visited.insert(neighborId).second) stack.push_back(neighborId);
+        };
+
+        // Internal legs are directed edges, but a physical junction is one
+        // undirected blob -- walk legs leaving this node and legs arriving at
+        // it alike, or a one-way carriageway pair would split into two halves.
+        for (const Road& edge : node->outgoingEdges)
+        {
+            if (RoadIntersectionUtil::IsInternalJunctionLeg(this, edge))
+                consider(edge.getDest());
+        }
+        for (uint64_t predId : node->incomingEdgeNodeIds)
+        {
+            Node* pred = getNode(predId);
+            if (!pred) continue;
+            for (const Road& edge : pred->outgoingEdges)
+            {
+                if (edge.getDest() == id &&
+                    RoadIntersectionUtil::IsInternalJunctionLeg(this, edge))
+                {
+                    consider(predId);
+                    break;
+                }
+            }
+        }
+    }
+    return cluster;
+}
+
+void Network::promoteClusterIfSignalized(const std::vector<uint64_t>& cluster)
+{
+    if (cluster.size() < 2) return;
+
+    // A promoted node is not itself evidence of a signal: only a node
+    // signalized by its own warrant or the dataset counts, so promotions never
+    // cascade from one junction to a neighbouring one sharing a stray leg.
+    bool anyRealSignal = false;
+    for (uint64_t id : cluster)
+    {
+        Node* n = getNode(id);
+        if (n && n->type == Node::TRAFFIC_LIGHT && !n->promotedToSignal)
+        {
+            anyRealSignal = true;
+            break;
+        }
+    }
+    if (!anyRealSignal) return;
+
+    for (uint64_t id : cluster)
+    {
+        Node* n = getNode(id);
+        if (!n || n->type == Node::TRAFFIC_LIGHT) continue;
+        if (n->type == Node::PASS_THROUGH) continue; // not a controlled member
+        if (n->controlFromData) continue;            // never override explicit data
+        n->type = Node::TRAFFIC_LIGHT;
+        n->promotedToSignal = true;
+        n->minorRoadOriginIds.clear();               // yield priority no longer applies
+    }
+}
+
+void Network::harmonizeClusteredControls()
+{
+    std::unordered_set<uint64_t> visited;
+    for (const auto& pair : nodes)
+    {
+        const uint64_t id = pair.first;
+        if (visited.count(id)) continue;
+        // Only controlled nodes have internal legs, so a PASS_THROUGH node is
+        // never in a cluster larger than itself.
+        if (pair.second.type == Node::PASS_THROUGH)
+        {
+            visited.insert(id);
+            continue;
+        }
+
+        std::vector<uint64_t> cluster = collectJunctionCluster(id);
+        for (uint64_t member : cluster) visited.insert(member);
+        promoteClusterIfSignalized(cluster);
+    }
+}
+
 void Network::refreshTrafficControlAt(uint64_t nodeId)
 {
     Node* node = getNode(nodeId);
     if (!node) return;
 
-    if (!node->controlFromData)
-    {
-        // Defaulted (or so-far-uncontrolled) node: rebuild the control from
-        // the current topology, exactly as the load-time pipeline would.
-        node->type = Node::PASS_THROUGH;
-        applyDefaultControlAt(*node);
-    }
-    else if (node->type == Node::YIELD_STOP && node->incomingEdgeNodeIds.size() > 3)
-    {
-        // A dataset stop that the <=3-approach rule downgraded to a yield has
-        // gained enough approaches to be a full all-way stop again.
-        node->type = Node::FOUR_WAY_STOP;
-    }
+    // Re-derive this node's own control first, undoing any prior promotion.
+    recomputeBaseControlAt(*node);
 
-    assignYieldPriorityAt(*node);
+    // A runtime edit reshapes what one physical junction looks like, so rebuild
+    // the base control of every node in this node's cluster and then re-apply
+    // the cluster-wide signal promotion. This keeps runtime edits and the
+    // load-time pipeline in lockstep: a nearby edit must not leave half a
+    // divided-road junction a yield again.
+    std::vector<uint64_t> cluster = collectJunctionCluster(nodeId);
+    for (uint64_t member : cluster)
+    {
+        if (member == nodeId) continue;
+        if (Node* m = getNode(member)) recomputeBaseControlAt(*m);
+    }
+    promoteClusterIfSignalized(cluster);
 }
 
 namespace
@@ -846,28 +1032,177 @@ void Network::assignInferredTurnLanes()
             Node* dest = getNode(edge.getDest());
             if (!dest) continue;
 
-            const double inX = dest->getX() - from.getX();
-            const double inY = dest->getY() - from.getY();
+            // Approach heading = the edge's tangent as it ARRIVES at dest, not
+            // the node-to-node chord. A curved through road leaves its origin
+            // at an angle the chord never sees, so the chord classifier reads
+            // it as a slight turn, the through movement never registers, and
+            // the lane ends up marked left+right with no through even though a
+            // through road is right there. GetEdgeEndDirection falls back to
+            // the chord when the edge carries no shape data.
+            double inX, inY;
+            if (!RoadIntersectionUtil::GetEdgeEndDirection(this, edge, /*AtEnd=*/true, inX, inY))
+            {
+                inX = dest->getX() - from.getX();
+                inY = dest->getY() - from.getY();
+            }
 
-            bool hasLeft = false, hasThrough = false, hasRight = false;
-            int throughCapacity = 0; // lane count of the road(s) straight ahead
+            // Collect every real exit past the destination with its deflection
+            // from the approach heading and its strict-cone class, then decide.
+            // Deferring the decision (vs. OR-ing booleans as each exit is seen)
+            // is what lets the relative through recovery below compare exits.
+            //
+            // An outgoing edge that is an internal junction leg (multi-node
+            // box) is not a movement of its own: the box-wide movement is entry
+            // heading vs exit heading (the same rule the physics gate uses in
+            // getUpcomingBoxMovement), so walk through internal legs to the box
+            // exits and classify those instead. Without this, a left across a
+            // divided road reads as a chain of near-straight hops, no approach
+            // lane is ever marked Left, and cars turn left out of lanes whose
+            // inspector arrows show no left at all.
+            struct ExitInfo
+            {
+                RoadIntersectionUtil::TurnDir dir; // strict-cone class (may be promoted)
+                double signedDefl;                 // radians, positive = right
+                bool forward;                      // cos(theta) > 0: a through candidate
+                int lanes;
+                uint64_t destId;                   // debug dump only
+            };
+            std::vector<ExitInfo> exits;
+
+            auto classifyExit = [&](const Node& exitFrom, const Road& out)
+            {
+                Node* outDest = getNode(out.getDest());
+                if (!outDest) return;
+                // Exit heading = the edge's tangent as it LEAVES exitFrom
+                // (curve-aware; chord fallback), matching the approach above.
+                double ox, oy;
+                if (!RoadIntersectionUtil::GetEdgeEndDirection(this, out, /*AtEnd=*/false, ox, oy))
+                {
+                    ox = outDest->getX() - exitFrom.getX();
+                    oy = outDest->getY() - exitFrom.getY();
+                }
+                const double ilen = std::sqrt(inX * inX + inY * inY);
+                const double olen = std::sqrt(ox * ox + oy * oy);
+                const double cosT = (ilen > 1e-9 && olen > 1e-9)
+                    ? (inX * ox + inY * oy) / (ilen * olen) : 1.0;
+                // Anti-parallel box exit (U-turn onto the opposing carriageway):
+                // the chord classifier is numerical noise there, it needs a
+                // left's permissions, and it is never a through candidate.
+                if (cosT < -0.5)
+                {
+                    exits.push_back({ RoadIntersectionUtil::TurnDir::Left,
+                                      3.14159265358979323846, false, out.getLanes(), out.getDest() });
+                    return;
+                }
+                exits.push_back({ RoadIntersectionUtil::ClassifyTurn(inX, inY, ox, oy),
+                                  RoadIntersectionUtil::SignedDeflection(inX, inY, ox, oy),
+                                  cosT > 0.0, out.getLanes(), out.getDest() });
+            };
+
+            std::unordered_set<uint64_t> boxVisited{ from.getId(), dest->getId() };
+            std::vector<Node*> boxNodes;
             for (const Road& out : dest->outgoingEdges)
             {
                 if (out.getDest() == edge.getOriginId()) continue; // U-turn
-                Node* outDest = getNode(out.getDest());
-                if (!outDest) continue;
-
-                switch (RoadIntersectionUtil::ClassifyTurn(
-                    inX, inY, outDest->getX() - dest->getX(), outDest->getY() - dest->getY()))
+                if (RoadIntersectionUtil::IsInternalJunctionLeg(this, out))
                 {
-                    case RoadIntersectionUtil::TurnDir::Left:    hasLeft = true;    break;
+                    Node* boxNode = getNode(out.getDest());
+                    if (boxNode && boxVisited.insert(boxNode->getId()).second)
+                        boxNodes.push_back(boxNode);
+                    continue;
+                }
+                classifyExit(*dest, out);
+            }
+            // Boxes are 2-4 nodes; the visited set plus a hop cap keeps a
+            // long run of short controlled edges from being walked as one
+            // giant junction.
+            for (size_t b = 0; b < boxNodes.size() && b < 8; ++b)
+            {
+                for (const Road& out : boxNodes[b]->outgoingEdges)
+                {
+                    if (boxVisited.count(out.getDest())) continue; // back into the box
+                    if (RoadIntersectionUtil::IsInternalJunctionLeg(this, out))
+                    {
+                        Node* boxNode = getNode(out.getDest());
+                        if (boxNode && boxVisited.insert(boxNode->getId()).second)
+                            boxNodes.push_back(boxNode);
+                        continue;
+                    }
+                    classifyExit(*boxNodes[b], out);
+                }
+            }
+
+            // Strict cone first. If it found no through, recover a curved
+            // continuation: the straightest FORWARD exit becomes through when
+            // it sits within the wider relative ceiling and clearly beats the
+            // next forward exit (PromoteExitToThrough). Mirrored in the physics
+            // tangent classifier so the lane a car is guided into and the
+            // movement it is judged to make agree. A symmetric Y-fork (two
+            // similar shallow angles) fails the clear-margin test and stays two
+            // turns.
+            bool coneHasThrough = false;
+            for (const ExitInfo& e : exits)
+                if (e.dir == RoadIntersectionUtil::TurnDir::Through) coneHasThrough = true;
+
+            int promotedIdx = -1;
+            if (!coneHasThrough)
+            {
+                int bestIdx = -1;
+                double bestDefl = std::numeric_limits<double>::infinity();
+                double secondDefl = std::numeric_limits<double>::infinity();
+                for (int i = 0; i < static_cast<int>(exits.size()); ++i)
+                {
+                    if (!exits[i].forward) continue;
+                    const double d = std::abs(exits[i].signedDefl);
+                    if (d < bestDefl) { secondDefl = bestDefl; bestDefl = d; bestIdx = i; }
+                    else if (d < secondDefl) { secondDefl = d; }
+                }
+                if (bestIdx >= 0 && RoadIntersectionUtil::PromoteExitToThrough(bestDefl, secondDefl))
+                {
+                    exits[bestIdx].dir = RoadIntersectionUtil::TurnDir::Through;
+                    promotedIdx = bestIdx;
+                }
+            }
+
+            bool hasLeft = false, hasThrough = false, hasRight = false;
+            int throughCapacity = 0; // lane count of the road(s) straight ahead
+            for (const ExitInfo& e : exits)
+            {
+                switch (e.dir)
+                {
+                    case RoadIntersectionUtil::TurnDir::Left:    hasLeft = true; break;
                     case RoadIntersectionUtil::TurnDir::Through: hasThrough = true;
-                                                                 throughCapacity += out.getLanes(); break;
-                    case RoadIntersectionUtil::TurnDir::Right:   hasRight = true;   break;
+                                                                 throughCapacity += e.lanes; break;
+                    case RoadIntersectionUtil::TurnDir::Right:   hasRight = true; break;
                 }
             }
 
             fillUnmarkedLanes(masks, hasLeft, hasThrough, hasRight, throughCapacity);
+
+            // Opt-in trace for calibrating the relative recovery against a
+            // specific node: set ROADMAP_DEBUG_TURNLANES to any value. Prints
+            // the approach, each exit's deflection (deg, +=right) and class
+            // ('*' = promoted, 'back' = anti-parallel), and the final map.
+            static const bool kDebugTurnLanes = (std::getenv("ROADMAP_DEBUG_TURNLANES") != nullptr);
+            if (kDebugTurnLanes)
+            {
+                constexpr double kRadToDeg = 180.0 / 3.14159265358979323846;
+                std::cout << "[turnlanes] approach " << from.getId() << "->" << dest->getId()
+                          << " lanes=" << lanes
+                          << " inHdg=" << std::lround(std::atan2(inY, inX) * kRadToDeg) << "deg exits:";
+                for (int i = 0; i < static_cast<int>(exits.size()); ++i)
+                {
+                    const ExitInfo& e = exits[i];
+                    const char* dn = e.dir == RoadIntersectionUtil::TurnDir::Left    ? "L"
+                                   : e.dir == RoadIntersectionUtil::TurnDir::Through ? "T" : "R";
+                    std::cout << " [" << e.destId
+                              << " defl=" << std::lround(e.signedDefl * kRadToDeg) << "deg " << dn
+                              << (i == promotedIdx ? "*" : "")
+                              << (e.forward ? "" : " back") << "]";
+                }
+                std::cout << " => L/T/R=" << hasLeft << "/" << hasThrough << "/" << hasRight
+                          << " masks=" << TurnLane::toOsmString(masks) << "\n";
+            }
 
             edge.setLaneTurns(std::move(masks), edge.isLaneTurnsFromOsm());
         }

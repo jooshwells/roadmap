@@ -75,6 +75,10 @@ VehicleState* VehicleSpatialHash::getLeader(VehicleState* vhcl, int targetLane, 
     // in lane 0, through clamps), so the sensor must look at the lane the
     // car will actually land in, not the index it occupies now.
     int searchLane = targetLane;
+    // Edge the car crosses each node FROM -- the rank-aware arrival mapping
+    // needs the approach's turn map to know which of two side-by-side turn
+    // lanes this one is.
+    Road* approachRoad = currentRoad;
 
     for (size_t i = vhcl->currentRouteIndex + 1; i < vhcl->currentRoute.size() - 1; i++) {
         // If we have searched far enough ahead without finding a car, the road is clear
@@ -102,7 +106,8 @@ VehicleState* VehicleSpatialHash::getLeader(VehicleState* vhcl, int targetLane, 
         if (prevNode && endNode) {
             turn = RoadIntersectionUtil::ClassifyTurnAtNode(*prevNode, *startNode, *endNode);
         }
-        searchLane = RoadIntersectionUtil::GetArrivalLane(turn, searchLane, nextRoad->getLanes());
+        searchLane = RoadIntersectionUtil::GetArrivalLane(turn, searchLane, nextRoad->getLanes(), approachRoad);
+        approachRoad = nextRoad;
 
         if (edgeBuckets.count(nextRoad) && edgeBuckets[nextRoad].size() > searchLane) {
             const auto& nextRoadLanes = edgeBuckets[nextRoad][searchLane];

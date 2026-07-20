@@ -348,27 +348,22 @@ void ATrafficControlVisualizer::UpdateLightStates(const std::vector<TrafficLight
         FSignalNodeVisual* Visual = SignalVisuals.Find(State.nodeId);
         if (!Visual) continue;
 
-        if (Visual->LastColor[0] == State.axisColor[0] &&
-            Visual->LastColor[1] == State.axisColor[1])
+        for (FSignalLampSet& LampSet : Visual->Approaches)
         {
-            continue; // nothing changed at this light
-        }
-        Visual->LastColor[0] = State.axisColor[0];
-        Visual->LastColor[1] = State.axisColor[1];
-
-        for (const FSignalLampSet& LampSet : Visual->Approaches)
-        {
-            // Which axis is this approach on? Unknown approaches show red.
+            // Colors come per approach (split-phased axes show opposing
+            // directions different colors). Unknown approaches show red.
             uint8 Color = TrafficLightRenderState::RED;
-            for (int32 Axis = 0; Axis < 2; Axis++)
+            for (const TrafficLightRenderState::Approach& Approach : State.approaches)
             {
-                const auto& Origins = State.axisOrigins[Axis];
-                if (std::find(Origins.begin(), Origins.end(), LampSet.ApproachOriginId) != Origins.end())
+                if (Approach.originId == LampSet.ApproachOriginId)
                 {
-                    Color = State.axisColor[Axis];
+                    Color = Approach.color;
                     break;
                 }
             }
+
+            if (LampSet.LastColor == Color) continue; // fixture unchanged
+            LampSet.LastColor = Color;
 
             for (int32 Lamp = 0; Lamp < 3; Lamp++)
             {
