@@ -28,6 +28,26 @@ struct VehicleRenderState
     int id; // vhcl id in sim backend
 };
 
+// Per-frame signal color of one traffic-light node, per approach. Approaches
+// are identified by the origin node id of their incoming edge, which is how
+// the visualizer maps its own network's fixtures onto the sim's grouping.
+// Per-approach rather than per-axis because a split-phased axis serves its
+// two directions in different phases, so opposing fixtures show different
+// colors.
+struct TrafficLightRenderState
+{
+    enum Color : uint8_t { RED = 0, YELLOW = 1, GREEN = 2 };
+
+    struct Approach
+    {
+        uint64_t originId; // origin node of the incoming edge
+        uint8_t color;
+    };
+
+    uint64_t nodeId;
+    std::vector<Approach> approaches;
+};
+
 class TrafficSimulation 
 {
 public:
@@ -35,6 +55,10 @@ public:
     ~TrafficSimulation();
 
     std::vector<VehicleRenderState> GetVehicleRenderStates();
+
+    // Current signal colors for every traffic-light intersection, for the
+    // frontend's traffic control visuals. Cheap: one entry per light node.
+    std::vector<TrafficLightRenderState> GetTrafficLightRenderStates();
 
     // Replaces your setup logic before the while loop. The caller decides
     // which roadmap JSONL pair to simulate (menu selection or default map).
@@ -64,9 +88,14 @@ public:
     void DeleteRuntimeEdge(uint64_t u, uint64_t v, bool bBothDirections);
 
     // Update the live edge(s) between u and v with new lane count / speed
-    // limit. Vehicles already on the edge adopt the new speed and get their
-    // lane clamped if lanes were removed.
-    void UpdateRuntimeRoad(uint64_t u, uint64_t v, int lanes, float speedMps, bool bBothDirections);
+    // limit / per-lane turn map. Vehicles already on the edge adopt the new
+    // speed and get their lane clamped if lanes were removed. The turn
+    // strings are OSM turn:lanes syntax in each edge's own direction of
+    // travel (the caller mirrors the reverse one); empty clears the explicit
+    // map and hands the edge back to assignInferredTurnLanes.
+    void UpdateRuntimeRoad(uint64_t u, uint64_t v, int lanes, float speedMps, bool bBothDirections,
+                           const std::string& turnLanesFwd = std::string(),
+                           const std::string& turnLanesRev = std::string());
 
     // Queue route replans for vehicles whose remaining route passes within
     // radiusMeters of map point (x, y). Routes are only computed at spawn, so

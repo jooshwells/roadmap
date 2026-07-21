@@ -51,11 +51,13 @@ def make_nodes() -> list[dict]:
                 "lat": 0.0,
                 "x": x,
                 "y": y,
-                # Signalize the busy crossings, stop-sign the rest.
+                # Signalize the busy crossings, stop-sign the rest. (The sim
+                # downgrades stops with <= 3 incoming roads to yield-style
+                # two-way stops on the minor road.)
                 "traffic_control": "signal" if (on_avenue and on_boulevard)
                 or (on_avenue and col % 2 == 0)
                 or (on_boulevard and row % 2 == 0)
-                else None,
+                else "stop",
             })
     return nodes
 

@@ -53,6 +53,28 @@ int parseEdgeLayer(const json& j)
     return 0;
 }
 
+// OSM highway classes ending in "_link" (trunk_link, primary_link, ...) are
+// ramps and turn slips rather than full roadways. Merged ways can carry an
+// array of classes; any link class in it marks the edge.
+bool isLinkHighway(const json& j)
+{
+    auto endsWithLink = [](const std::string& s) {
+        static const std::string suffix = "_link";
+        return s.size() > suffix.size()
+            && s.compare(s.size() - suffix.size(), suffix.size(), suffix) == 0;
+    };
+
+    auto it = j.find("highway");
+    if (it == j.end()) return false;
+    if (it->is_string()) return endsWithLink(it->get<std::string>());
+    if (it->is_array())
+    {
+        for (const auto& item : *it)
+            if (item.is_string() && endsWithLink(item.get<std::string>())) return true;
+    }
+    return false;
+}
+
 } // namespace
 
 Network NetworkBuilder::buildNetworkFromJSONL(const std::string& nodePath, const std::string& edgePath)
@@ -81,13 +103,17 @@ Network NetworkBuilder::buildNetworkFromJSONL(const std::string& nodePath, const
             try
             {
                 json j = json::parse(line); // parse object
-
+                std::string controlType = "none";
+                if (j.contains("traffic_control") && !j["traffic_control"].is_null()) {
+                    controlType = j["traffic_control"].get<std::string>();
+                }
                 roadNetwork.addNode(
                     j["id"],
                     j["lat"],
                     j["lon"],
                     j["x"],
-                    -j["y"].get<double>()
+                    -j["y"].get<double>(),
+                    controlType
                 );
             }
             catch(const json::exception& e)
@@ -129,6 +155,20 @@ Network NetworkBuilder::buildNetworkFromJSONL(const std::string& nodePath, const
                     }
                 }
 
+                // Turn-lane data: most edges carry null here; parse what
+                // exists and let assignInferredTurnLanes cover the rest.
+                // "turn:lanes" is the key older road-editor builds wrote.
+                std::string turnSpec;
+                for (const char* key : { "turn_lanes", "turn_lanes_forward", "turn:lanes" })
+                {
+                    auto it = j.find(key);
+                    if (it != j.end() && it->is_string())
+                    {
+                        turnSpec = it->get<std::string>();
+                        break;
+                    }
+                }
+
                 roadNetwork.addDirectedEdge(
                     j["u"],
                     j["v"],
@@ -136,7 +176,9 @@ Network NetworkBuilder::buildNetworkFromJSONL(const std::string& nodePath, const
                     j["speed_mps"],
                     lanes,
                     std::move(geometry),
-                    parseEdgeLayer(j)
+                    parseEdgeLayer(j),
+                    TurnLane::fromOsmString(turnSpec, lanes),
+                    isLinkHighway(j)
                 );
             }
             catch(const json::exception& e)
@@ -153,6 +195,14 @@ Network NetworkBuilder::buildNetworkFromJSONL(const std::string& nodePath, const
     // With every edge loaded, turn the OSM layer tags into actual elevations
     // (bridge decks up, underpasses down, smooth ramps at their ends).
     roadNetwork.applyVerticality();
+
+    roadNetwork.applyDefaultTrafficControls();
+    roadNetwork.calculateIntersectionPriorities();
+    // Divided-road junctions map to several nodes; the per-node warrant can
+    // signalize some corners and yield others of the same physical junction.
+    // Unify them so the whole box runs one control regime (see the method).
+    roadNetwork.harmonizeClusteredControls();
+    roadNetwork.assignInferredTurnLanes();
 
     return roadNetwork; // successfully loaded network
 }

@@ -13,7 +13,10 @@ class Network {
 
     public:
         
-        void addNode(std::uint64_t id, double lat, double lon, double x, double y);
+        // Combined signature: takes offline X/Y AND the intersection type string
+        // typeStr defaults to "none" (uncontrolled / PASS_THROUGH) so
+        // runtime-created nodes need no traffic-control decision.
+        void addNode(std::uint64_t id, double lat, double lon, double x, double y, const std::string& typeStr = "none");
         
         /**
          * WARNING!!!!
@@ -35,8 +38,16 @@ class Network {
         // order; it is oriented from->to and endpoint-snapped before storage.
         // 'layer' is the OSM vertical layer (0 ground, +1 overpass, -1
         // underpass) used by applyVerticality to elevate the edge.
+        // 'laneTurns' is the optional per-lane turn map parsed from OSM
+        // turn:lanes (TurnLane flags, one entry per lane, left to right);
+        // pass empty when the tag is null and assignInferredTurnLanes will
+        // fill the gap. Individual 0 entries are unmarked lanes ("left||"),
+        // which the same pass completes from the downstream intersection.
+        // 'isLink' marks OSM *_link edges (ramps / turn slips); see
+        // Road::isLink for how traffic-control defaulting treats them.
         void addDirectedEdge(uint64_t fromId, uint64_t toId, double dist, double speedLimit, int lanes,
-                             std::vector<RoadGeomPoint> geometry = {}, int layer = 0);
+                             std::vector<RoadGeomPoint> geometry = {}, int layer = 0,
+                             std::vector<uint8_t> laneTurns = {}, bool isLink = false);
 
         // Splits the directed edge from->to at map point (x, y): the existing
         // Road is shortened IN PLACE to end at newNodeId (so Road* pointers
@@ -84,6 +95,36 @@ class Network {
                               double rampLengthM = DefaultRampLengthM,
                               double medianGapM = DefaultMedianGapM);
         void visualizeNetwork();
+        void applyDefaultTrafficControls();
+        void calculateIntersectionPriorities();
+
+        // Reconcile control types across each physical junction. OSM maps a
+        // divided-road signal as 2-4 nodes joined by short internal legs; the
+        // geometric signal warrant in applyDefaultControlAt only fires on the
+        // corners that see the full crossing, so the median-tee corners
+        // default to a yield beside their signalized siblings. A junction that
+        // runs half-signal, half-yield stalls the yield approaches -- they
+        // hunt for a gap across an arterial the light is already metering. If
+        // any node of a junction cluster is a signal, promote every defaulted
+        // controlled node in it to a signal so the whole box runs the one
+        // coordinated plan the physics builds for the cluster. Run after
+        // applyDefaultTrafficControls + calculateIntersectionPriorities.
+        void harmonizeClusteredControls();
+
+        // Re-derives one node's traffic control after a runtime topology
+        // change (road drawn, edge split/deleted, lanes/speed edited), giving
+        // it exactly what the load-time defaulting pipeline would: defaulted
+        // nodes are reclassified from scratch (a drawn crossing becomes a
+        // stop/signal immediately instead of after the next reload), explicit
+        // dataset controls are kept, and the yield minor-road list is
+        // recomputed either way. Missing ids are ignored.
+        void refreshTrafficControlAt(uint64_t nodeId);
+        // Fill in per-lane turn permissions for every edge that has no OSM
+        // turn:lanes data, from the movements geometrically available at the
+        // edge's destination node. Idempotent; re-run after runtime road
+        // edits so inferred maps track the current network shape.
+        void assignInferredTurnLanes();
+        void resetPathfindingState();
 
         const std::unordered_map<uint64_t, Node>& getNodes() const { return nodes; }
 
@@ -95,8 +136,34 @@ class Network {
         std::vector<uint64_t> nodeIds;
         uint64_t numNodes;
         uint64_t nextEdgeId = 1;
-        
 
+        // Per-node bodies of applyDefaultTrafficControls /
+        // calculateIntersectionPriorities, shared with
+        // refreshTrafficControlAt so runtime edits and load-time
+        // classification can never disagree.
+        void applyDefaultControlAt(Node& node);
+        void assignYieldPriorityAt(Node& node);
+
+        // One node's control from its own warrant/data ONLY (no cluster
+        // promotion): undoes any prior promotion, then rebuilds the defaulted
+        // type from topology (or keeps the explicit dataset control) and
+        // recomputes its yield priority. Shared by the harmonize pass and
+        // refreshTrafficControlAt so a promotion is always re-derived from
+        // base types, never compounded.
+        void recomputeBaseControlAt(Node& node);
+
+        // Connected component of startId through internal junction legs (short
+        // controlled-to-controlled edges) -- the nodes making up one physical
+        // junction. Same leg test the physics signal-cluster union-find uses,
+        // so both agree on junction boundaries. Undirected: incoming and
+        // outgoing legs alike.
+        std::vector<uint64_t> collectJunctionCluster(uint64_t startId);
+
+        // If any member of cluster is a genuine (non-promoted) signal, raise
+        // every defaulted controlled member to TRAFFIC_LIGHT. No-op for a
+        // cluster with no signal, or a lone node.
+        void promoteClusterIfSignalized(const std::vector<uint64_t>& cluster);
+        
 };
 
 #endif

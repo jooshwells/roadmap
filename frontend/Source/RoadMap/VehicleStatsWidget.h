@@ -106,6 +106,9 @@ private:
     UPROPERTY() UProgressBar* RouteBar = nullptr;
 
     // Driver profile (static IDM parameters)
+    UPROPERTY() UTextBlock* ProfileValue = nullptr;      // archetype name, colour-coded
+    UPROPERTY() UTextBlock* SpeedFactorValue = nullptr;  // % of the road limit
+    UPROPERTY() UTextBlock* ReactionValue = nullptr;     // launch lag at lights
     UPROPERTY() UTextBlock* DesiredSpeedValue = nullptr;
     UPROPERTY() UTextBlock* MaxAccelValue = nullptr;
     UPROPERTY() UTextBlock* BrakeValue = nullptr;

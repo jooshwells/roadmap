@@ -30,6 +30,12 @@ struct FRoadEdgeInfo
     UPROPERTY(BlueprintReadWrite, Category = "Road Edit") float SpeedLimitMps = 20.0f;
     UPROPERTY(BlueprintReadWrite, Category = "Road Edit") FString TurnLanes;
 
+    // True when TurnLanes did not come from an explicit tag in the edge data
+    // but from the network's inference over the movements available at the
+    // destination node (see Network::assignInferredTurnLanes). Lets the UI
+    // label the value as a suggestion rather than surveyed OSM data.
+    UPROPERTY(BlueprintReadOnly, Category = "Road Edit") bool bTurnLanesInferred = false;
+
     // OSM vertical layer: 0 ground, +1 overpass, -1 underpass. Editing it
     // re-runs the elevation pass, so a ground road becomes a bridge in place.
     UPROPERTY(BlueprintReadWrite, Category = "Road Edit") int32 Layer = 0;
@@ -109,6 +115,8 @@ public:
     bool bTaperLaneDrops = true;
 
     // Length (cm) of the taper zone over which the width ramps up/down.
+    // Must match RoadIntersectionUtil::TaperLenMeters -- the vehicle renderer
+    // uses that constant to keep cars on the tapered pavement.
     UPROPERTY(EditAnywhere, Category = "Road Visuals|Taper")
     float TaperLengthCm = 3000.0f; // 30 m
 
@@ -127,10 +135,12 @@ public:
     float TaperAlignmentDot = 0.7f;
 
     // Largest lane-count difference that is treated as a taper. Real lane drops/
-    // gains change by 1 (rarely 2) lanes; a bigger jump is a junction, not a taper,
+    // gains change by a single lane; a bigger jump is a junction, not a taper,
     // and is left abrupt. Prevents e.g. a 4-lane road tapering to a 1-lane ramp.
+    // Keep in sync with RoadIntersectionUtil::TaperMaxLaneDeltaDefault so the
+    // drawn pavement and the vehicle clamp taper by the same amount.
     UPROPERTY(EditAnywhere, Category = "Road Visuals|Taper")
-    int32 TaperMaxLaneDelta = 2;
+    int32 TaperMaxLaneDelta = 1;
 
     // --- Elevated road dressing ----------------------------------------------
     // Elevated spans are flat HISM ribbons; without extra geometry they read as
@@ -248,6 +258,15 @@ public:
     // Snaps a clicked location to the nearest node if within the radius
     UFUNCTION(BlueprintCallable, Category = "Road Network")
     bool FindClosestNode(FVector SearchLocation, float SnapRadiusCM, FVector& OutNodeLocation, int64& OutNodeId);
+
+    // Nearest node worth inspecting: junction nodes (3+ roadways) and
+    // controlled nodes win over plain shape/pass-through nodes inside the
+    // radius, because a big junction's pavement spans many meters and the
+    // geometrically nearest node to a click on it is often a curve point on
+    // an approach road. Falls back to the plain nearest node when nothing
+    // junction-like is in range.
+    UFUNCTION(BlueprintCallable, Category = "Road Network")
+    bool FindClosestInspectableNode(FVector SearchLocation, float SnapRadiusCM, FVector& OutNodeLocation, int64& OutNodeId);
 
 private:
     // Appends one intersection's pavement polygon (a fan around the node whose

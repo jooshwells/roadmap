@@ -153,6 +153,9 @@ TSharedRef<SWidget> UVehicleStatsWidget::RebuildWidget()
         // The driver's fixed IDM/MOBIL parameters -- who this driver is,
         // as opposed to what they're doing right now.
         AddSectionHeader(BodyBox, NSLOCTEXT("VehicleStats", "Profile", "Driver profile (IDM)"));
+        ProfileValue = AddValueRow(BodyBox, NSLOCTEXT("VehicleStats", "DriverType", "Driver type"));
+        SpeedFactorValue = AddValueRow(BodyBox, NSLOCTEXT("VehicleStats", "SpeedPref", "Speed vs limit"));
+        ReactionValue = AddValueRow(BodyBox, NSLOCTEXT("VehicleStats", "Reaction", "Reaction time"));
         DesiredSpeedValue = AddValueRow(BodyBox, NSLOCTEXT("VehicleStats", "Desired", "Desired speed"));
         MaxAccelValue = AddValueRow(BodyBox, NSLOCTEXT("VehicleStats", "MaxAccel", "Max acceleration"));
         BrakeValue = AddValueRow(BodyBox, NSLOCTEXT("VehicleStats", "Brake", "Comfortable braking"));
@@ -211,7 +214,9 @@ void UVehicleStatsWidget::RefreshLiveFields()
     // controls and wins.
     if (!HeaderText || !SpeedBigText) return;
 
-    HeaderText->SetText(FText::FromString(FString::Printf(TEXT("Vehicle %d"), Stats.VehicleID)));
+    HeaderText->SetText(Stats.ProfileName.IsEmpty()
+        ? FText::FromString(FString::Printf(TEXT("Vehicle %d"), Stats.VehicleID))
+        : FText::FromString(FString::Printf(TEXT("Vehicle %d - %s"), Stats.VehicleID, *Stats.ProfileName)));
 
     SpeedBigText->SetText(FText::FromString(FString::Printf(TEXT("%.0f mph"), Stats.CurrentSpeed * MpsToMph)));
     SpeedSubText->SetText(FText::FromString(FString::Printf(TEXT("%.1f m/s   -   wants %.0f mph"),
@@ -271,6 +276,20 @@ void UVehicleStatsWidget::RefreshLiveFields()
 void UVehicleStatsWidget::RefreshProfileFields()
 {
     if (!DesiredSpeedValue) return;
+
+    // Archetype name, coloured like the live-state words: aggressive reads as
+    // a warning, cautious as calm, average stays neutral.
+    FLinearColor ProfileColor = RoadPanelStyle::ControlText;
+    if (Stats.ProfileName == TEXT("Aggressive"))    ProfileColor = BrakeRed;
+    else if (Stats.ProfileName == TEXT("Cautious")) ProfileColor = AccelGreen;
+    ProfileValue->SetText(Stats.ProfileName.IsEmpty()
+        ? NSLOCTEXT("VehicleStats", "NoProfile", "-")
+        : FText::FromString(Stats.ProfileName));
+    ProfileValue->SetColorAndOpacity(FSlateColor(ProfileColor));
+
+    SpeedFactorValue->SetText(FText::FromString(FString::Printf(TEXT("%.0f%% of limit"), Stats.SpeedFactor * 100.0f)));
+    SpeedFactorValue->SetColorAndOpacity(FSlateColor(ProfileColor));
+    ReactionValue->SetText(FText::FromString(FString::Printf(TEXT("%.1f s"), Stats.ReactionTime)));
 
     DesiredSpeedValue->SetText(FText::FromString(FString::Printf(TEXT("%.0f mph  (%.1f m/s)"),
         Stats.DesiredSpeed * MpsToMph, Stats.DesiredSpeed)));

@@ -101,12 +101,14 @@ TSharedRef<SWidget> URoadEditorWidget::RebuildWidget()
         }
         AddRow(Box, NSLOCTEXT("RoadEditor", "Elevation", "Elevation"), LayerCombo);
 
-        // Turn lanes: one dropdown per lane.
-        UTextBlock* TurnHeader = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("TurnHeader"));
-        TurnHeader->SetText(NSLOCTEXT("RoadEditor", "TurnHeader", "Turn lanes (left lane first)"));
-        TurnHeader->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 10));
-        TurnHeader->SetColorAndOpacity(FSlateColor(RoadPanelStyle::RowLabel));
-        UVerticalBoxSlot* TurnHeaderSlot = Box->AddChildToVerticalBox(TurnHeader);
+        // Turn lanes: one dropdown per lane. The label switches to note when
+        // the values were inferred from the intersection layout rather than
+        // read from the map data (see RefreshFields).
+        TurnLanesHeader = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("TurnHeader"));
+        TurnLanesHeader->SetText(NSLOCTEXT("RoadEditor", "TurnHeader", "Turn lanes (left lane first)"));
+        TurnLanesHeader->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 10));
+        TurnLanesHeader->SetColorAndOpacity(FSlateColor(RoadPanelStyle::RowLabel));
+        UVerticalBoxSlot* TurnHeaderSlot = Box->AddChildToVerticalBox(TurnLanesHeader);
         TurnHeaderSlot->SetPadding(FMargin(0.0f, 8.0f, 0.0f, 2.0f));
 
         TurnLaneRows = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("TurnLaneRows"));
@@ -196,6 +198,12 @@ void URoadEditorWidget::RefreshFields()
             LayerCombo->AddOption(Wanted);
         }
         LayerCombo->SetSelectedOption(Wanted);
+    }
+    if (TurnLanesHeader)
+    {
+        TurnLanesHeader->SetText(EdgeInfo.bTurnLanesInferred
+            ? NSLOCTEXT("RoadEditor", "TurnHeaderInferred", "Turn lanes (inferred, left lane first)")
+            : NSLOCTEXT("RoadEditor", "TurnHeader", "Turn lanes (left lane first)"));
     }
     RebuildTurnLaneCombos();
 

@@ -6,6 +6,7 @@
 #include "RoadToolbarWidget.h"
 #include "SimControlBarWidget.h"
 #include "VehicleStatsWidget.h"
+#include "IntersectionInspectorWidget.h"
 #include "RoadTurnLaneOptions.h"
 #include "SimulationManager.h"
 #include "DrawDebugHelpers.h"
@@ -263,6 +264,56 @@ void AMapPlayerController::OpenVehicleStats(ASimulationManager* SimManager, cons
     }
 }
 
+bool AMapPlayerController::TryOpenIntersectionAtCursor()
+{
+    // No physical hit to anchor on: project the mouse onto the ground plane.
+    // Only reliable for ground-level junctions; clicks that land on geometry
+    // go through TryOpenIntersectionAt with the real impact point instead.
+    FVector ClickLoc;
+    if (!GetMouseIntersectionOnZPlane(ClickLoc)) return false;
+    return TryOpenIntersectionAt(ClickLoc, NodeInspectRadius);
+}
+
+bool AMapPlayerController::TryOpenIntersectionAt(const FVector& ClickLoc, float SearchRadiusCM)
+{
+    ARoadNetworkVisualizer* Visualizer = ResolveVisualizer();
+    ASimulationManager* SimManager = ResolveSimManager();
+    if (!Visualizer || !SimManager) return false;
+
+    int64 NodeId;
+    FVector NodeLoc;
+    if (!Visualizer->FindClosestInspectableNode(ClickLoc, SearchRadiusCM, NodeLoc, NodeId)) return false;
+
+    FIntersectionNodeInfo NodeInfo;
+    if (!SimManager->GetIntersectionInfo(NodeId, NodeInfo)) return false;
+
+    UE_LOG(LogTemp, Warning, TEXT("Inspecting intersection node %lld (%s)"), NodeId, *NodeInfo.ControlType);
+
+    OnIntersectionClickedUI(NodeInfo);
+    if (!bUseCustomIntersectionUI)
+    {
+        OpenIntersectionInspector(SimManager, NodeInfo);
+    }
+    return true;
+}
+
+void AMapPlayerController::OpenIntersectionInspector(ASimulationManager* SimManager, const FIntersectionNodeInfo& NodeInfo)
+{
+    // Retarget an already-open panel instead of stacking a second one.
+    if (ActiveIntersectionInspector && ActiveIntersectionInspector->IsInViewport())
+    {
+        ActiveIntersectionInspector->InitWithInfo(SimManager, NodeInfo);
+        return;
+    }
+
+    ActiveIntersectionInspector = CreateWidget<UIntersectionInspectorWidget>(this);
+    if (ActiveIntersectionInspector)
+    {
+        ActiveIntersectionInspector->InitWithInfo(SimManager, NodeInfo);
+        ActiveIntersectionInspector->AddToViewport(10);
+    }
+}
+
 bool AMapPlayerController::ApplyRoadEdit(const FRoadEdgeInfo& EditedInfo, bool bBothDirections)
 {
 	if (!IsRoadEditingAllowed())
@@ -284,7 +335,11 @@ bool AMapPlayerController::ApplyRoadEdit(const FRoadEdgeInfo& EditedInfo, bool b
 	AActor* SimManagerActor = UGameplayStatics::GetActorOfClass(GetWorld(), ASimulationManager::StaticClass());
 	if (ASimulationManager* SimManager = Cast<ASimulationManager>(SimManagerActor))
 	{
-		SimManager->UpdateBackendRoad(EditedInfo.NodeU, EditedInfo.NodeV, EditedInfo.Lanes, EditedInfo.SpeedLimitMps, bBothDirections);
+		SimManager->UpdateBackendRoad(EditedInfo.NodeU, EditedInfo.NodeV, EditedInfo.Lanes, EditedInfo.SpeedLimitMps, EditedInfo.TurnLanes, bBothDirections);
+
+		// Lane/speed edits can flip which approach yields, and lane count
+		// moves the fixture off the outer lane edge; replant them.
+		SimManager->RebuildTrafficControls();
 
 		FVector ULoc, VLoc;
 		if (Visualizer->GetNodeLocation(EditedInfo.NodeU, ULoc) && Visualizer->GetNodeLocation(EditedInfo.NodeV, VLoc))
@@ -326,6 +381,13 @@ bool AMapPlayerController::DeleteRoad(const FRoadEdgeInfo& EdgeInfo, bool bBothD
 
 	// Then the visual network + JSONL files + rebuild.
 	if (!Visualizer->DeleteRoad(EdgeInfo.NodeU, EdgeInfo.NodeV, bBothDirections)) return false;
+
+	// A removed approach can demote an intersection back to pass-through (or
+	// re-prioritize a yield); drop the now-orphaned fixtures.
+	if (SimManager)
+	{
+		SimManager->RebuildTrafficControls();
+	}
 
 	// Traffic near the removed road should discover detours instead of only
 	// new spawns routing around it.
@@ -413,10 +475,14 @@ void AMapPlayerController::OnLeftMouseClick()
 
                 int32 HitInstanceIndex = HitResult.Item;
 
-                // 4. Check the instance index
+                // 4. Check the instance index. Only road HISM hits carry a
+                // meaningful edge instance; node caps and the junction
+                // pavement mesh belong to the same actor but describe an
+                // intersection, not a road.
                 UE_LOG(LogTemp, Warning, TEXT("Hit Instance Index: %d"), HitInstanceIndex);
 
-                if (HitInstanceIndex != INDEX_NONE)
+                const bool bRoadComponentHit = HitResult.GetComponent() == ClickedVisualizer->RoadHISM;
+                if (bRoadComponentHit && HitInstanceIndex != INDEX_NONE)
                 {
                     int64 EdgeId = ClickedVisualizer->GetEdgeIdFromHitItem(HitInstanceIndex);
                     UE_LOG(LogTemp, Warning, TEXT("SUCCESS! Edge ID: %lld"), EdgeId);
@@ -430,11 +496,19 @@ void AMapPlayerController::OnLeftMouseClick()
                         {
                             OpenRoadEditor(EdgeInfo);
                         }
+                        return;
                     }
                 }
-                else
+
+                // Junction pavement / node cap: inspect the intersection
+                // here. Anchor the search on the actual impact point -- the
+                // Z-plane projection lands elsewhere for elevated junctions
+                // -- and widen the radius: the click provably hit junction
+                // geometry, whose pavement can span well past 15 m on wide
+                // multi-node intersections.
+                if (TryOpenIntersectionAt(HitResult.ImpactPoint, NodeInspectRadius * 2.0f))
                 {
-                    UE_LOG(LogTemp, Error, TEXT("Hit the visualizer, but no specific instance was found (Index is -1)."));
+                    return;
                 }
             }
             // Check if we clicked the Simulation Manager (Vehicles)
@@ -467,6 +541,12 @@ void AMapPlayerController::OnLeftMouseClick()
         {
             UE_LOG(LogTemp, Error, TEXT("Raycast fired, but hit absolutely nothing."));
         }
+
+        // Nothing solid resolved the click: sign/signal fixtures have no
+        // collision (the ray sails through them) and clicks beside a node
+        // land on empty ground, so snap to the nearest node and open the
+        // intersection inspector if one is close enough.
+        TryOpenIntersectionAtCursor();
         return;
     }
     else
@@ -599,10 +679,15 @@ void AMapPlayerController::OnLeftMouseClick()
                 // junction pavement at the new intersections, and setbacks.
                 CachedVisualizer->RefreshRoadVisuals();
 
-                // Let traffic already driving nearby replan onto the new
-                // connection (new spawns pick it up automatically).
                 if (SimManager)
                 {
+                    // Plant stop signs / signals at any intersection the drawn
+                    // road just created (the visual network's node controls
+                    // were refreshed as each piece was committed).
+                    SimManager->RebuildTrafficControls();
+
+                    // Let traffic already driving nearby replan onto the new
+                    // connection (new spawns pick it up automatically).
                     const FVector EditCenter = (StartNodeLocation + EndNodeLoc) * 0.5f;
                     const float EditRadiusM = FVector::Dist2D(StartNodeLocation, EndNodeLoc) / 100.0f * 0.5f + 300.0f;
                     SimManager->RequestBackendReroutes(EditCenter, EditRadiusM);

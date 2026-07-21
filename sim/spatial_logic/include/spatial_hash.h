@@ -2,6 +2,7 @@
 #define SPATIAL_HASH_H
 
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #include <algorithm>
 #include "vehicle_state.h"
@@ -14,6 +15,7 @@ public:
 
     VehicleState* getLeader(VehicleState* vhcl, int targetLane, Network* network);
     VehicleState* getFollower(VehicleState* vhcl, int targetLane, Network* network);
+    std::vector<VehicleState*> getVehiclesOnRoad(Road* road);
 
 private:
     std::unordered_map<Road*, std::vector<std::vector<VehicleState*>>> edgeBuckets;

@@ -3,9 +3,73 @@
 #include <algorithm> // For std::max
 #include <cmath>     // For std::pow
 
+std::vector<uint8_t> TurnLane::fromOsmString(const std::string& spec, int lanes)
+{
+    std::vector<uint8_t> masks;
+    if (spec.empty() || lanes <= 0) return masks;
+
+    std::vector<std::string> tokens;
+    size_t start = 0;
+    while (true)
+    {
+        size_t bar = spec.find('|', start);
+        tokens.push_back(spec.substr(start, bar == std::string::npos ? bar : bar - start));
+        if (bar == std::string::npos) break;
+        start = bar + 1;
+    }
+    if (static_cast<int>(tokens.size()) != lanes) return masks;
+
+    for (const std::string& token : tokens)
+    {
+        uint8_t mask = 0;
+        // A token can carry multiple movements ("through;slight_right").
+        size_t pos = 0;
+        while (pos <= token.size())
+        {
+            size_t semi = token.find(';', pos);
+            std::string part = token.substr(pos, semi == std::string::npos ? semi : semi - pos);
+
+            // none/empty is an unmarked lane: no data, mask stays 0 so
+            // assignInferredTurnLanes fills it from the intersection.
+            // merge_to_* are merge hints, not turns; the lane continues
+            // straight in practice.
+            if (part == "none" || part.empty())
+                ;
+            else if (part.rfind("merge", 0) == 0 || part == "through")
+                mask |= TurnLane::Through;
+            else if (part.find("left") != std::string::npos || part == "reverse")
+                mask |= TurnLane::Left;
+            else if (part.find("right") != std::string::npos)
+                mask |= TurnLane::Right;
+            else
+                mask |= TurnLane::Through; // unknown token: fail open
+
+            if (semi == std::string::npos) break;
+            pos = semi + 1;
+        }
+        masks.push_back(mask);
+    }
+    return masks;
+}
+
+std::string TurnLane::toOsmString(const std::vector<uint8_t>& masks)
+{
+    std::string out;
+    for (size_t i = 0; i < masks.size(); i++)
+    {
+        if (i > 0) out += '|';
+        std::string token;
+        if (masks[i] & TurnLane::Left)    token += "left";
+        if (masks[i] & TurnLane::Through) token += token.empty() ? "through" : ";through";
+        if (masks[i] & TurnLane::Right)   token += token.empty() ? "right"   : ";right";
+        out += token;
+    }
+    return out;
+}
+
 // Added edgeId (eId) to the initializer list
-Road::Road(uint64_t eId, uint64_t dest, double dist, double sL, int l)
-    : edgeId(eId), destId(dest), length(dist), speedLimit(sL), lanes(l) {}
+Road::Road(uint64_t eId, uint64_t origin, uint64_t dest, double dist, double sL, int l)
+    : edgeId(eId), originId(origin), destId(dest), length(dist), speedLimit(sL), lanes(l) {}
 
 Road::~Road() {}
 
@@ -144,6 +208,35 @@ bool Road::samplePointAt(double dist, double& outX, double& outY,
     return true;
 }
 
+void Road::setLaneTurns(std::vector<uint8_t> turns, bool fromOsm)
+{
+    if (static_cast<int>(turns.size()) != lanes) return; // reject desynced maps
+    laneTurns = std::move(turns);
+    laneTurnsFromOsm = fromOsm;
+}
+
+bool Road::laneAllows(int lane, uint8_t movement) const
+{
+    if (laneTurns.empty()) return true; // no data: fail open
+    if (lane < 0 || lane >= static_cast<int>(laneTurns.size())) return true;
+    return (laneTurns[lane] & movement) != 0;
+}
+
+int Road::nearestLaneAllowing(int fromLane, uint8_t movement) const
+{
+    if (laneTurns.empty()) return -1;
+    const int n = static_cast<int>(laneTurns.size());
+    fromLane = std::max(0, std::min(fromLane, n - 1));
+    if (laneTurns[fromLane] & movement) return fromLane;
+
+    for (int d = 1; d < n; d++) {
+        const int left = fromLane - d;
+        if (left >= 0 && (laneTurns[left] & movement)) return left;
+        const int right = fromLane + d;
+        if (right < n && (laneTurns[right] & movement)) return right;
+    }
+    return -1;
+}
 double Road::getDynamicCost() const {
     // Capacity roughly equals physical space: length / 7 meters per car * lanes.
     // We enforce a minimum capacity of 1.0 to prevent division by zero on tiny edge segments.

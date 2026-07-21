@@ -14,6 +14,13 @@ struct IDMParameters {
     float safeTimeHeadway;
     float length;
     float politeness;      // MOBIL p: 0 = selfish, 1 = selfless
+
+    // Driver personality. Defaulted so existing positional brace-inits of the
+    // eight original fields keep compiling (ghost cars, tests).
+    const char* profileName = "Average"; // static string; shown by the stats panel
+    float speedFactor = 1.0f;       // desired speed as a multiple of the road limit
+    float reactionTime = 0.0f;      // s of lag before pulling away from a stop
+    float launchBoostFactor = 2.0f; // standing-start accel multiplier (see getLaunchBoost)
 };
 
 class VehicleState {
@@ -34,8 +41,16 @@ class VehicleState {
         void updateLaneChange(float dt);
         
         // NEW: Allow physics engine to update these values
-        void setAcceleration(float accel); 
+        void setAcceleration(float accel);
         void updateWaitTime(float dt, float speedThreshold = 0.5f);
+
+        // Per-driver reaction lag: while the car sits at a full stop and the
+        // physics first asks it to go (light turned green, the queue ahead
+        // moved), the requested acceleration is held at zero until the go
+        // condition has persisted for this driver's reactionTime. Called once
+        // per physics tick with the frame's intended acceleration; returns
+        // the (possibly suppressed) acceleration to apply.
+        float applyReactionDelay(float accel, float dt);
 
         /* Read Functions */
         inline int   getId() const                { return id; }
@@ -58,8 +73,33 @@ class VehicleState {
         inline float getSafeTimeHeadway() const   { return safeTimeHeadway; }
         inline VehicleState* getLeader() const    { return leader; }
         inline float getMaxAccel() const          { return maxAccel; }
+        // Standing-start multiplier for drive acceleration (never braking):
+        // drivers push notably harder pulling away from a full stop -- red
+        // light, stop sign -- than plain IDM's gentle free-road ramp. Arms
+        // after a genuine stop, pays out LaunchBoostFactor at standstill, and
+        // fades to 1x by LaunchBoostEndSpeed.
+        float getLaunchBoost() const;
+        // Continuous time (s) spent below LaunchArmSpeed; resets the moment
+        // the car moves again. Used by the wrong-lane gate's hesitation
+        // window before it reroutes around a turn its lane doesn't allow.
+        inline float getStopDuration() const      { return m_stopDuration; }
+        // One-shot release of the wrong-lane hold on the current edge: once
+        // the hold has been served (or given up on), the gate must stay open
+        // until the next edge -- getStopDuration() resets on any creep, so
+        // re-arming from it traps cars in a stop/creep/stop loop forever.
+        inline bool hasServedWrongLaneHold() const { return m_wrongLaneHoldServed; }
+        inline void markWrongLaneHoldServed()      { m_wrongLaneHoldServed = true; }
+        // Lifetime count of wrong-lane reroutes. The gate stops offering
+        // reroutes past a small cap so a driver who keeps landing in wrong
+        // lanes eventually just takes the wrong-lane turn instead of
+        // orbiting the same blocks forever.
+        inline int  getRerouteCount() const        { return m_rerouteCount; }
+        inline void incrementRerouteCount()        { ++m_rerouteCount; }
         inline float getLength() const            { return m_length;}
         inline float getPoliteness() const        { return politeness; }
+        inline const char* getProfileName() const { return m_profileName; }
+        inline float getSpeedFactor() const       { return m_speedFactor; }
+        inline float getReactionTime() const      { return m_reactionTime; }
 
         // Lane transition state (m_lane is always the committed target lane)
         inline bool  isChangingLanes() const      { return m_laneChangeElapsed < m_laneChangeDuration; }
@@ -81,6 +121,11 @@ class VehicleState {
 
         std::vector<uint64_t> currentRoute;
         uint64_t currentRouteIndex;
+        bool isMarkedForDeletion = false;
+        bool isAlive() const { return !isMarkedForDeletion; }
+        static bool isSafe(VehicleState* v) {
+            return (v != nullptr && !v->isMarkedForDeletion);
+        }
 
     private:
         float m_speed;
@@ -93,6 +138,28 @@ class VehicleState {
         float m_laneChangeElapsed = 0.0f;
         float m_laneChangeDuration = 0.0f;
         float m_laneChangeCooldown = 0.0f;
+
+        // Launch boost state (see getLaunchBoost). Arming uses a wider speed
+        // band than the wait-time threshold because a car held at a stop
+        // line creeps against its ghost leader (oscillating ~0-0.8 m/s)
+        // rather than resting at exactly zero -- that creep is still a stop.
+        static constexpr float LaunchBoostEndSpeed = 9.0f;  // m/s, ~20 mph
+        static constexpr float LaunchArmSpeed      = 1.0f;  // m/s, counts as stopped
+        static constexpr float LaunchArmStopTime   = 0.5f;  // s below that to arm
+        float m_stopDuration = 0.0f;
+        bool  m_launchBoostArmed = false;
+
+        // Driver personality (fixed at spawn from IDMParameters).
+        const char* m_profileName = "Average";
+        float m_speedFactor = 1.0f;       // scales every desired-speed target
+        float m_reactionTime = 0.0f;      // s (see applyReactionDelay)
+        float m_launchBoostFactor = 2.0f; // per-driver standing-start kick
+        float m_reactionElapsed = 0.0f;   // s the current go condition has persisted
+
+        // Wrong-lane hold state (see hasServedWrongLaneHold); cleared by
+        // setCurrentEdge at every edge transition.
+        bool m_wrongLaneHoldServed = false;
+        int  m_rerouteCount = 0;
 
         // NEW: Telemetry state variables
         float m_acceleration = 0.0f;

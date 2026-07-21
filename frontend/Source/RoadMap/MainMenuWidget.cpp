@@ -24,8 +24,8 @@
 
 // Palette + shared button styles live in MenuPalette.h so in-game HUD widgets
 // (e.g. the sim control bar) can match the menu; only the menu-specific
-// formatting helpers stay here.
-namespace MenuPalette
+// formatting helpers stay here, file-local.
+namespace
 {
 	FString FormatSize(int64 Bytes)
 	{
@@ -45,7 +45,9 @@ namespace MenuPalette
 	}
 }
 
-using namespace MenuPalette;
+// NOTE: no file-scope `using namespace MenuPalette;` here — in unity builds it
+// leaks into every .cpp compiled after this one and collides with other
+// palettes (e.g. TelemetryPalette). Use function-scope directives instead.
 
 // ---------------------------------------------------------------------------
 // URoadmapRowButton
@@ -93,6 +95,7 @@ UTextBlock* UMainMenuWidget::MakeText(const FString& Text, int32 Size, const FLi
 
 UButton* UMainMenuWidget::MakeActionButton(const FString& Label, bool bPrimary)
 {
+	using namespace MenuPalette;
 	UButton* Button = WidgetTree->ConstructWidget<UButton>();
 	Button->SetStyle(ActionButtonStyle(bPrimary));
 
@@ -118,6 +121,7 @@ UWidget* UMainMenuWidget::WrapMinWidth(UWidget* Inner, float MinWidth)
 
 URoadmapRowButton* UMainMenuWidget::MakeListRow(int32 Index, const FString& Title, const FString& Subtitle)
 {
+	using namespace MenuPalette;
 	URoadmapRowButton* Row = WidgetTree->ConstructWidget<URoadmapRowButton>();
 	Row->InitRow(Index);
 	Row->SetStyle(ListRowStyle(false));
@@ -161,6 +165,7 @@ URoadmapRowButton* UMainMenuWidget::MakeListRow(int32 Index, const FString& Titl
 
 void UMainMenuWidget::BuildTree()
 {
+	using namespace MenuPalette;
 	UCanvasPanel* Canvas = WidgetTree->ConstructWidget<UCanvasPanel>();
 	WidgetTree->RootWidget = Canvas;
 
@@ -303,6 +308,7 @@ UWidget* UMainMenuWidget::BuildRootPage()
 
 UWidget* UMainMenuWidget::BuildNewPage()
 {
+	using namespace MenuPalette;
 	UVerticalBox* Page = WidgetTree->ConstructWidget<UVerticalBox>();
 
 	Page->AddChildToVerticalBox(MakeText(TEXT("START NEW ROAD MAP"), 11, Accent, FName("Medium"), 300));
@@ -392,6 +398,7 @@ UWidget* UMainMenuWidget::BuildNewPage()
 
 UWidget* UMainMenuWidget::BuildLoadPage()
 {
+	using namespace MenuPalette;
 	UVerticalBox* Page = WidgetTree->ConstructWidget<UVerticalBox>();
 
 	Page->AddChildToVerticalBox(MakeText(TEXT("LOAD ROAD MAP"), 11, Accent, FName("Medium"), 300));
@@ -615,6 +622,7 @@ void UMainMenuWidget::OnSaveRowSelected(int32 Index)
 
 void UMainMenuWidget::ApplyRowSelection(const TArray<TObjectPtr<URoadmapRowButton>>& Rows, int32 SelectedIndex)
 {
+	using namespace MenuPalette;
 	for (int32 Index = 0; Index < Rows.Num(); ++Index)
 	{
 		Rows[Index]->SetStyle(ListRowStyle(Index == SelectedIndex));
@@ -667,6 +675,7 @@ void UMainMenuWidget::OnOpenSaveClicked()
 
 void UMainMenuWidget::OnDeleteSaveClicked()
 {
+	using namespace MenuPalette;
 	URoadmapGameInstance* GameInstance = GetRoadmapGameInstance();
 	if (!GameInstance || !Saves.IsValidIndex(SelectedSaveIndex))
 	{
@@ -697,6 +706,7 @@ void UMainMenuWidget::OnDeleteSaveClicked()
 
 void UMainMenuWidget::ResetDeleteConfirm()
 {
+	using namespace MenuPalette;
 	bDeleteArmed = false;
 	if (DeleteButton)
 	{

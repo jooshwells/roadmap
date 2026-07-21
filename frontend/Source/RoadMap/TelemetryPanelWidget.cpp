@@ -150,7 +150,9 @@ namespace TelemetryPalette
     }
 }
 
-using namespace TelemetryPalette;
+// NOTE: no file-scope `using namespace TelemetryPalette;` here — in unity
+// builds it leaks into every .cpp compiled after this one and collides with
+// MenuPalette. Use function-scope directives instead.
 
 // Saved-run row events
 
@@ -278,6 +280,8 @@ FReply UTelemetryPanelWidget::NativeOnMouseWheel(
     const FPointerEvent& InMouseEvent
 )
 {
+    using namespace TelemetryPalette;
+
     const FVector2D ScreenPosition = InMouseEvent.GetScreenSpacePosition();
     if (!IsPointerOverHeatmap(ScreenPosition))
     {
@@ -298,6 +302,8 @@ FReply UTelemetryPanelWidget::NativeOnMouseButtonDown(
     const FPointerEvent& InMouseEvent
 )
 {
+    using namespace TelemetryPalette;
+
     if (InMouseEvent.GetEffectingButton() != EKeys::LeftMouseButton)
     {
         return Super::NativeOnMouseButtonDown(InGeometry, InMouseEvent);
@@ -427,6 +433,7 @@ UWidget* UTelemetryPanelWidget::MakeComboEntry(FString Item)
 // Creates either an amber main button or a dark normal button.
 UButton* UTelemetryPanelWidget::MakeActionButton(const FString& Label, bool bPrimary)
 {
+    using namespace TelemetryPalette;
     UButton* Button = WidgetTree->ConstructWidget<UButton>();
     Button->SetStyle(ActionButtonStyle(bPrimary));
 
@@ -449,6 +456,7 @@ UTelemetryRunButton* UTelemetryPanelWidget::MakeRunRow(
     const FTelemetryRunInfo& RunInfo
 )
 {
+    using namespace TelemetryPalette;
     UTelemetryRunButton* Row = WidgetTree->ConstructWidget<UTelemetryRunButton>();
     Row->InitializeRow(RunIndex);
     Row->OnRunSelected.BindUObject(this, &UTelemetryPanelWidget::HandleRunSelected);
@@ -484,6 +492,7 @@ void UTelemetryPanelWidget::BuildWidgetTree()
 {
     // The whole panel is created here instead of depending on a large widget file.
     // Keeping each tab in one tree also makes it easy to share the selected run.
+    using namespace TelemetryPalette;
     UCanvasPanel* Canvas = WidgetTree->ConstructWidget<UCanvasPanel>();
     WidgetTree->RootWidget = Canvas;
 
@@ -1240,6 +1249,7 @@ void UTelemetryPanelWidget::BuildWidgetTree()
 // Reloads runs for the current map and rebuilds the list on the left.
 void UTelemetryPanelWidget::RefreshRunList()
 {
+    using namespace TelemetryPalette;
     ResetDeleteConfirmation();
     if (DeleteRunButton)
     {
@@ -1345,6 +1355,7 @@ void UTelemetryPanelWidget::RefreshRunList()
 // Loads the selected run's values and shows them on the Overview tab.
 void UTelemetryPanelWidget::RefreshSelectedRunDetails()
 {
+    using namespace TelemetryPalette;
     if (!SavedRuns.IsValidIndex(SelectedRunIndex))
     {
         return;
@@ -1396,6 +1407,7 @@ void UTelemetryPanelWidget::RefreshSelectedRunDetails()
 // Highlights the selected run and leaves the other rows dark.
 void UTelemetryPanelWidget::RefreshRunRowStyles()
 {
+    using namespace TelemetryPalette;
     for (int32 RowIndex = 0; RowIndex < RunRows.Num(); ++RowIndex)
     {
         if (RunRows[RowIndex])
@@ -1468,6 +1480,8 @@ void UTelemetryPanelWidget::RefreshComparisonOptions(int32 PreferredRunIndex)
 // Turns the comparison result into simple cards and road-change rows.
 void UTelemetryPanelWidget::RenderComparisonResult(const FTelemetryRunComparisonResult& Result)
 {
+    using namespace TelemetryPalette;
+
     if (!ComparisonResultsBox)
     {
         return;
@@ -1672,6 +1686,7 @@ FString UTelemetryPanelWidget::GetMetricHelpText(const FString& MetricId) const
 // Shows a normal or error message at the bottom of the panel.
 void UTelemetryPanelWidget::SetStatus(const FString& Message, bool bIsError)
 {
+    using namespace TelemetryPalette;
     if (!StatusText)
     {
         return;
@@ -1705,6 +1720,7 @@ FString UTelemetryPanelWidget::GetFocusDisplayName(const FString& FocusId) const
 // Builds the smooth color strip shown beside the heatmap.
 void UTelemetryPanelWidget::UpdateHeatmapLegendGradient(const TArray<FString>& ColorsTopToBottom)
 {
+    using namespace TelemetryPalette;
     if (!HeatmapLegendGradient || ColorsTopToBottom.Num() < 2)
     {
         return;
@@ -1773,6 +1789,8 @@ void UTelemetryPanelWidget::SetHeatmapZoom(
     const FVector2D* CursorScreenPosition
 )
 {
+    using namespace TelemetryPalette;
+
     const float ClampedZoom = FMath::Clamp(
         NewZoom,
         MinimumHeatmapZoom,
@@ -1802,6 +1820,8 @@ void UTelemetryPanelWidget::SetHeatmapZoom(
 // Returns the map to its starting size and center position.
 void UTelemetryPanelWidget::ResetHeatmapView()
 {
+    using namespace TelemetryPalette;
+
     bIsHeatmapPanning = false;
     bHeatmapPointerPressed = false;
     bHeatmapDragMoved = false;
@@ -1814,6 +1834,8 @@ void UTelemetryPanelWidget::ResetHeatmapView()
 // Limits map movement so the user cannot drag it completely off screen.
 FVector2D UTelemetryPanelWidget::ClampHeatmapPan(const FVector2D& RequestedPan) const
 {
+    using namespace TelemetryPalette;
+
     if (!HeatmapViewport || HeatmapZoom <= MinimumHeatmapZoom)
     {
         return FVector2D::ZeroVector;
@@ -2164,6 +2186,7 @@ void UTelemetryPanelWidget::SetWorkspaceTab(int32 TabIndex)
 // Gives the active tab its amber style so the user knows where they are.
 void UTelemetryPanelWidget::RefreshWorkspaceTabStyles()
 {
+    using namespace TelemetryPalette;
     if (OverviewTabButton)
     {
         OverviewTabButton->SetStyle(ActionButtonStyle(ActiveWorkspaceTab == 0));
@@ -2315,6 +2338,7 @@ void UTelemetryPanelWidget::SetTelemetryTaskRunning(bool bIsRunning)
 // Changes the selected run and refreshes every tab that depends on it.
 void UTelemetryPanelWidget::HandleRunSelected(int32 RunIndex)
 {
+    using namespace TelemetryPalette;
     if (bTelemetryTaskRunning)
     {
         return;
@@ -2489,6 +2513,8 @@ void UTelemetryPanelWidget::FinishRunComparison(
     const FString& ErrorMessage
 )
 {
+    using namespace TelemetryPalette;
+
     SetTelemetryTaskRunning(false);
     if (!bSucceeded)
     {
@@ -2602,6 +2628,8 @@ void UTelemetryPanelWidget::HandleViewComparisonHeatmapsClicked()
 // Switches the viewer between baseline, second-run, and change maps.
 void UTelemetryPanelWidget::ShowComparisonHeatmapMode(int32 ModeIndex)
 {
+    using namespace TelemetryPalette;
+
     FString Path;
     FString ModeLabel;
     FString Metric = SelectedComparisonMetric;
@@ -2906,6 +2934,7 @@ void UTelemetryPanelWidget::FinishFDOTComparison(
     const FString& ErrorMessage
 )
 {
+    using namespace TelemetryPalette;
     SetTelemetryTaskRunning(false);
 
     if (!bSucceeded)
@@ -3028,6 +3057,7 @@ void UTelemetryPanelWidget::HandleViewFDOTHeatmapClicked()
 // Finds and opens the current run's selected SVG heatmap.
 void UTelemetryPanelWidget::HandleViewHeatmapClicked()
 {
+    using namespace TelemetryPalette;
     if (!SavedRuns.IsValidIndex(SelectedRunIndex))
     {
         SetStatus(TEXT("Select a saved run before viewing a heatmap."), true);
@@ -3077,6 +3107,8 @@ bool UTelemetryPanelWidget::OpenHeatmapPath(
     const FString& Metric
 )
 {
+    using namespace TelemetryPalette;
+
     // The SVG keeps roads and labels sharp. The JSON beside it gives Unreal the
     // title, legend, summary values, and road shapes used for mouse interaction.
     const FString SvgPath = HeatmapPath;
@@ -3205,12 +3237,16 @@ void UTelemetryPanelWidget::HandleCloseHeatmapClicked()
 // Moves the map one zoom step closer.
 void UTelemetryPanelWidget::HandleZoomInClicked()
 {
+    using namespace TelemetryPalette;
+
     SetHeatmapZoom(HeatmapZoom + HeatmapZoomStep);
 }
 
 // Moves the map one zoom step farther away.
 void UTelemetryPanelWidget::HandleZoomOutClicked()
 {
+    using namespace TelemetryPalette;
+
     SetHeatmapZoom(HeatmapZoom - HeatmapZoomStep);
 }
 

@@ -1,4 +1,5 @@
 #include "vehicle_state.h"
+#include <algorithm>
 #include <iostream>
 
 void VehicleState::accelerate(float amount) 
@@ -16,9 +17,12 @@ void VehicleState::setPos(float new_pos)
     m_pos = new_pos;
 }
 
+// Every speed target (road limit, junction turn pacing) is filtered through
+// the driver's personality: aggressive drivers cruise over the limit and
+// sweep turns harder, cautious ones sit under it.
 void VehicleState::setDesiredSpeed(float new_des_speed)
 {
-    desiredSpeed = new_des_speed;
+    desiredSpeed = new_des_speed * m_speedFactor;
 }
 
 void VehicleState::setLeader(VehicleState* newLeader) 
@@ -33,12 +37,58 @@ void VehicleState::setAcceleration(float accel)
 }
 
 // NEW: Accumulate wait time if moving below the threshold (e.g., 0.5 m/s)
-void VehicleState::updateWaitTime(float dt, float speedThreshold) 
+// Also drives the launch-boost state machine: a sustained full stop arms the
+// boost, and it stays live until the car has accelerated past the boost's
+// fade-out speed. Slowing down again without fully stopping does not re-arm.
+void VehicleState::updateWaitTime(float dt, float speedThreshold)
 {
-    if (m_speed < speedThreshold) 
+    if (m_speed < speedThreshold)
     {
         m_waitTime += dt;
     }
+
+    if (m_speed < LaunchArmSpeed)
+    {
+        m_stopDuration += dt;
+        if (m_stopDuration >= LaunchArmStopTime) m_launchBoostArmed = true;
+    }
+    else
+    {
+        m_stopDuration = 0.0f;
+        if (m_speed >= LaunchBoostEndSpeed) m_launchBoostArmed = false;
+    }
+}
+
+float VehicleState::getLaunchBoost() const
+{
+    if (!m_launchBoostArmed || m_speed >= LaunchBoostEndSpeed) return 1.0f;
+    const float t = std::max(0.0f, m_speed) / LaunchBoostEndSpeed;
+    return m_launchBoostFactor - (m_launchBoostFactor - 1.0f) * t;
+}
+
+float VehicleState::applyReactionDelay(float accel, float dt)
+{
+    // Only launches from a genuine stop are gated (same arming as the launch
+    // boost); rolling drivers respond through their time headway instead.
+    if (m_launchBoostArmed && m_speed < LaunchArmSpeed)
+    {
+        if (accel > 0.05f)
+        {
+            m_reactionElapsed += dt;
+            if (m_reactionElapsed < m_reactionTime) return 0.0f;
+        }
+        else
+        {
+            // Go condition vanished (light back to red, queue re-compressed):
+            // the driver will need a fresh reaction next time.
+            m_reactionElapsed = 0.0f;
+        }
+    }
+    else
+    {
+        m_reactionElapsed = 0.0f;
+    }
+    return accel;
 }
 
 // NEW: Safely get the current road's ID
@@ -58,14 +108,18 @@ VehicleState::VehicleState(uint64_t originNode, uint64_t destNode, float iS, flo
     m_destination(destNode),    // INITIALIZE
     accelExp(params.accelExp),
     maxAccel(params.maxAccel),
-    desiredSpeed(params.desiredSpeed),
+    desiredSpeed(params.desiredSpeed * params.speedFactor),
     minGap(params.minGap),
     safeBrakePower(params.safeBrakePower),
     safeTimeHeadway(params.safeTimeHeadway),
     id(count),
     m_length(params.length),
     politeness(params.politeness),
-    m_laneFrom(startingLane)
+    m_laneFrom(startingLane),
+    m_profileName(params.profileName),
+    m_speedFactor(params.speedFactor),
+    m_reactionTime(params.reactionTime),
+    m_launchBoostFactor(params.launchBoostFactor)
 {
     count++;
 }
@@ -140,7 +194,9 @@ Road* VehicleState::getCurrentEdge() const
     return currentEdge;
 }
 
-void VehicleState::setCurrentEdge(Road* edge) 
+void VehicleState::setCurrentEdge(Road* edge)
 {
+    // A new edge means a new stop line, so the wrong-lane hold re-arms.
+    if (edge != currentEdge) m_wrongLaneHoldServed = false;
     currentEdge = edge;
 }
