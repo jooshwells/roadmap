@@ -80,6 +80,54 @@ namespace RoadIntersectionUtil
         return std::atan2(sinTheta, cosTheta);
     }
 
+    // Comfortable corner speed (m/s) for a turn of deflection |DeflRad| through
+    // a junction whose pavement/stop line sits SetbackMeters from the node
+    // center. A turning car sweeps an arc tangent to its approach and exit
+    // legs; approximating that arc as a fillet whose tangent points sit one
+    // setback back from the corner gives radius R = Setback / tan(theta/2). The
+    // fastest a driver holding lateral accel ALat can take radius R is
+    // sqrt(ALat * R). Movements inside the through cone (|defl| < ~20 deg,
+    // matching ClassifyTurn's SinThroughLimit) get no reduction; otherwise the
+    // result is clamped to [MinCorner, ExitLimit] so a hairpin never crawls and
+    // a gentle bend never exceeds the road it enters. This replaces the old
+    // flat left=0.70 / right=0.60 category multiplier so turn speed scales with
+    // the ACTUAL geometry. Single source of truth shared by
+    // applyJunctionTargetSpeed (the live desired speed) and
+    // estimateCrossingSeconds (gap-acceptance timing) so the two never drift.
+    //
+    // Calibration note: the lateral-accel budget (latAccel, per driver) is set
+    // well above a textbook comfort figure on purpose. A strictly realistic
+    // ~3 m/s^2 makes a 90 deg turn through a 2-lane box (R ~ 8 m) work out to
+    // ~4.9 m/s -- physically right, but roughly half the pace the old flat
+    // multiplier gave, which read as a regression in how quickly traffic turns.
+    // The tuned budget keeps the geometry GRADING (sharper turn -> slower) while
+    // landing moderate turns near the old pacing and gentle ones above it.
+    // Floor matches the old right-turn floor so no movement is slower than before.
+    constexpr float DefaultMinCornerSpeed = 5.0f; // m/s, ~11 mph (old right-turn floor)
+
+    inline float CornerSpeed(double DeflRad, float SetbackMeters, float ALat,
+                             float ExitLimit, float MinCorner = DefaultMinCornerSpeed)
+    {
+        const double a = std::abs(DeflRad);
+        constexpr double ThroughConeRad = 0.349; // ~20 deg, matches SinThroughLimit
+        if (a < ThroughConeRad) return ExitLimit;
+        // Degree-1/2 nodes report a setback of 0 (no junction box), which would
+        // collapse the radius to nothing and floor a car mid-road at a sharp
+        // polyline bend. Give those a small plausible fillet instead. Every real
+        // intersection is already >= MedianGap + 1*LaneWidth = 4.5 m, so this
+        // floor never changes junction behavior.
+        const double S = std::max(SetbackMeters, 4.0f);
+        // Cap the half-angle short of 90 deg so tan() stays finite for U-turns;
+        // the clamp below floors whatever tiny radius a near-180 turn implies.
+        const double half = std::min(a, 2.70) * 0.5; // cap ~155 deg
+        const double denom = std::tan(half);
+        const double R = (denom > 1e-4) ? std::max(0.5, S / denom) : 0.5;
+        const float v = std::sqrt(std::max(0.0f, ALat) * static_cast<float>(R));
+        // Never floor above the entered road's limit (low-speed streets).
+        const float lo = std::min(MinCorner, ExitLimit);
+        return std::clamp(v, lo, ExitLimit);
+    }
+
     // True when a candidate exit (its |deflection| = CandidateAbsDefl) is the
     // through-continuation, given the smallest |deflection| among the OTHER
     // forward exits at the node (BestOtherForwardAbsDefl; pass +inf when the

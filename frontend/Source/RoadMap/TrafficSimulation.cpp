@@ -289,6 +289,53 @@ void TrafficSimulation::GetVehicleRenderStates(std::vector<VehicleRenderState>& 
         return a + d * s;
     };
 
+    // Sweep the car along a rounded arc through the junction box instead of the
+    // old straight chord. A cubic Bezier from 'a' to 'b' whose end tangents are
+    // each endpoint's edge heading: the curve leaves 'a' along a.yaw and arrives
+    // at 'b' along b.yaw, so it tracks a real turning radius and joins the drawn
+    // edges tangentially (no heading pop at s=0/s=1). The heading is taken from
+    // the curve tangent, not lerped, so the nose follows the path. z/pitch stay
+    // a linear lerp (grade). Because the arc is longer than the chord, the car
+    // also renders through the box a touch faster than the chord did -- the
+    // reason the physics turn-speed floors could come down. Through movements
+    // have near-parallel tangents, so the curve degenerates to the old straight
+    // line and those cars look unchanged; coincident endpoints fall back too.
+    auto CurveBlend = [&LerpAngle](const EdgePoint& a, const EdgePoint& b, float s, EdgePoint& out)
+    {
+        out.z     = a.z + s * (b.z - a.z);
+        out.pitch = a.pitch + s * (b.pitch - a.pitch);
+
+        const double dx = b.x - a.x, dy = b.y - a.y;
+        const double chord = std::sqrt(dx * dx + dy * dy);
+        if (chord < 1e-3)
+        {
+            out.x = a.x + s * dx;
+            out.y = a.y + s * dy;
+            out.yaw = LerpAngle(a.yaw, b.yaw, s);
+            return;
+        }
+
+        // Handles ~1/3 of the chord give a natural fillet; larger rounds tighter.
+        const double h = chord * (1.0 / 3.0);
+        const double d0x = std::cos(a.yaw), d0y = std::sin(a.yaw);
+        const double d1x = std::cos(b.yaw), d1y = std::sin(b.yaw);
+        const double b1x = a.x + d0x * h, b1y = a.y + d0y * h; // leave 'a' along a.yaw
+        const double b2x = b.x - d1x * h, b2y = b.y - d1y * h; // arrive at 'b' along b.yaw
+
+        const double u = 1.0 - static_cast<double>(s);
+        const double sd = static_cast<double>(s);
+        const double uu = u * u, ss = sd * sd;
+        out.x = uu * u * a.x + 3.0 * uu * sd * b1x + 3.0 * u * ss * b2x + ss * sd * b.x;
+        out.y = uu * u * a.y + 3.0 * uu * sd * b1y + 3.0 * u * ss * b2y + ss * sd * b.y;
+
+        // Heading from the Bezier derivative (curve tangent).
+        const double tx = 3.0 * uu * (b1x - a.x) + 6.0 * u * sd * (b2x - b1x) + 3.0 * ss * (b.x - b2x);
+        const double ty = 3.0 * uu * (b1y - a.y) + 6.0 * u * sd * (b2y - b1y) + 3.0 * ss * (b.y - b2y);
+        out.yaw = (tx * tx + ty * ty > 1e-12)
+            ? static_cast<float>(std::atan2(ty, tx))
+            : LerpAngle(a.yaw, b.yaw, s);
+    };
+
     // Lane a movement through node 'via' lands in on edge 'onto', departing
     // 'fromEdge' in lane 'throughLane' -- the shared rank-aware rule from
     // intersection_geometry.h (each of two side-by-side turn lanes feeds its
@@ -381,11 +428,7 @@ void TrafficSimulation::GetVehicleRenderStates(std::vector<VehicleRenderState>& 
                     PointOnEdge(nB, nC, next, next->getLength(), sbNextStart, nextLane, entryPt))
                 {
                     float s = std::clamp((pos - (static_cast<float>(L) - sbEnd)) / denom, 0.0f, 1.0f);
-                    p.x = exitPt.x + s * (entryPt.x - exitPt.x);
-                    p.y = exitPt.y + s * (entryPt.y - exitPt.y);
-                    p.z = exitPt.z + s * (entryPt.z - exitPt.z);
-                    p.yaw = LerpAngle(exitPt.yaw, entryPt.yaw, s);
-                    p.pitch = exitPt.pitch + s * (entryPt.pitch - exitPt.pitch);
+                    CurveBlend(exitPt, entryPt, s, p);
                     resolved = true;
                 }
             }
@@ -436,11 +479,7 @@ void TrafficSimulation::GetVehicleRenderStates(std::vector<VehicleRenderState>& 
                     PointOnEdge(nA, nB, v->getCurrentEdge(), L, sbStart, lane, entryPt))
                 {
                     float s = std::clamp((sbPrevEnd + pos) / denom, 0.0f, 1.0f);
-                    p.x = exitPt.x + s * (entryPt.x - exitPt.x);
-                    p.y = exitPt.y + s * (entryPt.y - exitPt.y);
-                    p.z = exitPt.z + s * (entryPt.z - exitPt.z);
-                    p.yaw = LerpAngle(exitPt.yaw, entryPt.yaw, s);
-                    p.pitch = exitPt.pitch + s * (entryPt.pitch - exitPt.pitch);
+                    CurveBlend(exitPt, entryPt, s, p);
                     resolved = true;
                 }
             }

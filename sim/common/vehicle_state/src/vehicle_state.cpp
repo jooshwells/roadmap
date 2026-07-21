@@ -25,6 +25,14 @@ void VehicleState::setDesiredSpeed(float new_des_speed)
     desiredSpeed = new_des_speed * m_speedFactor;
 }
 
+// Geometry-derived corner speeds are a physical lateral-accel cap (personality
+// already baked in via latAccel); take them verbatim so speedFactor doesn't
+// scale them a second time.
+void VehicleState::setDesiredSpeedRaw(float new_des_speed)
+{
+    desiredSpeed = new_des_speed;
+}
+
 void VehicleState::setLeader(VehicleState* newLeader) 
 {
     leader = newLeader;
@@ -119,7 +127,8 @@ VehicleState::VehicleState(uint64_t originNode, uint64_t destNode, float iS, flo
     m_profileName(params.profileName),
     m_speedFactor(params.speedFactor),
     m_reactionTime(params.reactionTime),
-    m_launchBoostFactor(params.launchBoostFactor)
+    m_launchBoostFactor(params.launchBoostFactor),
+    m_latAccel(params.latAccel)
 {
     count++;
 }

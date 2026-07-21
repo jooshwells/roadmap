@@ -58,6 +58,7 @@ class IDM_Profiles
                     p.speedFactor       = range(1.08f, 1.22f); // 8-22% over the limit
                     p.reactionTime      = range(0.25f, 0.6f);  // jumps the green
                     p.launchBoostFactor = range(2.2f, 2.7f);
+                    p.latAccel          = range(7.5f, 9.0f);   // carves turns hard
                     break;
 
                 case DriverType::Cautious:
@@ -71,6 +72,7 @@ class IDM_Profiles
                     p.speedFactor       = range(0.82f, 0.95f); // 5-18% under the limit
                     p.reactionTime      = range(1.2f, 2.0f);   // slow off the line
                     p.launchBoostFactor = range(1.3f, 1.7f);
+                    p.latAccel          = range(4.5f, 5.5f);   // eases through turns
                     break;
 
                 case DriverType::Average:
@@ -85,6 +87,7 @@ class IDM_Profiles
                     p.speedFactor       = range(0.95f, 1.08f); // hovers around the limit
                     p.reactionTime      = range(0.6f, 1.2f);
                     p.launchBoostFactor = range(1.8f, 2.2f);
+                    p.latAccel          = range(6.0f, 7.0f);   // baseline cornering budget
                     break;
             }
             return p;

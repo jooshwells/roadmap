@@ -225,6 +225,13 @@ class PhysicsProcessor
         // turn onto a fast arterial sweeps faster than one into a side
         // street), the current road's limit everywhere else.
         void applyJunctionTargetSpeed(VehicleState* vhcl);
+        // Geometry-derived comfortable corner speed (m/s) for a car turning
+        // from 'approach' onto 'exitRoad' through 'node', capped at exitLimit.
+        // Falls back to exitLimit (no reduction) when edge tangents are
+        // unavailable. Wraps RoadIntersectionUtil::CornerSpeed so the live
+        // junction pacing and the crossing-time estimate share one model.
+        float cornerSpeedForEdges(const Road* approach, const Road* exitRoad,
+                                  const Node* node, float aLat, float exitLimit);
         // True when vhcl is at destNode's stop line with no same-lane car
         // between it and the line -- the only state from which a granted car
         // can actually enter the junction box.
