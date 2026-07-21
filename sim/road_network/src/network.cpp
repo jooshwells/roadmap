@@ -1,8 +1,14 @@
 #include "network.h"
+#include "IntersectionGeometry.h"
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <iostream>
 #include <fstream>
+#include <limits>
+#include <unordered_map>
+#include <unordered_set>
 
 void Network::addNode(std::uint64_t id, double lat, double lon, double x, double y)
 {
@@ -47,20 +53,17 @@ Node* Network::getRandomNode(std::mt19937& rng)
 }
 
 void Network::addDirectedEdge(uint64_t fromId, uint64_t toId, double dist, double speedLimit, int lanes,
-                              std::vector<RoadGeomPoint> geometry, const std::string& name)
+                              std::vector<RoadGeomPoint> geometry, int layer, const std::string& name)
 {
     if (nodes.find(fromId) != nodes.end() && nodes.find(toId) != nodes.end())
     {
         Road& edge = nodes[fromId].outgoingEdges.emplace_back(nextEdgeId++, toId, dist, speedLimit, lanes, name);
+        edge.setLayer(layer); // Set the layer property on the created edge
 
         nodes[toId].incomingEdgeNodeIds.push_back(fromId);
 
         if (geometry.size() >= 2)
         {
-            // OSM geometry is stored per way, so a reversed directed edge can
-            // carry a to->from point order. Orient by whichever end sits
-            // closest to each node, then snap the endpoints exactly onto the
-            // node coordinates so road visuals stay flush at junctions.
             const Node& a = nodes[fromId];
             const Node& b = nodes[toId];
             auto dist2 = [](const RoadGeomPoint& p, const Node& n) {
@@ -80,6 +83,227 @@ void Network::addDirectedEdge(uint64_t fromId, uint64_t toId, double dist, doubl
     else
     {
         throw std::invalid_argument("Cannot create edge: Node ID does not exist.");
+    }
+}
+
+bool Network::splitDirectedEdge(uint64_t fromId, uint64_t toId, uint64_t newNodeId, double x, double y)
+{
+    if (newNodeId == fromId || newNodeId == toId) return false;
+
+    Node* from = getNode(fromId);
+    Node* to = getNode(toId);
+    if (!from || !to) return false;
+
+    Road* edge = nullptr;
+    for (Road& e : from->outgoingEdges)
+    {
+        if (e.getDest() == toId) { edge = &e; break; }
+    }
+    if (!edge) return false;
+
+    // Full centerline in map coordinates: the stored shape polyline, or the
+    // straight node-to-node chord for shapeless (e.g. runtime-drawn) edges.
+    std::vector<RoadGeomPoint> pts;
+    if (edge->hasCurveGeometry())
+    {
+        pts = edge->getGeometry();
+    }
+    else
+    {
+        const double dx = to->getX() - from->getX();
+        const double dy = to->getY() - from->getY();
+        pts.push_back({ from->getX(), from->getY(), 0.0 });
+        pts.push_back({ to->getX(), to->getY(), std::sqrt(dx * dx + dy * dy) });
+    }
+    const double total = pts.back().s;
+    if (total <= 0.0) return false;
+
+    // Project (x, y) onto the polyline to find the split arc length.
+    double bestS = 0.0;
+    double bestD2 = std::numeric_limits<double>::max();
+    for (size_t i = 0; i + 1 < pts.size(); i++)
+    {
+        const double ax = pts[i].x, ay = pts[i].y;
+        const double bx = pts[i + 1].x, by = pts[i + 1].y;
+        const double vx = bx - ax, vy = by - ay;
+        const double segLen2 = vx * vx + vy * vy;
+        double t = (segLen2 > 0.0) ? ((x - ax) * vx + (y - ay) * vy) / segLen2 : 0.0;
+        t = std::clamp(t, 0.0, 1.0);
+        const double px = ax + vx * t, py = ay + vy * t;
+        const double d2 = (x - px) * (x - px) + (y - py) * (y - py);
+        if (d2 < bestD2)
+        {
+            bestD2 = d2;
+            bestS = pts[i].s + (pts[i + 1].s - pts[i].s) * t;
+        }
+    }
+
+    // Keep the split strictly inside the edge so neither half degenerates.
+    const double endMargin = std::min(1.0, total * 0.05);
+    bestS = std::clamp(bestS, endMargin, total - endMargin);
+
+    // Split the centerline at bestS, using the new node position (x, y) as the
+    // shared vertex so both halves end exactly on the node.
+    std::vector<RoadGeomPoint> ptsA, ptsB;
+    for (const RoadGeomPoint& p : pts)
+    {
+        if (p.s < bestS) ptsA.push_back(p);
+        else if (p.s > bestS) ptsB.push_back(p);
+    }
+    ptsA.push_back({ x, y, 0.0 });
+    ptsB.insert(ptsB.begin(), { x, y, 0.0 });
+
+    // Divide the sim length proportionally: OSM length_m can differ slightly
+    // from polyline arc length, and the halves must sum to the original.
+    const double lenA = edge->getLength() * (bestS / total);
+    const double lenB = edge->getLength() - lenA;
+    const double speed = edge->getSpeedLimit();
+    const int lanes = edge->getLanes();
+    const int layer = edge->getLayer();
+
+    // Create the split node. Re-fetch everything afterwards per the header's
+    // pointer-stability warning.
+    addNode(newNodeId, 0.0, 0.0, x, y);
+    from = getNode(fromId);
+    to = getNode(toId);
+    Node* mid = getNode(newNodeId);
+    if (!from || !to || !mid) return false;
+    edge = nullptr;
+    for (Road& e : from->outgoingEdges)
+    {
+        if (e.getDest() == toId) { edge = &e; break; }
+    }
+    if (!edge) return false;
+
+    // Retarget the first half in place.
+    edge->setDest(newNodeId);
+    edge->setLength(lenA);
+    edge->setGeometry(std::move(ptsA));
+    mid->incomingEdgeNodeIds.push_back(fromId);
+
+    // 'to' no longer receives an edge directly from 'from'.
+    auto it = std::find(to->incomingEdgeNodeIds.begin(), to->incomingEdgeNodeIds.end(), fromId);
+    if (it != to->incomingEdgeNodeIds.end()) to->incomingEdgeNodeIds.erase(it);
+
+    // Second half gets a fresh edge id and the remaining centerline.
+    addDirectedEdge(newNodeId, toId, lenB, speed, lanes, std::move(ptsB), layer);
+    return true;
+}
+
+bool Network::removeDirectedEdge(uint64_t fromId, uint64_t toId)
+{
+    Node* from = getNode(fromId);
+    Node* to = getNode(toId);
+    if (!from || !to) return false;
+
+    auto edgeIt = std::find_if(from->outgoingEdges.begin(), from->outgoingEdges.end(),
+        [toId](const Road& e) { return e.getDest() == toId; });
+    if (edgeIt == from->outgoingEdges.end()) return false;
+
+    from->outgoingEdges.erase(edgeIt);
+
+    auto inIt = std::find(to->incomingEdgeNodeIds.begin(), to->incomingEdgeNodeIds.end(), fromId);
+    if (inIt != to->incomingEdgeNodeIds.end()) to->incomingEdgeNodeIds.erase(inIt);
+
+    return true;
+}
+
+bool Network::removeNodeIfIsolated(uint64_t id)
+{
+    Node* node = getNode(id);
+    if (!node) return false;
+    if (!node->outgoingEdges.empty() || !node->incomingEdgeNodeIds.empty()) return false;
+
+    nodes.erase(id);
+    nodeIds.erase(std::remove(nodeIds.begin(), nodeIds.end(), id), nodeIds.end());
+    if (numNodes > 0) numNodes--;
+    return true;
+}
+
+void Network::applyVerticality(double layerHeightM, double rampLengthM, double medianGapM)
+{
+    // Node elevation = layer of the road that continues THROUGH the node,
+    // i.e. the layer with edges toward the most distinct neighbours (2+).
+    // That keeps a viaduct at deck height where an on/off-ramp joins it (the
+    // ramp climbs inside its own span) instead of the deck dipping to ground
+    // at every junction. Ties go to the layer nearest the ground. Nodes with
+    // no through layer -- a bridge that simply ends, or a lone dead end --
+    // fall back to the incident layer closest to ground, so ground roads
+    // passing a bridge endpoint stay flat and the deck ramps down in-span.
+    for (auto& [id, node] : nodes)
+    {
+        // Distinct neighbours per layer, over both edge directions.
+        std::unordered_map<int, std::unordered_set<uint64_t>> perLayer;
+        for (const Road& e : node.outgoingEdges)
+        {
+            perLayer[e.getLayer()].insert(e.getDest());
+        }
+        for (uint64_t inId : node.incomingEdgeNodeIds)
+        {
+            auto it = nodes.find(inId);
+            if (it == nodes.end()) continue;
+            for (const Road& e : it->second.outgoingEdges)
+            {
+                if (e.getDest() == id)
+                {
+                    perLayer[e.getLayer()].insert(inId);
+                    break;
+                }
+            }
+        }
+
+        bool haveAny = false;
+        int closest = 0;
+        bool haveThrough = false;
+        int throughLayer = 0;
+        size_t throughCount = 0;
+        for (const auto& [layer, nbrs] : perLayer)
+        {
+            if (!haveAny || std::abs(layer) < std::abs(closest))
+            {
+                closest = layer;
+                haveAny = true;
+            }
+            if (nbrs.size() >= 2 &&
+                (!haveThrough || nbrs.size() > throughCount ||
+                 (nbrs.size() == throughCount && std::abs(layer) < std::abs(throughLayer))))
+            {
+                throughLayer = layer;
+                throughCount = nbrs.size();
+                haveThrough = true;
+            }
+        }
+
+        node.setZ((haveThrough ? throughLayer : closest) * layerHeightM);
+    }
+
+    // Junction setback radius per node (the same trim the visualizer uses),
+    // computed once and reused as the flat zone of every incident edge.
+    std::unordered_map<uint64_t, double> setbacks;
+    setbacks.reserve(nodes.size());
+    for (auto& [id, node] : nodes)
+    {
+        setbacks[id] = RoadIntersectionUtil::GetNodeSetbackMeters(
+            this, node, static_cast<float>(medianGapM));
+    }
+
+    // Write each edge's vertical profile onto its centerline. Applied even
+    // when start/mid/end are all at ground level: a re-run after a layer edit
+    // must scrub the stale profile off a road that was just grounded.
+    for (auto& [id, node] : nodes)
+    {
+        for (Road& e : node.outgoingEdges)
+        {
+            auto it = nodes.find(e.getDest());
+            if (it == nodes.end()) continue;
+
+            const double zStart = node.getZ();
+            const double zEnd   = it->second.getZ();
+            const double zMid   = e.getLayer() * layerHeightM;
+
+            e.applyVerticalProfile(zStart, zMid, zEnd, rampLengthM,
+                                   setbacks[id], setbacks[e.getDest()]);
+        }
     }
 }
 

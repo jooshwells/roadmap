@@ -22,6 +22,8 @@ class Node
         inline void setLon(double newLon) { lon = newLon; }
         inline void setLat(double newLat) { lat = newLat; }
         inline void setId(uint64_t newId)      {id = newId;}
+        // Elevation in meters (0 = ground), assigned by Network::applyVerticality.
+        inline void setZ(double newZ) { z = newZ; }
 
         std::vector<Road> outgoingEdges;
         std::vector<uint64_t> incomingEdgeNodeIds;

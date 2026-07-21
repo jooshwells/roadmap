@@ -8,8 +8,8 @@
          (Windows equivalent of sim/build.sh) and installs them to sim/INSTALL.
       2. Rebuilds the telemetry run_pipeline.exe with PyInstaller, using the
          venv at python_pipeline/telemetry/.venv and run_pipeline.spec.
-      3. Syncs the runtime-needed pipeline files (run_pipeline.exe, src/, data/,
-         requirements.txt) into the frontend ThirdParty tree, mirroring the
+      3. Syncs the runtime-needed pipeline files (run_pipeline.exe,
+         run_pipeline.py, src/, data/, requirements.txt) into the frontend ThirdParty tree, mirroring the
          src/ and data/ subdirs with robocopy /MIR and excluding .venv, build/,
          and outputs/.
 
@@ -173,12 +173,15 @@ if (-not $SkipSync) {
     }
 
     $srcExe = Join-Path $TelemetryDir 'run_pipeline.exe'
+    $srcPipeline = Join-Path $TelemetryDir 'run_pipeline.py'
     $srcReq = Join-Path $TelemetryDir 'requirements.txt'
     if (-not (Test-Path $srcExe)) { throw "Missing $srcExe (run the pipeline build first)." }
+    if (-not (Test-Path $srcPipeline)) { throw "Missing $srcPipeline." }
     if (-not (Test-Path $srcReq)) { throw "Missing $srcReq." }
 
     # Single files
     Copy-Item $srcExe (Join-Path $FrontendDest 'run_pipeline.exe') -Force
+    Copy-Item $srcPipeline (Join-Path $FrontendDest 'run_pipeline.py') -Force
     Copy-Item $srcReq (Join-Path $FrontendDest 'requirements.txt') -Force
 
     # Mirror the src/ and data/ subdirs. /MIR deletes stale files in the
@@ -187,7 +190,7 @@ if (-not $SkipSync) {
     Invoke-Robocopy (@("$(Join-Path $TelemetryDir 'src')", "$(Join-Path $FrontendDest 'src')", '/MIR', '/XD') + $excludeDirs)
     Invoke-Robocopy (@("$(Join-Path $TelemetryDir 'data')", "$(Join-Path $FrontendDest 'data')", '/MIR', '/XD') + $excludeDirs)
 
-    Write-Host "Synced exe + requirements.txt + src/ + data/ to $FrontendDest" -ForegroundColor Green
+    Write-Host "Synced exe + run_pipeline.py + requirements.txt + src/ + data/ to $FrontendDest" -ForegroundColor Green
 }
 else {
     Write-Host "Skipping frontend sync (-SkipSync)."
