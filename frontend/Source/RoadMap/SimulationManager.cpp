@@ -275,11 +275,23 @@ void ASimulationManager::Tick(float DeltaTime)
 	// drop below would cancel the speed-up; keep the plain cap at 1x and below.
 	const int32 StepCap = FMath::CeilToInt(MaxStepsPerFrame * FMath::Max(1.0f, SimSpeedMultiplier));
 
+	// Real-time ceiling on physics stepping this frame. Fast-forward can demand
+	// up to StepCap O(N) steps synchronously here; without a wall-clock cap a
+	// heavy frame grinds through all of them and hitches. Above 1x we stop once
+	// the budget is spent and let the backlog-drop below slow-mo the sim toward
+	// the target speed instead. Disabled at <=1x so normal playback is unchanged.
+	const double StepLoopStart = FPlatformTime::Seconds();
+	const double StepBudget = (SimSpeedMultiplier > 1.0f) ? (StepTimeBudgetMs / 1000.0) : TNumericLimits<double>::Max();
+
 	while (Accumulator >= FixedDelta && StepsThisFrame < StepCap)
 	{
 		TrafficSimEngine->Step(FixedDelta);
 		Accumulator -= FixedDelta;
 		StepsThisFrame++;
+
+		// Checked after the step so the loop always makes at least one step of
+		// progress when there is a backlog (visuals/lights still update).
+		if (FPlatformTime::Seconds() - StepLoopStart >= StepBudget) break;
 	}
 
 	// If the machine couldn't keep up this frame, drop the whole-step backlog

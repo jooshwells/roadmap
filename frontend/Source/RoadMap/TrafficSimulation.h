@@ -115,6 +115,12 @@ private:
     // Drain up to maxCount queued replans (one D* Lite search each).
     void ProcessPendingReplans(int maxCount);
 
+    // Recompute the spawner's active-vehicle target from the network's current
+    // storage capacity. Call after a runtime edit that changed total
+    // lane-meters (road added/deleted, lane count changed); edits that only
+    // move pavement around (edge split) leave the target unchanged.
+    void RescaleVehicleTarget();
+
     std::deque<int> pendingReplanIds;
 
     double originOffsetX;

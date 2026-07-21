@@ -6,8 +6,15 @@
 #include "intersection_geometry.h"
 #include <algorithm>
 
+int SpawnScaling::computeTargetVehicleCount(const Network& network)
+{
+    const double laneMeters = network.getTotalLaneMeters();
+    const int raw = static_cast<int>(laneMeters / LaneMetersPerVehicle);
+    return std::clamp(raw, MinVehicles, MaxVehicles);
+}
+
 // Update constructor to take targetCount
-TrafficManager::TrafficManager(Network* net, PhysicsProcessor* phys, int targetCount) 
+TrafficManager::TrafficManager(Network* net, PhysicsProcessor* phys, int targetCount)
     : network(net), physicsLoop(phys) , targetVehicleCount(targetCount)
 {
     rng.seed(std::random_device{}());
@@ -17,6 +24,11 @@ void TrafficManager::setThroughTrafficNodes(const std::vector<uint64_t>& sources
 {
     sourceNodes = sources;
     sinkNodes = sinks;
+}
+
+void TrafficManager::setTargetVehicleCount(int count)
+{
+    targetVehicleCount = std::max(0, count);
 }
 
 void TrafficManager::update(float dt) 
@@ -29,7 +41,8 @@ void TrafficManager::update(float dt)
     int maxAttemptsThisFrame = 15; 
     int attempts = 0;
 
-    // Loop until we reach 1000 cars OR we run out of safe attempts for this frame
+    // Loop until we reach the capacity-scaled target OR we run out of safe
+    // attempts for this frame
     while (currentCars < targetVehicleCount && attempts < maxAttemptsThisFrame)
     {
         if (spawnRandomVehicle()) 

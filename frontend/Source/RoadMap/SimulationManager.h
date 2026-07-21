@@ -291,6 +291,13 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Simulation Settings")
 	int32 MaxStepsPerFrame;
 
+	// Real-time ceiling (ms) the fixed-step loop may spend per frame when
+	// fast-forwarding (>1x). Keeps a heavy frame from grinding through all its
+	// sub-steps and hitching; the sim slow-mos toward the target speed instead.
+	// Disabled at <=1x, so normal playback is unaffected.
+	UPROPERTY(EditAnywhere, Category = "Simulation Settings")
+	float StepTimeBudgetMs = 8.0f;
+
 	// On-screen per-frame sim stats (steps/frame, backend car count). Off by
 	// default: the Printf + AddOnScreenDebugMessage every frame is pure waste
 	// outside of debugging sessions.

@@ -86,7 +86,14 @@ void TrafficSimulation::Initialize(const std::string& nodesPath, const std::stri
 
     // Pass pointers to the dependent components
     controller = new PhysicsProcessor(orlandoMap, spatialHash);
-    spawner = new TrafficManager(orlandoMap, controller, 1500);
+
+    // Scale the active-vehicle target to this map's road storage capacity
+    // instead of a fixed count, so every roadmap settles at the same visual
+    // density regardless of size.
+    const int targetCount = SpawnScaling::computeTargetVehicleCount(*orlandoMap);
+    UE_LOG(LogTemp, Warning, TEXT("Vehicle target scaled to %d (%.0f lane-meters of road)"),
+           targetCount, orlandoMap->getTotalLaneMeters());
+    spawner = new TrafficManager(orlandoMap, controller, targetCount);
 
     // 3. Apply the through-traffic bounds
     // This routes traffic from West to East. 
@@ -496,6 +503,9 @@ void TrafficSimulation::AddRuntimeRoad(uint64_t startNodeId, uint64_t endNodeId,
     // Same reallocation dangles the Road* inside every light's axis map, and
     // an endpoint promoted to a signal above needs its state built.
     if (controller) controller->refreshIntersectionStates();
+
+    // The new road added storage capacity; let the vehicle target grow to fill it.
+    RescaleVehicleTarget();
 }
 
 void TrafficSimulation::SplitRuntimeEdge(uint64_t u, uint64_t v, uint64_t newNodeId, double x, double y)
@@ -680,6 +690,9 @@ void TrafficSimulation::DeleteRuntimeEdge(uint64_t u, uint64_t v, bool bBothDire
     // Lights whose approaches shifted (or that lost signal status, or whose
     // node vanished with its last road) get their state rebuilt or dropped.
     if (controller) controller->refreshIntersectionStates();
+
+    // The deleted road removed storage capacity; lower the target to match.
+    RescaleVehicleTarget();
 }
 
 void TrafficSimulation::UpdateRuntimeRoad(uint64_t u, uint64_t v, int lanes, float speedMps, bool bBothDirections,
@@ -727,6 +740,9 @@ void TrafficSimulation::UpdateRuntimeRoad(uint64_t u, uint64_t v, int lanes, flo
     // Signal timings are derived from speed limits and lane counts, so the
     // lights at both ends recompute their phase durations.
     if (controller) controller->refreshIntersectionStates();
+
+    // A lane-count change alters storage capacity, so retarget the population.
+    RescaleVehicleTarget();
 
     // Vehicles already driving the edited edge adopt the new speed limit and
     // get pulled out of lanes that no longer exist.
@@ -828,6 +844,17 @@ void TrafficSimulation::ProcessPendingReplans(int maxCount)
     }
 
     RefreshVehicleEdgePointers();
+}
+
+void TrafficSimulation::RescaleVehicleTarget()
+{
+    if (!spawner || !orlandoMap) return;
+
+    // Existing cars are never force-despawned when the target drops; the
+    // spawner simply stops adding new ones until the count falls back under
+    // target, so the population eases toward the new capacity instead of
+    // popping.
+    spawner->setTargetVehicleCount(SpawnScaling::computeTargetVehicleCount(*orlandoMap));
 }
 
 void TrafficSimulation::RefreshVehicleEdgePointers()

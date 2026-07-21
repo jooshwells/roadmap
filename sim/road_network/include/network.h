@@ -128,6 +128,13 @@ class Network {
 
         const std::unordered_map<uint64_t, Node>& getNodes() const { return nodes; }
 
+        // Sum of (lanes * length) over every directed edge, i.e. the total
+        // meters of lane in the network -- its vehicle storage capacity. Each
+        // JSONL edge line is one directed edge, so a two-way street counts
+        // both directions. Drives density-scaled vehicle spawning; recomputed
+        // cheaply after runtime road edits.
+        double getTotalLaneMeters() const;
+
         Network();
         ~Network();
 
