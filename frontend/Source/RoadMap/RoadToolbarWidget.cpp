@@ -35,6 +35,16 @@ namespace
             .SetPressedPadding(FMargin(14.0f, 9.0f, 14.0f, 7.0f));
         return Style;
     }
+
+    // Keeps Road Tools yellow and uses Telemetry's navy as its hover outline.
+    FButtonStyle CompactNavigationButtonStyle()
+    {
+        const FLinearColor TelemetryFill = MenuPalette::Hex(TEXT("151B27"));
+        FButtonStyle Style = CompactButtonStyle(true);
+        Style.SetHovered(MenuPalette::RoundedBrush(MenuPalette::AccentHover, 10.0f, TelemetryFill, 1.0f))
+            .SetPressed(MenuPalette::RoundedBrush(MenuPalette::AccentPressed, 10.0f, TelemetryFill, 1.0f));
+        return Style;
+    }
 }
 
 TSharedRef<SWidget> URoadToolbarWidget::RebuildWidget()
@@ -46,10 +56,10 @@ TSharedRef<SWidget> URoadToolbarWidget::RebuildWidget()
 
         // Small always-visible button that opens/closes the tool window.
         ToggleButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), TEXT("ToggleButton"));
-        ToggleButton->SetStyle(CompactButtonStyle(true));
+        ToggleButton->SetStyle(CompactNavigationButtonStyle());
 
         UTextBlock* ToggleLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("ToggleLabel"));
-        ToggleLabel->SetText(NSLOCTEXT("RoadToolbar", "Toggle", "Road Tools"));
+        ToggleLabel->SetText(NSLOCTEXT("RoadToolbar", "Toggle", "ROAD TOOLS"));
         ToggleLabel->SetFont(FCoreStyle::GetDefaultFontStyle("Bold", 14));
         ToggleLabel->SetColorAndOpacity(FSlateColor(MenuPalette::TextOnAccent));
         ToggleLabel->SetJustification(ETextJustify::Center);
@@ -65,7 +75,7 @@ TSharedRef<SWidget> URoadToolbarWidget::RebuildWidget()
         UCanvasPanelSlot* ToggleSlot = Canvas->AddChildToCanvas(ToggleSizer);
         ToggleSlot->SetAnchors(FAnchors(0.0f, 0.0f, 0.0f, 0.0f));
         ToggleSlot->SetAlignment(FVector2D(0.0f, 0.0f));
-        ToggleSlot->SetPosition(FVector2D(40.0f, 18.0f)); // Y was 40.0f — now matches the center bar's top
+        ToggleSlot->SetPosition(FVector2D(40.0f, 18.0f)); // Y was 40.0f â€” now matches the center bar's top
         ToggleSlot->SetAutoSize(true);
 
         // The tool window: dark movable panel, hidden until the user opens it.
