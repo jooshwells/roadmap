@@ -26,6 +26,13 @@ add_subdirectory(physics)
 add_subdirectory(road_network)
 add_subdirectory(driver_logic)
 
+# Unit tests (sim_tests target). On by default so a normal build keeps them
+# compiling; turn off with -DROADMAP_BUILD_TESTS=OFF for a lean sim-only build.
+option(ROADMAP_BUILD_TESTS "Build the simulation unit tests" ON)
+if(ROADMAP_BUILD_TESTS)
+    add_subdirectory(tests)
+endif()
+
 add_executable(sim main.cpp)
 
 target_link_libraries(sim PRIVATE
