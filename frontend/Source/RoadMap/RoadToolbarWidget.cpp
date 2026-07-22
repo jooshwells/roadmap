@@ -62,10 +62,10 @@ TSharedRef<SWidget> URoadToolbarWidget::RebuildWidget()
         ToggleSizer->SetHeightOverride(40.0f);
         ToggleSizer->AddChild(ToggleButton);
 
-        UCanvasPanelSlot* ToggleSlot = Canvas->AddChildToCanvas(ToggleSizer); // was ToggleButton
+        UCanvasPanelSlot* ToggleSlot = Canvas->AddChildToCanvas(ToggleSizer);
         ToggleSlot->SetAnchors(FAnchors(0.0f, 0.0f, 0.0f, 0.0f));
         ToggleSlot->SetAlignment(FVector2D(0.0f, 0.0f));
-        ToggleSlot->SetPosition(FVector2D(40.0f, 40.0f));
+        ToggleSlot->SetPosition(FVector2D(40.0f, 18.0f)); // Y was 40.0f — now matches the center bar's top
         ToggleSlot->SetAutoSize(true);
 
         // The tool window: dark movable panel, hidden until the user opens it.

@@ -55,8 +55,8 @@ ARoadNetworkVisualizer::ARoadNetworkVisualizer()
     FFoliageTypeConfig TreeConfig;
     TreeConfig.InstancedMeshComponent = TreeHISM;
     TreeConfig.RoadClearanceBuffer = 300.0f;
-    TreeConfig.ScaleMin = 0.8f;
-    TreeConfig.ScaleMax = 1.3f;
+    TreeConfig.ScaleMin = 0.15f;
+    TreeConfig.ScaleMax = 0.28f;
     FoliageTypes.Add(TreeConfig);
    
     // Default the junction material to the project's plain-asphalt asset via a
@@ -2374,8 +2374,8 @@ TArray<FVector4> ARoadNetworkVisualizer::GenerateLakes(const FBox& Bounds)
             if (Seg > 0)
             {
                 Tris.Add(CenterIdx);
-                Tris.Add(CenterIdx + Seg);
-                Tris.Add(CenterIdx + Seg + 1);
+                Tris.Add(CenterIdx + Seg + 1);  // was CenterIdx + Seg
+                Tris.Add(CenterIdx + Seg);      // was CenterIdx + Seg + 1
             }
         }
     }
