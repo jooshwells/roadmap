@@ -32,6 +32,9 @@ public:
     // already-open panel when another road is clicked.
     void InitWithEdgeInfo(const FRoadEdgeInfo& Info);
 
+    UFUNCTION(BlueprintCallable, Category = "Road Editor")
+    void UpdateRoadDisplay(const FRoadEdgeInfo& InEdgeInfo, const FString& InRoadName);
+
 protected:
     virtual TSharedRef<SWidget> RebuildWidget() override;
     virtual void NativeConstruct() override;
@@ -88,7 +91,7 @@ private:
     FString ComposeTurnLanesFromCombos() const;
 
     // Adds one "Label:  [input]" row to the panel.
-    void AddRow(UVerticalBox* Parent, const FText& Label, UWidget* Input);
+    void AddRow(UVerticalBox* Parent, const FText& Label, UWidget* Input, int32 LabelFontSize = 10);
 
     FRoadEdgeInfo EdgeInfo;
 
@@ -112,6 +115,7 @@ private:
     UPROPERTY() UCanvasPanelSlot* PanelSlot = nullptr;
     UPROPERTY() UBorder* TitleBar = nullptr;
     UPROPERTY() UTextBlock* HeaderText = nullptr;
+    UPROPERTY() UVerticalBox* MainContainerBox = nullptr; // Fixes C2065 error
     UPROPERTY() UEditableTextBox* LanesBox = nullptr;
     UPROPERTY() UEditableTextBox* SpeedBox = nullptr; // shown in mph
     UPROPERTY() UComboBoxString* LayerCombo = nullptr; // elevation

@@ -123,7 +123,7 @@ protected:
 	class ASimulationManager* ResolveSimManager();
 
 	// Opens (or retargets) the built-in C++ road editor panel.
-	void OpenRoadEditor(const FRoadEdgeInfo& EdgeInfo);
+	void OpenRoadEditor(const FRoadEdgeInfo& EdgeInfo, const FString& RoadName = FString());
 
 	// Opens (or retargets) the built-in C++ vehicle stats panel; it re-polls
 	// SimManager while open so the readouts stay live.

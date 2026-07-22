@@ -21,9 +21,16 @@
 #include "RoadTurnLaneOptions.h"
 #include "RoadLayerOptions.h"
 #include "RoadPanelStyle.h"
+#include "MenuPalette.h"
+
 
 void URoadEditorWidget::InitWithEdgeInfo(const FRoadEdgeInfo& Info)
 {
+    if (MainContainerBox)
+    {
+        MainContainerBox->ClearChildren(); // Prevents stacking controls on top of each other
+    }
+
     EdgeInfo = Info;
     CurrentLanes = FMath::Clamp(EdgeInfo.Lanes, MinLanes, MaxLanes);
     CurrentSpeedMph = FMath::Clamp(FMath::RoundToInt(EdgeInfo.SpeedLimitMps * MpsToMph), MinSpeedMph, MaxSpeedMph);
@@ -49,7 +56,9 @@ TSharedRef<SWidget> URoadEditorWidget::RebuildWidget()
         // road toolbar opens on the left, so both can be open at once).
         // Visible border so clicks over the panel don't fall through to the map.
         UBorder* Panel = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("Panel"));
-        Panel->SetBrushColor(FLinearColor(0.015f, 0.015f, 0.02f, 0.95f));
+        FLinearColor PanelFill = MenuPalette::Background;
+        PanelFill.A = 0.95f;
+        Panel->SetBrush(MenuPalette::RoundedBrush(PanelFill, 14.0f, MenuPalette::Outline, 1.0f));
         Panel->SetPadding(FMargin(0.0f));
         Panel->SetVisibility(ESlateVisibility::Visible);
 
@@ -64,7 +73,7 @@ TSharedRef<SWidget> URoadEditorWidget::RebuildWidget()
 
         // Title bar: drag handle for moving the window.
         TitleBar = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("TitleBar"));
-        TitleBar->SetBrushColor(FLinearColor(0.06f, 0.06f, 0.09f, 1.0f));
+        TitleBar->SetBrush(MenuPalette::RoundedBrush(MenuPalette::CardFillHover, 14.0f, MenuPalette::Outline, 1.0f));
         TitleBar->SetPadding(FMargin(18.0f, 10.0f));
 
         HeaderText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Header"));
@@ -82,13 +91,13 @@ TSharedRef<SWidget> URoadEditorWidget::RebuildWidget()
         // Lanes: plain number entry, clamped to 1-6 on commit.
         LanesBox = WidgetTree->ConstructWidget<UEditableTextBox>(UEditableTextBox::StaticClass(), TEXT("Lanes"));
         RoadPanelStyle::StyleNumberField(LanesBox);
-        AddRow(Box, NSLOCTEXT("RoadEditor", "Lanes", "Lanes (1-6)"), LanesBox);
+        AddRow(Box, NSLOCTEXT("RoadEditor", "Lanes", "Lanes (1-6)"), LanesBox, 14);
 
         // Speed limit: plain number entry in mph, clamped to 5-80 on commit
         // (m/s in the sim).
         SpeedBox = WidgetTree->ConstructWidget<UEditableTextBox>(UEditableTextBox::StaticClass(), TEXT("Speed"));
         RoadPanelStyle::StyleNumberField(SpeedBox);
-        AddRow(Box, NSLOCTEXT("RoadEditor", "Speed", "Speed limit (mph, max 80)"), SpeedBox);
+        AddRow(Box, NSLOCTEXT("RoadEditor", "Speed", "Speed limit (mph, max 80)"), SpeedBox, 14);
 
         // Elevation: applying a non-ground layer turns the road into a
         // bridge/underpass in place (ramps, deck, and pillars included).
@@ -121,28 +130,30 @@ TSharedRef<SWidget> URoadEditorWidget::RebuildWidget()
         // Apply / Cancel buttons
         UHorizontalBox* ButtonRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass(), TEXT("Buttons"));
 
-        auto MakeButton = [this](const FText& Label, UTextBlock** OutText = nullptr) -> UButton*
-        {
-            UButton* Button = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass());
-            UTextBlock* Text = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-            Text->SetText(Label);
-            Text->SetColorAndOpacity(FSlateColor(FLinearColor::Black));
-            Button->AddChild(Text);
-            if (OutText) *OutText = Text;
-            return Button;
-        };
+        auto MakeButton = [this](const FText& Label, const FLinearColor& TextColor, UTextBlock** OutText = nullptr) -> UButton*
+            {
+                UButton* Button = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass());
+                UTextBlock* Text = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+                Text->SetText(Label);
+                Text->SetColorAndOpacity(FSlateColor(TextColor));
+                Button->AddChild(Text);
+                if (OutText) *OutText = Text;
+                return Button;
+            };
 
         // Delete sits on the left, away from Apply/Cancel, and is tinted red.
-        DeleteButton = MakeButton(NSLOCTEXT("RoadEditor", "Delete", "  Delete road  "), &DeleteButtonText);
+        DeleteButton = MakeButton(NSLOCTEXT("RoadEditor", "Delete", "  Delete road  "), MenuPalette::TextPrimary, &DeleteButtonText);
         DeleteButton->SetBackgroundColor(FLinearColor(1.0f, 0.35f, 0.35f, 1.0f));
         UHorizontalBoxSlot* DeleteSlot = ButtonRow->AddChildToHorizontalBox(DeleteButton);
         DeleteSlot->SetPadding(FMargin(0.0f, 0.0f, 24.0f, 0.0f));
 
-        ApplyButton = MakeButton(NSLOCTEXT("RoadEditor", "Apply", "  Apply  "));
+        ApplyButton = MakeButton(NSLOCTEXT("RoadEditor", "Apply", "  Apply  "), MenuPalette::TextOnAccent);
+        ApplyButton->SetStyle(MenuPalette::ActionButtonStyle(true));
         UHorizontalBoxSlot* ApplySlot = ButtonRow->AddChildToHorizontalBox(ApplyButton);
         ApplySlot->SetPadding(FMargin(0.0f, 0.0f, 8.0f, 0.0f));
 
-        CancelButton = MakeButton(NSLOCTEXT("RoadEditor", "Cancel", "  Cancel  "));
+        CancelButton = MakeButton(NSLOCTEXT("RoadEditor", "Cancel", "  Cancel  "), MenuPalette::TextPrimary); // was TextOnAccent
+        CancelButton->SetStyle(MenuPalette::ActionButtonStyle(false));
         ButtonRow->AddChildToHorizontalBox(CancelButton);
 
         UVerticalBoxSlot* ButtonRowSlot = Box->AddChildToVerticalBox(ButtonRow);
@@ -358,12 +369,13 @@ FString URoadEditorWidget::ComposeTurnLanesFromCombos() const
     return bAnySet ? FString::Join(Parts, TEXT("|")) : FString();
 }
 
-void URoadEditorWidget::AddRow(UVerticalBox* Parent, const FText& Label, UWidget* Input)
+void URoadEditorWidget::AddRow(UVerticalBox* Parent, const FText& Label, UWidget* Input, int32 LabelFontSize)
 {
     UHorizontalBox* Row = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
 
     UTextBlock* LabelText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
     LabelText->SetText(Label);
+    LabelText->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", LabelFontSize));
     LabelText->SetColorAndOpacity(FSlateColor(RoadPanelStyle::RowLabel));
 
     UHorizontalBoxSlot* LabelSlot = Row->AddChildToHorizontalBox(LabelText);
@@ -429,4 +441,26 @@ void URoadEditorWidget::HandleDeleteClicked()
     bDeleteArmed = false;
     if (DeleteButtonText) DeleteButtonText->SetText(NSLOCTEXT("RoadEditor", "Delete", "  Delete road  "));
     if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Red, TEXT("Road delete failed."));
+}
+
+void URoadEditorWidget::UpdateRoadDisplay(const FRoadEdgeInfo& InEdgeInfo, const FString& InRoadName)
+{
+    // 1. Populate input fields and initial header details
+    InitWithEdgeInfo(InEdgeInfo);
+
+    if (HeaderText)
+    {
+        FString NameStr = InRoadName.IsEmpty() ? TEXT("Unnamed Road") : InRoadName;
+        FString DetailStr = HeaderText->GetText().ToString();
+
+        // 2. Combine using a clean, safe ASCII separator " | "
+        if (!DetailStr.IsEmpty() && DetailStr != NameStr)
+        {
+            HeaderText->SetText(FText::FromString(FString::Printf(TEXT("%s  |  %s"), *NameStr, *DetailStr)));
+        }
+        else
+        {
+            HeaderText->SetText(FText::FromString(NameStr));
+        }
+    }
 }

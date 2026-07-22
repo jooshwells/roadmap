@@ -224,19 +224,19 @@ void AMapPlayerController::UpdateRoadPreview(float DeltaTime)
 	}
 }
 
-void AMapPlayerController::OpenRoadEditor(const FRoadEdgeInfo& EdgeInfo)
+void AMapPlayerController::OpenRoadEditor(const FRoadEdgeInfo& EdgeInfo, const FString& RoadName)
 {
     // Retarget an already-open panel instead of stacking a second one.
     if (ActiveRoadEditor && ActiveRoadEditor->IsInViewport())
     {
-        ActiveRoadEditor->InitWithEdgeInfo(EdgeInfo);
+        ActiveRoadEditor->UpdateRoadDisplay(EdgeInfo, RoadName);
         return;
     }
 
     ActiveRoadEditor = CreateWidget<URoadEditorWidget>(this);
     if (ActiveRoadEditor)
     {
-        ActiveRoadEditor->InitWithEdgeInfo(EdgeInfo);
+        ActiveRoadEditor->UpdateRoadDisplay(EdgeInfo, RoadName);
         ActiveRoadEditor->AddToViewport(10);
     }
 }
@@ -494,7 +494,9 @@ void AMapPlayerController::OnLeftMouseClick()
                         OnRoadClickedUI(EdgeInfo);
                         if (!bUseCustomRoadEditorUI)
                         {
-                            OpenRoadEditor(EdgeInfo);
+                            // Retrieve the road name and pass both parameters to C++
+                            FString RoadName = ClickedVisualizer->GetRoadNameFromEdgeId(EdgeId);
+                            OpenRoadEditor(EdgeInfo, RoadName);
                         }
                         return;
                     }
