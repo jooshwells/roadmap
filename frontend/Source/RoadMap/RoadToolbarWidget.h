@@ -91,7 +91,7 @@ private:
     void RefreshDrawStateVisuals();
 
     // Adds one "Label:  [input]" row to the panel.
-    void AddRow(UVerticalBox* Parent, const FText& Label, UWidget* Input);
+    void AddRow(UVerticalBox* Parent, const FText& Label, UWidget* Input, int32 LabelFontSize = 10);
 
     bool bDrawing = false;
     bool bWindowOpen = false;

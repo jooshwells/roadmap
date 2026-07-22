@@ -6,6 +6,8 @@
 #include "ProceduralMeshComponent.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "UObject/ConstructorHelpers.h"
+#include "Engine/World.h"
+#include "Math/RandomStream.h"
 #include <limits>
 
 ARoadNetworkVisualizer::ARoadNetworkVisualizer()
@@ -36,6 +38,27 @@ ARoadNetworkVisualizer::ARoadNetworkVisualizer()
     JunctionMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     JunctionMesh->SetCastShadow(false);
 
+    GroundMesh = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("GroundMesh"));
+    WaterMesh = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("WaterMesh"));
+    TreeHISM = CreateDefaultSubobject<UHierarchicalInstancedStaticMeshComponent>(TEXT("TreeHISM"));
+    GrassHISM = CreateDefaultSubobject<UHierarchicalInstancedStaticMeshComponent>(TEXT("GrassHISM"));
+
+    GroundMesh->SetupAttachment(RootComponent);
+    WaterMesh->SetupAttachment(RootComponent);
+    TreeHISM->SetupAttachment(RootComponent);
+    GrassHISM->SetupAttachment(RootComponent);
+
+    // Pre-populate FoliageTypes with the two default scatter types, since
+    // component-reference properties (like InstancedMeshComponent) don't get a
+    // usable picker widget inside a struct array in the Details panel -- wiring
+    // them here in C++ is the reliable way to do it.
+    FFoliageTypeConfig TreeConfig;
+    TreeConfig.InstancedMeshComponent = TreeHISM;
+    TreeConfig.RoadClearanceBuffer = 300.0f;
+    TreeConfig.ScaleMin = 0.15f;
+    TreeConfig.ScaleMax = 0.28f;
+    FoliageTypes.Add(TreeConfig);
+   
     // Default the junction material to the project's plain-asphalt asset via a
     // constructor-time hard reference. This is what gets the asset cooked into
     // packaged builds -- a runtime LoadObject on a string path is invisible to
@@ -111,10 +134,38 @@ void ARoadNetworkVisualizer::RefreshRoadVisuals()
     RoadHISM->ClearInstances();
     InstanceIndexToEdgeId.Empty();
     EdgeIdToNodes.Empty();
+    EdgeIdToName.Empty();
     CachedNodeLocations.Empty();
 
     const auto& AllNodes = RoadNetwork->getNodes();
     if (AllNodes.empty()) return;
+
+    // Road names stay in the map JSON instead of the simulator Road class.
+    // Read the file once per rebuild so every road does not reopen the file.
+    TMap<FString, FString> RoadNamesByNodes;
+    TArray<FString> EdgeLines;
+    if (FFileHelper::LoadFileToStringArray(EdgeLines, *EdgesFilePath))
+    {
+        for (const FString& Line : EdgeLines)
+        {
+            TSharedPtr<FJsonObject> EdgeObject;
+            const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Line);
+            if (!FJsonSerializer::Deserialize(Reader, EdgeObject) || !EdgeObject.IsValid()) continue;
+
+            int64 U = 0;
+            int64 V = 0;
+            if (!EdgeObject->TryGetNumberField(TEXT("u"), U) ||
+                !EdgeObject->TryGetNumberField(TEXT("v"), V)) continue;
+
+            FString DisplayName;
+            if (!EdgeObject->TryGetStringField(TEXT("name"), DisplayName) || DisplayName.IsEmpty())
+            {
+                EdgeObject->TryGetStringField(TEXT("ref"), DisplayName);
+            }
+
+            RoadNamesByNodes.Add(FString::Printf(TEXT("%lld:%lld"), U, V), DisplayName);
+        }
+    }
 
     if (!bOriginLocked)
     {
@@ -355,6 +406,10 @@ void ARoadNetworkVisualizer::RefreshRoadVisuals()
             // Recorded before any visual-culling 'continue' below, so every
             // edge is resolvable for property edits.
             EdgeIdToNodes.Add(Edge.getEdgeId(), TPair<uint64_t, uint64_t>(OriginNode.getId(), Edge.getDest()));
+
+            // Match this simulator edge to the name loaded from the map JSON.
+            const FString NameKey = FString::Printf(TEXT("%llu:%llu"), OriginNode.getId(), Edge.getDest());
+            EdgeIdToName.Add(Edge.getEdgeId(), RoadNamesByNodes.FindRef(NameKey));
 
             Node* DestNode = RoadNetwork->getNode(Edge.getDest());
             if (!DestNode) continue;
@@ -800,6 +855,8 @@ void ARoadNetworkVisualizer::RefreshRoadVisuals()
     LastRoadInstanceCount = Transforms.Num();
 
     RoadHISM->MarkRenderStateDirty();
+
+    ScatterFoliage();
 }
 
 // Position + unit tangent at 'ArcM' meters along an edge's raw shape polyline
@@ -835,22 +892,36 @@ void ARoadNetworkVisualizer::AppendJunctionPolygon(Network* RoadNetwork, const N
 {
     // Lane counts toward each distinct neighbour: X = outgoing, Y = incoming
     // (0 = that direction doesn't exist, i.e. a one-way approach).
+    // NOTE: kept expanded (not compressed into one nested-call line) --
+    // MSVC has a known internal compiler error (C1001) on this exact
+    // FindOrAdd + nested FMath::Max pattern under this project's build
+    // config. Do not re-compress this loop.
     TMap<uint64_t, FIntPoint> NeighborLanes;
     for (const Road& E : JunctionNode.outgoingEdges)
     {
-        FIntPoint& P = NeighborLanes.FindOrAdd(E.getDest(), FIntPoint::ZeroValue);
-        P.X = FMath::Max(P.X, FMath::Max(1, E.getLanes()));
+        const uint64_t DestId = E.getDest();
+        const int32 LaneCount = E.getLanes();
+        const int32 ClampedLanes = FMath::Max(1, LaneCount);
+
+        FIntPoint& P = NeighborLanes.FindOrAdd(DestId, FIntPoint::ZeroValue);
+        const int32 NewX = FMath::Max(P.X, ClampedLanes);
+        P.X = NewX;
     }
     for (uint64_t InId : JunctionNode.incomingEdgeNodeIds)
     {
         Node* Prev = RoadNetwork->getNode(InId);
         if (!Prev) continue;
+
         for (const Road& E : Prev->outgoingEdges)
         {
             if (E.getDest() == JunctionNode.getId())
             {
+                const int32 LaneCount = E.getLanes();
+                const int32 ClampedLanes = FMath::Max(1, LaneCount);
+
                 FIntPoint& P = NeighborLanes.FindOrAdd(InId, FIntPoint::ZeroValue);
-                P.Y = FMath::Max(P.Y, FMath::Max(1, E.getLanes()));
+                const int32 NewY = FMath::Max(P.Y, ClampedLanes);
+                P.Y = NewY;
                 break;
             }
         }
@@ -871,12 +942,12 @@ void ARoadNetworkVisualizer::AppendJunctionPolygon(Network* RoadNetwork, const N
     RingPts.Reserve(NeighborLanes.Num() * 2);
 
     auto AddCorner = [&](const FVector& P)
-    {
-        FRingPoint R;
-        R.Angle = FMath::Atan2(P.Y - CenterLoc.Y, P.X - CenterLoc.X);
-        R.Pos = P;
-        RingPts.Add(R);
-    };
+        {
+            FRingPoint R;
+            R.Angle = FMath::Atan2(P.Y - CenterLoc.Y, P.X - CenterLoc.X);
+            R.Pos = P;
+            RingPts.Add(R);
+        };
 
     for (const auto& Pair : NeighborLanes)
     {
@@ -931,7 +1002,7 @@ void ARoadNetworkVisualizer::AppendJunctionPolygon(Network* RoadNetwork, const N
         const FVector Right(-Dir.Y, Dir.X, 0.0);
 
         const float ExtentRight = MedianGapCm + Pair.Value.X * 350.0f;
-        const float ExtentLeft  = MedianGapCm + Pair.Value.Y * 350.0f;
+        const float ExtentLeft = MedianGapCm + Pair.Value.Y * 350.0f;
 
         AddCorner(Base + Right * ExtentRight);
         AddCorner(Base - Right * ExtentLeft);
@@ -943,11 +1014,11 @@ void ARoadNetworkVisualizer::AppendJunctionPolygon(Network* RoadNetwork, const N
 
     const float UVScale = 0.001f; // 1 UV unit per 10 m, for world-ish tiling
     auto AddVert = [&](const FVector& P) -> int32
-    {
-        Normals.Add(FVector::UpVector);
-        UVs.Add(FVector2D(P.X, P.Y) * UVScale);
-        return Verts.Add(P);
-    };
+        {
+            Normals.Add(FVector::UpVector);
+            UVs.Add(FVector2D(P.X, P.Y) * UVScale);
+            return Verts.Add(P);
+        };
 
     const int32 CenterIdx = AddVert(CenterLoc);
     TArray<int32> Ring;
@@ -976,11 +1047,11 @@ void ARoadNetworkVisualizer::AppendJunctionPolygon(Network* RoadNetwork, const N
         const float BottomZ = CenterLoc.Z - DeckThicknessCm;
 
         auto AddSideVert = [&](const FVector& P, const FVector& OutNormal) -> int32
-        {
-            Normals.Add(OutNormal);
-            UVs.Add(FVector2D(P.X + P.Y, P.Z) * UVScale);
-            return Verts.Add(P);
-        };
+            {
+                Normals.Add(OutNormal);
+                UVs.Add(FVector2D(P.X + P.Y, P.Z) * UVScale);
+                return Verts.Add(P);
+            };
 
         for (int32 i = 0; i < N; i++)
         {
@@ -1004,11 +1075,11 @@ void ARoadNetworkVisualizer::AppendJunctionPolygon(Network* RoadNetwork, const N
         }
 
         auto AddBottomVert = [&](const FVector& P) -> int32
-        {
-            Normals.Add(-FVector::UpVector);
-            UVs.Add(FVector2D(P.X, P.Y) * UVScale);
-            return Verts.Add(P);
-        };
+            {
+                Normals.Add(-FVector::UpVector);
+                UVs.Add(FVector2D(P.X, P.Y) * UVScale);
+                return Verts.Add(P);
+            };
 
         const int32 CB = AddBottomVert(FVector(CenterLoc.X, CenterLoc.Y, BottomZ));
         TArray<int32> RingB;
@@ -1034,6 +1105,28 @@ int64 ARoadNetworkVisualizer::GetEdgeIdFromHitItem(int32 HitItemIndex)
         return (int64)InstanceIndexToEdgeId[HitItemIndex];
     }
     return -1; // Edge not found
+}
+
+FString ARoadNetworkVisualizer::GetRoadNameFromHitItem(int32 HitItemIndex)
+{
+    if (InstanceIndexToEdgeId.Contains(HitItemIndex))
+    {
+        uint64_t EdgeId = InstanceIndexToEdgeId[HitItemIndex];
+        if (const FString* Name = EdgeIdToName.Find(EdgeId))
+        {
+            return Name->IsEmpty() ? TEXT("Unnamed Road") : *Name;
+        }
+    }
+    return TEXT("");
+}
+
+FString ARoadNetworkVisualizer::GetRoadNameFromEdgeId(int64 EdgeId)
+{
+    if (const FString* Name = EdgeIdToName.Find(static_cast<uint64_t>(EdgeId)))
+    {
+        return Name->IsEmpty() ? TEXT("Unnamed Road") : *Name;
+    }
+    return TEXT("");
 }
 
 FVector2D ARoadNetworkVisualizer::ConvertUnrealToJSONCoords(FVector UnrealLocation)
@@ -1974,4 +2067,451 @@ bool ARoadNetworkVisualizer::UpdateRoadProperties(int64 U, int64 V, int32 Lanes,
         RefreshRoadVisuals();
     }
     return bAny;
+}
+
+FBox ARoadNetworkVisualizer::GetNetworkOrTerrainBounds() const
+{
+    if (CachedNodeLocations.Num() > 0)
+    {
+        FBox Bounds(ForceInit);
+        for (const auto& Pair : CachedNodeLocations)
+        {
+            Bounds += Pair.Value;
+        }
+        const float Margin = 2500.0f; // extend past outermost roads
+        Bounds = Bounds.ExpandBy(FVector(Margin, Margin, 2000.0f));
+        return Bounds;
+    }
+
+    // Fallback only if no network has been loaded yet
+    return FBox(FVector(-5000.0f, -5000.0f, 0.0f), FVector(5000.0f, 5000.0f, 500.0f));
+}
+
+bool ARoadNetworkVisualizer::IsLocationOnRoad(const FVector& Location, float Buffer) const
+{
+    if (!CachedNetwork)
+    {
+        return false;
+    }
+
+    const FVector2D Point2D(Location.X, Location.Y);
+    TArray<FVector> Pts;
+
+    for (const auto& NodePair : CachedNetwork->getNodes())
+    {
+        const Node& FromNode = NodePair.second;
+        for (const Road& Edge : FromNode.outgoingEdges)
+        {
+            const Node* ToNode = CachedNetwork->getNode(Edge.getDest());
+            if (!ToNode) continue;
+
+            // Half the road's actual paved width, not just the flat buffer --
+            // otherwise multi-lane roads are under-protected and foliage
+            // spawns on the pavement itself.
+            const float RoadHalfWidthCm = FMath::Max(1, Edge.getLanes()) * 350.0f * 0.5f;
+            const float ClearanceCm = RoadHalfWidthCm + Buffer;
+            const float ClearanceSq = ClearanceCm * ClearanceCm;
+
+            // Uses the real curved centerline (GetEdgePolylineUnreal), not a
+            // straight chord, so curves are avoided accurately too.
+            GetEdgePolylineUnreal(FromNode, Edge, *ToNode, Pts);
+
+            for (int32 i = 0; i + 1 < Pts.Num(); ++i)
+            {
+                const FVector2D SegStart(Pts[i].X, Pts[i].Y);
+                const FVector2D SegEnd(Pts[i + 1].X, Pts[i + 1].Y);
+
+                const float DistSq = FMath::PointDistToSegmentSquared(
+                    FVector(Point2D, 0.0f), FVector(SegStart, 0.0f), FVector(SegEnd, 0.0f));
+
+                if (DistSq < ClearanceSq)
+                {
+                    return true;
+                }
+            }
+        }
+    }
+
+    return false;
+}
+
+void ARoadNetworkVisualizer::ClearFoliage()
+{
+    for (const FFoliageTypeConfig& Config : FoliageTypes)
+    {
+        if (Config.InstancedMeshComponent)
+        {
+            Config.InstancedMeshComponent->ClearInstances();
+        }
+    }
+}
+
+void ARoadNetworkVisualizer::ScatterFoliage()
+{
+    if (!CachedNetwork || FoliageTypes.Num() == 0)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("ScatterFoliage skipped: Missing network data or empty FoliageTypes array."));
+        return;
+    }
+
+    for (const FFoliageTypeConfig& Config : FoliageTypes)
+    {
+        if (Config.InstancedMeshComponent)
+        {
+            Config.InstancedMeshComponent->ClearInstances();
+        }
+    }
+
+    const FBox WorldBounds = GetNetworkOrTerrainBounds();
+	GenerateGroundMesh(WorldBounds);
+    const TArray<FVector4> LakeFootprints = GenerateLakes(WorldBounds);
+    const FVector Min = WorldBounds.Min;
+    const FVector Max = WorldBounds.Max;
+
+    FCollisionQueryParams TraceParams(FName(TEXT("FoliageScatterTrace")), true);
+    TraceParams.bTraceComplex = true;
+
+    TArray<int32> RandomTypeIndices;
+    TArray<int32> GridTypeIndices;
+    for (int32 t = 0; t < FoliageTypes.Num(); ++t)
+    {
+        if (FoliageTypes[t].bUseGridCoverage) GridTypeIndices.Add(t);
+        else RandomTypeIndices.Add(t);
+    }
+
+    // === Phase 1: random-attempt scatter -- natural clustering (trees) ===
+    if (RandomTypeIndices.Num() > 0)
+    {
+        FRandomStream Stream(FoliageSeed);
+        for (int32 i = 0; i < TotalScatterAttempts; ++i)
+        {
+            const FFoliageTypeConfig& Config = FoliageTypes[RandomTypeIndices[Stream.RandRange(0, RandomTypeIndices.Num() - 1)]];
+            if (!Config.InstancedMeshComponent || !Config.InstancedMeshComponent->GetStaticMesh()) continue;
+
+            const float RandX = Stream.FRandRange(Min.X, Max.X);
+            const float RandY = Stream.FRandRange(Min.Y, Max.Y);
+            const FVector TraceStart(RandX, RandY, Max.Z + 1000.0f);
+            const FVector TraceEnd(RandX, RandY, Min.Z - 2000.0f);
+
+            FHitResult HitResult;
+            if (!GetWorld()->LineTraceSingleByChannel(HitResult, TraceStart, TraceEnd, ECC_WorldStatic, TraceParams) || !HitResult.bBlockingHit)
+                continue;
+
+            const FVector HitLocation = HitResult.ImpactPoint;
+            const FVector HitNormal = HitResult.ImpactNormal;
+            const float SlopeAngle = FMath::RadiansToDegrees(FMath::Acos(FVector::DotProduct(HitNormal, FVector::UpVector)));
+            if (SlopeAngle > Config.MaxSlopeAngle) continue;
+            if (IsLocationOnRoad(HitLocation, Config.RoadClearanceBuffer)) continue;
+
+            bool bInLake = false;
+            for (const FVector4& Lake : LakeFootprints)
+            {
+                if (FVector2D::DistSquared(FVector2D(HitLocation.X, HitLocation.Y), FVector2D(Lake.X, Lake.Y)) < FMath::Square(Lake.Z + 200.0f))
+                {
+                    bInLake = true;
+                    break;
+                }
+            }
+            if (bInLake) continue;
+
+            const float Yaw = Stream.FRandRange(0.0f, 360.0f);
+            FRotator SpawnRotation(0.0f, Yaw, 0.0f);
+            if (Config.bAlignToNormal) SpawnRotation = FRotationMatrix::MakeFromZX(HitNormal, SpawnRotation.Vector()).Rotator();
+            const float ScaleVal = Stream.FRandRange(Config.ScaleMin, Config.ScaleMax);
+
+            Config.InstancedMeshComponent->AddInstance(FTransform(SpawnRotation, HitLocation, FVector(ScaleVal)), true);
+        }
+    }
+
+    // === Phase 2: dense grid coverage -- uniform ground cover (grass) ===
+    for (int32 TypeIdx : GridTypeIndices)
+    {
+        const FFoliageTypeConfig& Config = FoliageTypes[TypeIdx];
+        if (!Config.InstancedMeshComponent || !Config.InstancedMeshComponent->GetStaticMesh()) continue;
+
+        const int32 MaxGridDimension = 1024;
+        const float SizeX = Max.X - Min.X;
+        const float SizeY = Max.Y - Min.Y;
+        const float EffectiveSpacing = FMath::Max3(
+            FMath::Max(50.0f, Config.GridSpacingCm), SizeX / MaxGridDimension, SizeY / MaxGridDimension);
+
+        const int32 NumCols = FMath::CeilToInt(SizeX / EffectiveSpacing) + 1;
+        const int32 NumRows = FMath::CeilToInt(SizeY / EffectiveSpacing) + 1;
+
+        TArray<bool> RoadOccupancyGrid;
+        RoadOccupancyGrid.Init(false, NumCols * NumRows);
+
+        TArray<FVector> EdgePts;
+        for (const auto& NodePair : CachedNetwork->getNodes())
+        {
+            const Node& FromNode = NodePair.second;
+            for (const Road& Edge : FromNode.outgoingEdges)
+            {
+                const Node* ToNode = CachedNetwork->getNode(Edge.getDest());
+                if (!ToNode) continue;
+
+                const float RoadHalfWidthCm = FMath::Max(1, Edge.getLanes()) * 350.0f * 0.5f;
+                const float ClearanceCm = RoadHalfWidthCm + Config.RoadClearanceBuffer;
+                const float ClearanceSq = ClearanceCm * ClearanceCm;
+
+                GetEdgePolylineUnreal(FromNode, Edge, *ToNode, EdgePts);
+
+                for (int32 i = 0; i + 1 < EdgePts.Num(); ++i)
+                {
+                    const FVector2D SegStart(EdgePts[i].X, EdgePts[i].Y);
+                    const FVector2D SegEnd(EdgePts[i + 1].X, EdgePts[i + 1].Y);
+
+                    const float MinX = FMath::Min(SegStart.X, SegEnd.X) - ClearanceCm;
+                    const float MaxX = FMath::Max(SegStart.X, SegEnd.X) + ClearanceCm;
+                    const float MinY = FMath::Min(SegStart.Y, SegEnd.Y) - ClearanceCm;
+                    const float MaxY = FMath::Max(SegStart.Y, SegEnd.Y) + ClearanceCm;
+
+                    const int32 MinCol = FMath::Clamp(FMath::FloorToInt((MinX - Min.X) / EffectiveSpacing), 0, NumCols - 1);
+                    const int32 MaxCol = FMath::Clamp(FMath::FloorToInt((MaxX - Min.X) / EffectiveSpacing), 0, NumCols - 1);
+                    const int32 MinRow = FMath::Clamp(FMath::FloorToInt((MinY - Min.Y) / EffectiveSpacing), 0, NumRows - 1);
+                    const int32 MaxRow = FMath::Clamp(FMath::FloorToInt((MaxY - Min.Y) / EffectiveSpacing), 0, NumRows - 1);
+
+                    for (int32 r = MinRow; r <= MaxRow; ++r)
+                    {
+                        for (int32 c = MinCol; c <= MaxCol; ++c)
+                        {
+                            const FVector2D CellPos(Min.X + c * EffectiveSpacing, Min.Y + r * EffectiveSpacing);
+                            const float DistSq = FMath::PointDistToSegmentSquared(
+                                FVector(CellPos, 0.0f), FVector(SegStart, 0.0f), FVector(SegEnd, 0.0f));
+                            if (DistSq < ClearanceSq)
+                                RoadOccupancyGrid[r * NumCols + c] = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        FRandomStream GridStream(FoliageSeed + TypeIdx);
+        TArray<FTransform> Batched;
+
+        for (int32 c = 0; c < NumCols; ++c)
+        {
+            const float X = Min.X + c * EffectiveSpacing;
+            if (X > Max.X) break;
+
+            for (int32 r = 0; r < NumRows; ++r)
+            {
+                const float Y = Min.Y + r * EffectiveSpacing;
+                if (Y > Max.Y) break;
+
+                if (RoadOccupancyGrid[r * NumCols + c]) continue;
+
+                const float JitterX = GridStream.FRandRange(-EffectiveSpacing * 0.4f, EffectiveSpacing * 0.4f);
+                const float JitterY = GridStream.FRandRange(-EffectiveSpacing * 0.4f, EffectiveSpacing * 0.4f);
+                const float PX = X + JitterX;
+                const float PY = Y + JitterY;
+
+                const FVector TraceStart(PX, PY, Max.Z + 1000.0f);
+                const FVector TraceEnd(PX, PY, Min.Z - 2000.0f);
+
+                FHitResult HitResult;
+                if (!GetWorld()->LineTraceSingleByChannel(HitResult, TraceStart, TraceEnd, ECC_WorldStatic, TraceParams) || !HitResult.bBlockingHit)
+                    continue;
+
+                const FVector HitNormal = HitResult.ImpactNormal;
+                const float SlopeAngle = FMath::RadiansToDegrees(FMath::Acos(FVector::DotProduct(HitNormal, FVector::UpVector)));
+                if (SlopeAngle > Config.MaxSlopeAngle) continue;
+
+                const float Yaw = GridStream.FRandRange(0.0f, 360.0f);
+                FRotator SpawnRotation(0.0f, Yaw, 0.0f);
+                if (Config.bAlignToNormal) SpawnRotation = FRotationMatrix::MakeFromZX(HitNormal, SpawnRotation.Vector()).Rotator();
+                const float ScaleVal = GridStream.FRandRange(Config.ScaleMin, Config.ScaleMax);
+
+                Batched.Add(FTransform(SpawnRotation, HitResult.ImpactPoint, FVector(ScaleVal)));
+            }
+        }
+
+        if (Batched.Num() > 0)
+        {
+            Config.InstancedMeshComponent->AddInstances(Batched, false);
+        }
+
+        UE_LOG(LogTemp, Warning, TEXT("ScatterFoliage grid-coverage[%d]: %dx%d cells, spacing=%.0f, placed=%d"),
+            TypeIdx, NumCols, NumRows, EffectiveSpacing, Batched.Num());
+    }
+}
+
+void ARoadNetworkVisualizer::GenerateGroundMesh(const FBox& Bounds)
+{
+    if (!GroundMesh) 
+    {
+        UE_LOG(LogTemp, Error, TEXT("GenerateGroundMesh: GroundMesh is NULL"));
+        return;
+    }
+
+    UE_LOG(LogTemp, Warning, TEXT("GenerateGroundMesh: Bounds Min=(%.0f,%.0f,%.0f) Max=(%.0f,%.0f,%.0f), GroundMaterial=%s"),
+        Bounds.Min.X, Bounds.Min.Y, Bounds.Min.Z, Bounds.Max.X, Bounds.Max.Y, Bounds.Max.Z,
+        GroundMaterial ? *GroundMaterial->GetName() : TEXT("NULL"));
+
+    TArray<FVector> Verts;
+    TArray<int32> Tris;
+    TArray<FVector> Normals;
+    TArray<FVector2D> UVs;
+    TArray<FColor> VertexColors;
+    TArray<FProcMeshTangent> Tangents;
+
+    const int32 Subdivisions = 128; // just enough to avoid one giant quad; not for detail
+    const int32 Cols = Subdivisions + 1;
+    const float StepX = (Bounds.Max.X - Bounds.Min.X) / Subdivisions;
+    const float StepY = (Bounds.Max.Y - Bounds.Min.Y) / Subdivisions;
+
+    // Tile the texture every N cm instead of stretching it across the whole
+    // map (a single 0-1 UV range would smear the texture into a blurry mess
+    // at this scale).
+    const float TileSizeCm = 1000.0f;
+
+    for (int32 Row = 0; Row <= Subdivisions; Row++)
+    {
+        for (int32 Col = 0; Col <= Subdivisions; Col++)
+        {
+            const float X = Bounds.Min.X + Col * StepX;
+            const float Y = Bounds.Min.Y + Row * StepY;
+
+            const float GroundZOffset = 6.0f; // small lift so this plane always renders above the level's base Floor actor
+            Verts.Add(FVector(X, Y, Bounds.Min.Z + GroundZOffset));
+            Normals.Add(FVector::UpVector);
+            UVs.Add(FVector2D(X / TileSizeCm, Y / TileSizeCm));
+            VertexColors.Add(FColor::White);
+        }
+    }
+
+    for (int32 Row = 0; Row < Subdivisions; Row++)
+    {
+        for (int32 Col = 0; Col < Subdivisions; Col++)
+        {
+            const int32 TL = Row * Cols + Col;
+            const int32 TR = TL + 1;
+            const int32 BL = (Row + 1) * Cols + Col;
+            const int32 BR = BL + 1;
+
+            Tris.Add(TL); Tris.Add(BL); Tris.Add(TR);
+            Tris.Add(TR); Tris.Add(BL); Tris.Add(BR);
+        }
+    }
+
+    GroundMesh->CreateMeshSection(0, Verts, Tris, Normals, UVs, VertexColors, Tangents, false);
+
+    if (GroundMaterial)
+    {
+        GroundMesh->SetMaterial(0, GroundMaterial);
+    }
+
+    UE_LOG(LogTemp, Warning, TEXT("GenerateGroundMesh: Created section with %d verts, %d tris. IsVisible=%s"),
+        Verts.Num(), Tris.Num() / 3, GroundMesh->IsVisible() ? TEXT("true") : TEXT("false"));
+}
+
+TArray<FVector4> ARoadNetworkVisualizer::GenerateLakes(const FBox& Bounds)
+{
+    TArray<FVector4> Footprints;
+    if (!WaterMesh || NumLakes <= 0) return Footprints;
+
+    FRandomStream Stream(FoliageSeed + 999); // distinct from tree/grass seeds
+
+    const int32 MaxAttemptsPerLake = 60;
+    for (int32 LakeIdx = 0; LakeIdx < NumLakes; ++LakeIdx)
+    {
+        for (int32 Attempt = 0; Attempt < MaxAttemptsPerLake; ++Attempt)
+        {
+            const float Radius = Stream.FRandRange(LakeMinRadius, LakeMaxRadius);
+            const float CX = Stream.FRandRange(Bounds.Min.X + Radius, Bounds.Max.X - Radius);
+            const float CY = Stream.FRandRange(Bounds.Min.Y + Radius, Bounds.Max.Y - Radius);
+            const FVector Candidate(CX, CY, 0.0f);
+
+            // Keep clear of roads (checks the center against the road network;
+            // reasonable for roughly-circular lakes with a healthy clearance).
+            if (IsLocationOnRoad(Candidate, Radius + LakeRoadClearance))
+            {
+                continue;
+            }
+
+            // Keep clear of previously placed lakes.
+            bool bOverlapsLake = false;
+            for (const FVector4& Existing : Footprints)
+            {
+                const float MinDist = Radius + Existing.Z + 300.0f; // small gap between lakes
+                if (FVector2D::DistSquared(FVector2D(CX, CY), FVector2D(Existing.X, Existing.Y)) < FMath::Square(MinDist))
+                {
+                    bOverlapsLake = true;
+                    break;
+                }
+            }
+            if (bOverlapsLake) continue;
+
+            Footprints.Add(FVector4(CX, CY, Radius, 0.0f));
+            break; // this lake placed, move to the next
+        }
+    }
+
+    // Build one mesh section covering every placed lake.
+    TArray<FVector> Verts;
+    TArray<int32> Tris;
+    TArray<FVector> Normals;
+    TArray<FVector2D> UVs;
+    TArray<FColor> VertexColors;
+    TArray<FProcMeshTangent> Tangents;
+
+    const float WaterZ = 15.0f; // above GroundMesh, avoids z-fighting
+    const int32 CircleSegments = 24;
+
+    for (const FVector4& Lake : Footprints)
+    {
+        const int32 CenterIdx = Verts.Num();
+        Verts.Add(FVector(Lake.X, Lake.Y, WaterZ));
+        Normals.Add(FVector::UpVector);
+        UVs.Add(FVector2D(0.5f, 0.5f));
+        VertexColors.Add(FColor::White);
+
+        for (int32 Seg = 0; Seg <= CircleSegments; ++Seg)
+        {
+            const float Angle = (float)Seg / CircleSegments * 2.0f * PI;
+            // Perturb the radius with noise so the shoreline isn't a perfect circle.
+            const float NoiseOffset = FMath::PerlinNoise1D(Angle * 3.0f + Lake.X * 0.0001f) * (Lake.Z * 0.2f);
+            const float EdgeRadius = Lake.Z + NoiseOffset;
+
+            const float X = Lake.X + FMath::Cos(Angle) * EdgeRadius;
+            const float Y = Lake.Y + FMath::Sin(Angle) * EdgeRadius;
+
+            Verts.Add(FVector(X, Y, WaterZ));
+            Normals.Add(FVector::UpVector);
+            UVs.Add(FVector2D(0.5f + FMath::Cos(Angle) * 0.5f, 0.5f + FMath::Sin(Angle) * 0.5f));
+            VertexColors.Add(FColor::White);
+
+            if (Seg > 0)
+            {
+                Tris.Add(CenterIdx);
+                Tris.Add(CenterIdx + Seg + 1);  // was CenterIdx + Seg
+                Tris.Add(CenterIdx + Seg);      // was CenterIdx + Seg + 1
+            }
+        }
+    }
+
+    UE_LOG(LogTemp, Warning, TEXT("GenerateLakes: NumLakes requested=%d, actually placed=%d, WaterMesh=%s, WaterMaterial=%s, WaterZ=%.1f, IsVisible=%s"),
+        NumLakes, Footprints.Num(),
+        WaterMesh ? TEXT("valid") : TEXT("NULL"),
+        WaterMaterial ? *WaterMaterial->GetName() : TEXT("NULL"),
+        WaterZ,
+        WaterMesh->IsVisible() ? TEXT("true") : TEXT("false"));
+
+    for (const FVector4& Lake : Footprints)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("  Lake placed at (%.0f, %.0f), radius=%.0f"), Lake.X, Lake.Y, Lake.Z);
+    }
+
+    if (Verts.Num() > 0)
+    {
+        WaterMesh->CreateMeshSection(0, Verts, Tris, Normals, UVs, VertexColors, Tangents, false);
+        if (WaterMaterial)
+        {
+            WaterMesh->SetMaterial(0, WaterMaterial);
+        }
+    }
+
+
+
+    return Footprints;
 }
