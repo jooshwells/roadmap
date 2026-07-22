@@ -9,7 +9,7 @@
 #include "Misc/Paths.h"
 #include "HAL/FileManager.h"
 
-TrafficSimulation::TrafficSimulation() : currentTime(0.0f), orlandoMap(nullptr), logger(nullptr), spatialHash(nullptr), controller(nullptr), spawner(nullptr)
+TrafficSimulation::TrafficSimulation() : orlandoMap(nullptr), logger(nullptr), spatialHash(nullptr), controller(nullptr), spawner(nullptr), currentTime(0.0f), lastLoggedSecond(-1)
 {
 }
 
@@ -25,6 +25,7 @@ TrafficSimulation::~TrafficSimulation()
 
 void TrafficSimulation::Initialize(const std::string& nodesPath, const std::string& edgesPath) {
     currentTime = 0.0f;
+    lastLoggedSecond = -1;
 
     // 1. Instantiate the network map on the heap
     orlandoMap = new Network(NetworkBuilder::buildNetworkFromJSONL(nodesPath, edgesPath));
@@ -85,7 +86,14 @@ void TrafficSimulation::Initialize(const std::string& nodesPath, const std::stri
 
     // Pass pointers to the dependent components
     controller = new PhysicsProcessor(orlandoMap, spatialHash);
-    spawner = new TrafficManager(orlandoMap, controller, 1500);
+
+    // Scale the active-vehicle target to this map's road storage capacity
+    // instead of a fixed count, so every roadmap settles at the same visual
+    // density regardless of size.
+    const int targetCount = SpawnScaling::computeTargetVehicleCount(*orlandoMap);
+    UE_LOG(LogTemp, Warning, TEXT("Vehicle target scaled to %d (%.0f lane-meters of road)"),
+           targetCount, orlandoMap->getTotalLaneMeters());
+    spawner = new TrafficManager(orlandoMap, controller, targetCount);
 
     // 3. Apply the through-traffic bounds
     // This routes traffic from West to East. 
@@ -105,9 +113,15 @@ void TrafficSimulation::Step(float dt)
     // Notice we use the arrow operator (->) because they are now pointers.
     spawner->update(dt);
     controller->update(dt);
-    // Record the current state of all active vehicles for this frame.
-    logger->logFrame(currentTime, controller->getActiveVehicles());
-
+    // Record vehicle telemetry at 1 Hz of sim time: log the first step at or
+    // after each whole second. currentTime moves on a fixed 33.3 ms grid, so
+    // an epsilon window around integers would miss most second boundaries.
+    const int wholeSecond = static_cast<int>(currentTime);
+    if (wholeSecond > lastLoggedSecond)
+    {
+        lastLoggedSecond = wholeSecond;
+        logger->logFrame(currentTime, controller->getActiveVehicles());
+    }
     currentTime += dt;
 }
 
@@ -179,11 +193,11 @@ const std::vector<VehicleState*>& TrafficSimulation::GetActiveVehicles() const
     return controller->getActiveVehicles();
 }
 
-std::vector<VehicleRenderState> TrafficSimulation::GetVehicleRenderStates()
+void TrafficSimulation::GetVehicleRenderStates(std::vector<VehicleRenderState>& OutStates)
 {
-    std::vector<VehicleRenderState> renderStates;
+    OutStates.clear(); // keeps capacity, so a reused caller buffer never reallocates
 
-    if (!controller || !orlandoMap) return renderStates;
+    if (!controller || !orlandoMap) return;
 
     const float MEDIAN_GAP_METERS = RoadIntersectionUtil::MedianGapMeters;
     const float LANE_WIDTH = RoadIntersectionUtil::LaneWidthMeters;
@@ -273,6 +287,53 @@ std::vector<VehicleRenderState> TrafficSimulation::GetVehicleRenderStates()
     {
         float d = std::atan2(std::sin(b - a), std::cos(b - a));
         return a + d * s;
+    };
+
+    // Sweep the car along a rounded arc through the junction box instead of the
+    // old straight chord. A cubic Bezier from 'a' to 'b' whose end tangents are
+    // each endpoint's edge heading: the curve leaves 'a' along a.yaw and arrives
+    // at 'b' along b.yaw, so it tracks a real turning radius and joins the drawn
+    // edges tangentially (no heading pop at s=0/s=1). The heading is taken from
+    // the curve tangent, not lerped, so the nose follows the path. z/pitch stay
+    // a linear lerp (grade). Because the arc is longer than the chord, the car
+    // also renders through the box a touch faster than the chord did -- the
+    // reason the physics turn-speed floors could come down. Through movements
+    // have near-parallel tangents, so the curve degenerates to the old straight
+    // line and those cars look unchanged; coincident endpoints fall back too.
+    auto CurveBlend = [&LerpAngle](const EdgePoint& a, const EdgePoint& b, float s, EdgePoint& out)
+    {
+        out.z     = a.z + s * (b.z - a.z);
+        out.pitch = a.pitch + s * (b.pitch - a.pitch);
+
+        const double dx = b.x - a.x, dy = b.y - a.y;
+        const double chord = std::sqrt(dx * dx + dy * dy);
+        if (chord < 1e-3)
+        {
+            out.x = a.x + s * dx;
+            out.y = a.y + s * dy;
+            out.yaw = LerpAngle(a.yaw, b.yaw, s);
+            return;
+        }
+
+        // Handles ~1/3 of the chord give a natural fillet; larger rounds tighter.
+        const double h = chord * (1.0 / 3.0);
+        const double d0x = std::cos(a.yaw), d0y = std::sin(a.yaw);
+        const double d1x = std::cos(b.yaw), d1y = std::sin(b.yaw);
+        const double b1x = a.x + d0x * h, b1y = a.y + d0y * h; // leave 'a' along a.yaw
+        const double b2x = b.x - d1x * h, b2y = b.y - d1y * h; // arrive at 'b' along b.yaw
+
+        const double u = 1.0 - static_cast<double>(s);
+        const double sd = static_cast<double>(s);
+        const double uu = u * u, ss = sd * sd;
+        out.x = uu * u * a.x + 3.0 * uu * sd * b1x + 3.0 * u * ss * b2x + ss * sd * b.x;
+        out.y = uu * u * a.y + 3.0 * uu * sd * b1y + 3.0 * u * ss * b2y + ss * sd * b.y;
+
+        // Heading from the Bezier derivative (curve tangent).
+        const double tx = 3.0 * uu * (b1x - a.x) + 6.0 * u * sd * (b2x - b1x) + 3.0 * ss * (b.x - b2x);
+        const double ty = 3.0 * uu * (b1y - a.y) + 6.0 * u * sd * (b2y - b1y) + 3.0 * ss * (b.y - b2y);
+        out.yaw = (tx * tx + ty * ty > 1e-12)
+            ? static_cast<float>(std::atan2(ty, tx))
+            : LerpAngle(a.yaw, b.yaw, s);
     };
 
     // Lane a movement through node 'via' lands in on edge 'onto', departing
@@ -367,11 +428,7 @@ std::vector<VehicleRenderState> TrafficSimulation::GetVehicleRenderStates()
                     PointOnEdge(nB, nC, next, next->getLength(), sbNextStart, nextLane, entryPt))
                 {
                     float s = std::clamp((pos - (static_cast<float>(L) - sbEnd)) / denom, 0.0f, 1.0f);
-                    p.x = exitPt.x + s * (entryPt.x - exitPt.x);
-                    p.y = exitPt.y + s * (entryPt.y - exitPt.y);
-                    p.z = exitPt.z + s * (entryPt.z - exitPt.z);
-                    p.yaw = LerpAngle(exitPt.yaw, entryPt.yaw, s);
-                    p.pitch = exitPt.pitch + s * (entryPt.pitch - exitPt.pitch);
+                    CurveBlend(exitPt, entryPt, s, p);
                     resolved = true;
                 }
             }
@@ -422,11 +479,7 @@ std::vector<VehicleRenderState> TrafficSimulation::GetVehicleRenderStates()
                     PointOnEdge(nA, nB, v->getCurrentEdge(), L, sbStart, lane, entryPt))
                 {
                     float s = std::clamp((sbPrevEnd + pos) / denom, 0.0f, 1.0f);
-                    p.x = exitPt.x + s * (entryPt.x - exitPt.x);
-                    p.y = exitPt.y + s * (entryPt.y - exitPt.y);
-                    p.z = exitPt.z + s * (entryPt.z - exitPt.z);
-                    p.yaw = LerpAngle(exitPt.yaw, entryPt.yaw, s);
-                    p.pitch = exitPt.pitch + s * (entryPt.pitch - exitPt.pitch);
+                    CurveBlend(exitPt, entryPt, s, p);
                     resolved = true;
                 }
             }
@@ -457,10 +510,8 @@ std::vector<VehicleRenderState> TrafficSimulation::GetVehicleRenderStates()
         state.pitch = p.pitch;
         state.id = v->getId();
 
-        renderStates.push_back(state);
+        OutStates.push_back(state);
     }
-
-    return renderStates;
 }
 void TrafficSimulation::AddRuntimeRoad(uint64_t startNodeId, uint64_t endNodeId, double destX, double destY, double lengthMeters, int lanes, float speedLimit) {
     if (!orlandoMap) return;
@@ -491,6 +542,9 @@ void TrafficSimulation::AddRuntimeRoad(uint64_t startNodeId, uint64_t endNodeId,
     // Same reallocation dangles the Road* inside every light's axis map, and
     // an endpoint promoted to a signal above needs its state built.
     if (controller) controller->refreshIntersectionStates();
+
+    // The new road added storage capacity; let the vehicle target grow to fill it.
+    RescaleVehicleTarget();
 }
 
 void TrafficSimulation::SplitRuntimeEdge(uint64_t u, uint64_t v, uint64_t newNodeId, double x, double y)
@@ -675,6 +729,9 @@ void TrafficSimulation::DeleteRuntimeEdge(uint64_t u, uint64_t v, bool bBothDire
     // Lights whose approaches shifted (or that lost signal status, or whose
     // node vanished with its last road) get their state rebuilt or dropped.
     if (controller) controller->refreshIntersectionStates();
+
+    // The deleted road removed storage capacity; lower the target to match.
+    RescaleVehicleTarget();
 }
 
 void TrafficSimulation::UpdateRuntimeRoad(uint64_t u, uint64_t v, int lanes, float speedMps, bool bBothDirections,
@@ -722,6 +779,9 @@ void TrafficSimulation::UpdateRuntimeRoad(uint64_t u, uint64_t v, int lanes, flo
     // Signal timings are derived from speed limits and lane counts, so the
     // lights at both ends recompute their phase durations.
     if (controller) controller->refreshIntersectionStates();
+
+    // A lane-count change alters storage capacity, so retarget the population.
+    RescaleVehicleTarget();
 
     // Vehicles already driving the edited edge adopt the new speed limit and
     // get pulled out of lanes that no longer exist.
@@ -823,6 +883,17 @@ void TrafficSimulation::ProcessPendingReplans(int maxCount)
     }
 
     RefreshVehicleEdgePointers();
+}
+
+void TrafficSimulation::RescaleVehicleTarget()
+{
+    if (!spawner || !orlandoMap) return;
+
+    // Existing cars are never force-despawned when the target drops; the
+    // spawner simply stops adding new ones until the count falls back under
+    // target, so the population eases toward the new capacity instead of
+    // popping.
+    spawner->setTargetVehicleCount(SpawnScaling::computeTargetVehicleCount(*orlandoMap));
 }
 
 void TrafficSimulation::RefreshVehicleEdgePointers()

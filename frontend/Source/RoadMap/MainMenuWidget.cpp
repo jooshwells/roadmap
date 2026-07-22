@@ -513,6 +513,7 @@ void UMainMenuWidget::OnQuitClicked()
 
 void UMainMenuWidget::RefreshTemplateList()
 {
+	using namespace MenuPalette;
 	TemplateListBox->ClearChildren();
 	TemplateRows.Reset();
 	SelectedTemplateIndex = INDEX_NONE;
@@ -569,6 +570,7 @@ void UMainMenuWidget::OnTemplateRowSelected(int32 Index)
 
 void UMainMenuWidget::RefreshSaveList()
 {
+	using namespace MenuPalette;
 	SaveListBox->ClearChildren();
 	SaveRows.Reset();
 	SelectedSaveIndex = INDEX_NONE;

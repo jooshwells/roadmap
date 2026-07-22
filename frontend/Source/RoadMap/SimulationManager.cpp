@@ -247,12 +247,21 @@ void ASimulationManager::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	if (bWaitingForTelemetry && FPaths::FileExists(TelemetryDoneFilePath))
+	if (bWaitingForTelemetry)
 	{
-		bWaitingForTelemetry = false;
+		// ~2 Hz: a filesystem stat every frame on the game thread buys nothing.
+		TelemetryPollAccumulator += DeltaTime;
+		if (TelemetryPollAccumulator >= 0.5f)
+		{
+			TelemetryPollAccumulator = 0.0f;
+			if (FPaths::FileExists(TelemetryDoneFilePath))
+			{
+				bWaitingForTelemetry = false;
 
-		// The run is ready for the user to open from the telemetry panel.
-		UE_LOG(LogTemp, Log, TEXT("Telemetry run saved and ready in the telemetry panel."));
+				// The run is ready for the user to open from the telemetry panel.
+				UE_LOG(LogTemp, Log, TEXT("Telemetry run saved and ready in the telemetry panel."));
+			}
+		}
 	}
 
 	if (!TrafficSimEngine || !bSimulationRunning || bSimulationPaused) return;
@@ -266,11 +275,23 @@ void ASimulationManager::Tick(float DeltaTime)
 	// drop below would cancel the speed-up; keep the plain cap at 1x and below.
 	const int32 StepCap = FMath::CeilToInt(MaxStepsPerFrame * FMath::Max(1.0f, SimSpeedMultiplier));
 
+	// Real-time ceiling on physics stepping this frame. Fast-forward can demand
+	// up to StepCap O(N) steps synchronously here; without a wall-clock cap a
+	// heavy frame grinds through all of them and hitches. Above 1x we stop once
+	// the budget is spent and let the backlog-drop below slow-mo the sim toward
+	// the target speed instead. Disabled at <=1x so normal playback is unchanged.
+	const double StepLoopStart = FPlatformTime::Seconds();
+	const double StepBudget = (SimSpeedMultiplier > 1.0f) ? (StepTimeBudgetMs / 1000.0) : TNumericLimits<double>::Max();
+
 	while (Accumulator >= FixedDelta && StepsThisFrame < StepCap)
 	{
 		TrafficSimEngine->Step(FixedDelta);
 		Accumulator -= FixedDelta;
 		StepsThisFrame++;
+
+		// Checked after the step so the loop always makes at least one step of
+		// progress when there is a backlog (visuals/lights still update).
+		if (FPlatformTime::Seconds() - StepLoopStart >= StepBudget) break;
 	}
 
 	// If the machine couldn't keep up this frame, drop the whole-step backlog
@@ -292,7 +313,7 @@ void ASimulationManager::Tick(float DeltaTime)
 	}
 
 	// Debug
-	if (GEngine)
+	if (bShowDebugStats && GEngine)
 	{
 		GEngine->AddOnScreenDebugMessage(-1, 0.0f, FColor::Green, FString::Printf(TEXT("Steps this frame: %d"), StepsThisFrame));
 	}
@@ -410,6 +431,7 @@ void ASimulationManager::StopSimulation()
 
 	TelemetryDoneFilePath = TelemetryDonePath;
 	bWaitingForTelemetry = true;
+	TelemetryPollAccumulator = 0.0f;
 
 	// Remove the old done file so this run has to create a fresh one.
 	if (FPaths::FileExists(TelemetryDonePath))
@@ -448,16 +470,16 @@ void ASimulationManager::UpdateVehicleVisuals(float Alpha, bool bDidPhysicsStep)
 
 	if (bDidPhysicsStep)
 	{
-		auto RenderStates = TrafficSimEngine->GetVehicleRenderStates();
-		if (GEngine)
+		TrafficSimEngine->GetVehicleRenderStates(RenderStateBuffer);
+		if (bShowDebugStats && GEngine)
 		{
-			GEngine->AddOnScreenDebugMessage(2, 0.1f, FColor::Green, FString::Printf(TEXT("Backend Active Cars: %d"), (int32)RenderStates.size()));
+			GEngine->AddOnScreenDebugMessage(2, 0.1f, FColor::Green, FString::Printf(TEXT("Backend Active Cars: %d"), (int32)RenderStateBuffer.size()));
 		}
-		TSet<int32> ActiveVehicleIDs;
+		ActiveVehicleIDScratch.Reset();
 
-		for (const auto& State : RenderStates)
+		for (const auto& State : RenderStateBuffer)
 		{
-			ActiveVehicleIDs.Add(State.id);
+			ActiveVehicleIDScratch.Add(State.id);
 			FVector UnrealPosition(State.x * 100.0f, State.y * 100.0f, State.z * 100.0f);
 			// Pitch follows the road grade so cars sit flush on bridge ramps
 			// instead of staying horizontal; positive pitch is nose-up, same
@@ -481,7 +503,7 @@ void ASimulationManager::UpdateVehicleVisuals(float Alpha, bool bDidPhysicsStep)
 		// Clean up cars that finished their routes and despawned
 		for (auto It = InterpolationData.CreateIterator(); It; ++It)
 		{
-			if (!ActiveVehicleIDs.Contains(It.Key()))
+			if (!ActiveVehicleIDScratch.Contains(It.Key()))
 			{
 				It.RemoveCurrent();
 			}
@@ -489,8 +511,8 @@ void ASimulationManager::UpdateVehicleVisuals(float Alpha, bool bDidPhysicsStep)
 	}
 
 	// 2. GLIDE THE CARS (LERP)
-	TArray<FTransform> Transforms;
-	Transforms.Reserve(InterpolationData.Num());
+	VehicleTransforms.Reset(); // keeps capacity across frames
+	VehicleTransforms.Reserve(InterpolationData.Num());
 	InstanceIndexToVehicleId.Reset(); // Keep memory reserved, but clear the map
 
 	int32 Index = 0;
@@ -505,35 +527,43 @@ void ASimulationManager::UpdateVehicleVisuals(float Alpha, bool bDidPhysicsStep)
 		// Spherical interpolation (Slerp) for Rotation to ensure cars take the shortest rotational path!
 		FQuat LerpedRot = FQuat::Slerp(State.Previous.GetRotation(), State.Target.GetRotation(), Alpha);
 
-		Transforms.Add(FTransform(LerpedRot, LerpedLoc));
+		VehicleTransforms.Add(FTransform(LerpedRot, LerpedLoc));
 		InstanceIndexToVehicleId.Add(Index, VehID);
 		Index++;
 	}
 
-	// 3. PUSH TO THE GPU (Your existing logic)
-	int32 CurrentCount = VehicleISM->GetInstanceCount();
-	int32 TargetCount = Transforms.Num();
+	// 3. PUSH TO THE GPU
+	const int32 CurrentCount = VehicleISM->GetInstanceCount();
+	const int32 TargetCount = VehicleTransforms.Num();
 
 	if (CurrentCount < TargetCount)
 	{
-		for (int32 i = CurrentCount; i < TargetCount; ++i)
+		// One batched add; the identity transforms are placeholders that the
+		// batch update below overwrites in the same frame.
+		TArray<FTransform> NewInstances;
+		NewInstances.Init(FTransform::Identity, TargetCount - CurrentCount);
+		VehicleISM->AddInstances(NewInstances, /*bShouldReturnIndices=*/false, /*bWorldSpace=*/false, /*bUpdateNavigation=*/false);
+	}
+	else if (CurrentCount > TargetCount)
+	{
+		// Despawned cars are removed for real, so the pool always matches the
+		// active car count. Trailing indices only, highest first: ISM removal
+		// swap-relocates the last instance into the freed slot, so removing
+		// anything below TargetCount would scramble live instances and the
+		// index -> vehicle mapping used for click-to-inspect.
+		TArray<int32> SurplusIndices;
+		SurplusIndices.Reserve(CurrentCount - TargetCount);
+		for (int32 i = CurrentCount - 1; i >= TargetCount; --i)
 		{
-			VehicleISM->AddInstance(FTransform::Identity);
+			SurplusIndices.Add(i);
 		}
+		VehicleISM->RemoveInstances(SurplusIndices, /*bInstanceArrayAlreadySortedInReverseOrder=*/true);
 	}
 
-	if (Transforms.Num() > 0)
+	if (VehicleTransforms.Num() > 0)
 	{
-		// Notice bTeleport is set to false here (the last parameter) to prevent TAA smearing!
-		VehicleISM->BatchUpdateInstancesTransforms(0, Transforms, false, true, false);
-	}
-
-	if (CurrentCount > TargetCount)
-	{
-		for (int32 i = TargetCount; i < CurrentCount; ++i)
-		{
-			VehicleISM->UpdateInstanceTransform(i, FTransform(FRotator::ZeroRotator, FVector::ZeroVector, FVector::ZeroVector), false, true, false);
-		}
+		// bTeleport=false keeps per-instance velocities so TAA doesn't smear.
+		VehicleISM->BatchUpdateInstancesTransforms(0, VehicleTransforms, false, true, false);
 	}
 }
 

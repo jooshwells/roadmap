@@ -54,7 +54,10 @@ public:
     TrafficSimulation();
     ~TrafficSimulation();
 
-    std::vector<VehicleRenderState> GetVehicleRenderStates();
+    // Fills OutStates with the current per-vehicle render transforms. The
+    // buffer is cleared but keeps its capacity, so passing a persistent caller
+    // buffer makes this allocation-free after warm-up.
+    void GetVehicleRenderStates(std::vector<VehicleRenderState>& OutStates);
 
     // Current signal colors for every traffic-light intersection, for the
     // frontend's traffic control visuals. Cheap: one entry per light node.
@@ -112,6 +115,12 @@ private:
     // Drain up to maxCount queued replans (one D* Lite search each).
     void ProcessPendingReplans(int maxCount);
 
+    // Recompute the spawner's active-vehicle target from the network's current
+    // storage capacity. Call after a runtime edit that changed total
+    // lane-meters (road added/deleted, lane count changed); edits that only
+    // move pavement around (edge split) leave the target unchanged.
+    void RescaleVehicleTarget();
+
     std::deque<int> pendingReplanIds;
 
     double originOffsetX;
@@ -125,4 +134,7 @@ private:
     TrafficManager* spawner;
 
     float currentTime;
+
+    // Last whole sim-second a telemetry frame was logged for (-1 = none yet).
+    int lastLoggedSecond;
 };

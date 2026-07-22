@@ -1393,13 +1393,38 @@ void PhysicsProcessor::updateIntersections(float dt)
         }
     }
 }
-// The junction-box crossing is rendered at the car's physical speed, so the
-// pace a turn "plays" at is whatever speed target the car carries through the
-// box. Derive that target from the road being turned onto: through movements
-// adopt the next road's limit outright, turns take a fraction of it -- which
-// makes a right onto a fast arterial sweep visibly quicker than one into a
-// residential street. Outside any box the target is simply the current road's
-// limit (previously that reset only happened at edge transitions).
+// Geometry-derived comfortable corner speed for a car turning from 'approach'
+// onto 'exitRoad' through 'node'. The deflection between the two edges'
+// tangents feeds RoadIntersectionUtil::CornerSpeed (fillet radius from the
+// junction setback -> lateral-accel-limited speed), so a gentle bend keeps
+// near-full speed and a hairpin slows proportionally -- unlike the old flat
+// left/right multiplier. Returns exitLimit (no reduction) when tangents are
+// unavailable, matching the through case.
+float PhysicsProcessor::cornerSpeedForEdges(const Road* approach, const Road* exitRoad,
+                                            const Node* node, float aLat, float exitLimit)
+{
+    if (approach == nullptr || exitRoad == nullptr || node == nullptr) return exitLimit;
+    double ax, ay, xx, xy;
+    if (!RoadIntersectionUtil::GetEdgeEndDirection(network, *approach, /*AtEnd=*/true,  ax, ay) ||
+        !RoadIntersectionUtil::GetEdgeEndDirection(network, *exitRoad, /*AtEnd=*/false, xx, xy))
+    {
+        return exitLimit;
+    }
+    const double defl = RoadIntersectionUtil::SignedDeflection(ax, ay, xx, xy);
+    const float setback = RoadIntersectionUtil::GetNodeSetbackMeters(
+        network, *node, RoadIntersectionUtil::MedianGapMeters);
+    return RoadIntersectionUtil::CornerSpeed(defl, setback, aLat, exitLimit);
+}
+
+// Sets the frame's desired speed. For a turn ahead, the car eases toward a
+// geometry-derived corner speed (CornerSpeed) over a comfortable braking
+// distance BEFORE the stop line -- not a flat fraction snapped on only once
+// inside the box. That kills the old pattern of cruising to the line then
+// braking at the -10 m/s^2 tire clamp: the downstream-constraint envelope
+// v_allowed = sqrt(vCorner^2 + 2*b*dist) has IDM shed speed smoothly from ~30-40 m
+// out. Through movements and open road keep the current road's limit (scaled by
+// the driver's speedFactor); corner speeds are physical caps set raw so
+// speedFactor doesn't scale them twice.
 void PhysicsProcessor::applyJunctionTargetSpeed(VehicleState* vhcl)
 {
     if (network == nullptr) return;
@@ -1408,31 +1433,51 @@ void PhysicsProcessor::applyJunctionTargetSpeed(VehicleState* vhcl)
     const size_t i = vhcl->currentRouteIndex;
     if (!currentEdge || vhcl->currentRoute.empty() || i + 1 >= vhcl->currentRoute.size()) return;
 
-    auto turnTarget = [](const std::string& turn, double limit) -> float {
-        const float lim = static_cast<float>(limit);
-        // The rendered turn path is the straight chord across the box, which
-        // is shorter than the arc distance the physics covers, so the sweep
-        // plays back visibly slower than this target -- keep the fractions
-        // and floors generous or turns crawl on screen.
-        if (turn == "left")  return std::clamp(lim * 0.70f, 5.5f, lim);
-        if (turn == "right") return std::clamp(lim * 0.60f, 5.0f, lim);
-        return lim;
-    };
+    const float sf    = vhcl->getSpeedFactor();
+    const float aLat  = vhcl->getLatAccel();
+    const float bComf = std::max(0.5f, vhcl->getSafeBrakePower());
+    const float curLimit = static_cast<float>(currentEdge->getSpeedLimit());
+    // Only look at the upcoming turn once the car is near enough that braking
+    // could plausibly start; skips the tangent sampling for cars mid-edge far
+    // from any junction.
+    constexpr float kAnticipationHorizon = 250.0f; // m
 
-    // Crossing the box at the far end of this edge: target the next road.
+    // (A) The movement at the far end of this edge (its dest node).
     Node* destNode = network->getNode(currentEdge->getDest());
-    if (destNode && i + 2 < vhcl->currentRoute.size() &&
-        vhcl->getPos() > stopLineArcPos(network, currentEdge, destNode))
+    if (destNode && i + 2 < vhcl->currentRoute.size())
     {
-        for (Road& next : destNode->outgoingEdges) {
-            if (next.getDest() == vhcl->currentRoute[i + 2]) {
-                vhcl->setDesiredSpeed(turnTarget(getTurnDirectionAt(vhcl, i + 1), next.getSpeedLimit()));
-                return;
+        const Road* nextEdge = nullptr;
+        for (Road& next : destNode->outgoingEdges)
+            if (next.getDest() == vhcl->currentRoute[i + 2]) { nextEdge = &next; break; }
+
+        if (nextEdge != nullptr)
+        {
+            const float stopLine = stopLineArcPos(network, currentEdge, destNode);
+            const float exitLim  = static_cast<float>(nextEdge->getSpeedLimit());
+
+            if (vhcl->getPos() > stopLine - kAnticipationHorizon)
+            {
+                const std::string dir = getTurnDirectionAt(vhcl, i + 1);
+                if (dir != "through")
+                {
+                    const float vCorner = cornerSpeedForEdges(currentEdge, nextEdge, destNode, aLat, exitLim);
+                    if (vhcl->getPos() > stopLine) {
+                        vhcl->setDesiredSpeedRaw(vCorner);          // in the box: hold corner speed
+                    } else {
+                        const float dist = stopLine - vhcl->getPos();
+                        const float cap  = std::sqrt(vCorner * vCorner + 2.0f * bComf * dist);
+                        vhcl->setDesiredSpeedRaw(std::min(curLimit * sf, cap));
+                    }
+                    return;
+                }
+                // Through: adopt the (possibly slower) next-road limit once in
+                // the box, exactly as before; before the line, normal cruise.
+                if (vhcl->getPos() > stopLine) { vhcl->setDesiredSpeed(exitLim); return; }
             }
         }
     }
 
-    // Just crossed a node: still inside the entry half of that box.
+    // (B) Just crossed a node: still inside the entry half of that box.
     Node* originNode = network->getNode(currentEdge->getOriginId());
     if (originNode && destNode && i > 0)
     {
@@ -1444,13 +1489,22 @@ void PhysicsProcessor::applyJunctionTargetSpeed(VehicleState* vhcl)
             static_cast<float>(currentEdge->getLength()), sbStart, sbEnd);
 
         if (vhcl->getPos() < sbStart) {
-            vhcl->setDesiredSpeed(turnTarget(getTurnDirectionAt(vhcl, i), currentEdge->getSpeedLimit()));
-            return;
+            const std::string dir = getTurnDirectionAt(vhcl, i);
+            if (dir != "through") {
+                // approach edge = route[i-1] -> route[i] (= this edge's origin).
+                const Road* prevEdge = nullptr;
+                if (Node* prevNode = network->getNode(vhcl->currentRoute[i - 1]))
+                    for (Road& e : prevNode->outgoingEdges)
+                        if (e.getDest() == currentEdge->getOriginId()) { prevEdge = &e; break; }
+                vhcl->setDesiredSpeedRaw(
+                    cornerSpeedForEdges(prevEdge, currentEdge, originNode, aLat, curLimit));
+                return;
+            }
         }
     }
 
-    // Normal driving: track the current road's limit.
-    vhcl->setDesiredSpeed(static_cast<float>(currentEdge->getSpeedLimit()));
+    // (C) Normal driving: track the current road's limit.
+    vhcl->setDesiredSpeed(curLimit);
 }
 
 // True when the lane vhcl will land in on its exit edge out of destNode has
@@ -2142,14 +2196,29 @@ float PhysicsProcessor::estimateCrossingSeconds(VehicleState* vhcl, Node* destNo
     if (uTurn && exitFrom == destNode) dist *= 1.4f;
 
     // Target speed through the box, matching applyJunctionTargetSpeed's turn
-    // pacing so the estimate reflects how the crossing actually plays out.
+    // pacing (shared RoadIntersectionUtil::CornerSpeed) so the estimate
+    // reflects how the crossing actually plays out.
     float target;
     const float exitLimit = static_cast<float>(
         exitEdge != nullptr ? exitEdge->getSpeedLimit() : approach->getSpeedLimit());
-    if (uTurn)                target = 5.0f;
-    else if (turn == "left")  target = std::clamp(exitLimit * 0.70f, 5.5f, exitLimit);
-    else if (turn == "right") target = std::clamp(exitLimit * 0.60f, 5.0f, exitLimit);
-    else                      target = exitLimit;
+    if (uTurn) {
+        // Fillet radius is unreliable near 180 deg; keep the explicit U-turn pace.
+        target = 5.0f;
+    } else if (turn == "through" || exitEdge == nullptr) {
+        target = exitLimit;
+    } else {
+        double ax, ay, xx, xy;
+        if (RoadIntersectionUtil::GetEdgeEndDirection(network, *approach,  /*AtEnd=*/true,  ax, ay) &&
+            RoadIntersectionUtil::GetEdgeEndDirection(network, *exitEdge,  /*AtEnd=*/false, xx, xy)) {
+            const double defl = RoadIntersectionUtil::SignedDeflection(ax, ay, xx, xy);
+            const float setback = RoadIntersectionUtil::GetNodeSetbackMeters(
+                network, *exitFrom, RoadIntersectionUtil::MedianGapMeters);
+            target = RoadIntersectionUtil::CornerSpeed(
+                defl, setback, vhcl->getLatAccel(), exitLimit);
+        } else {
+            target = exitLimit;
+        }
+    }
     target = std::max(target, 2.0f);
 
     // Constant-acceleration kinematics from the current speed; IDM tapers

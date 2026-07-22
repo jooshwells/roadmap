@@ -307,7 +307,12 @@ class ROADMAP_API UTelemetryPanelBridge : public UBlueprintFunctionLibrary
 public:
     // Run list and overview data.
 
-    // Gets saved runs and puts their values into a form the panel can read.
+    // Drops all cached run-folder resolutions. Call when the runs list is
+    // (re)scanned so renamed/moved folders can't serve stale paths. Plain
+    // static (not a UFUNCTION): only the telemetry panel calls it.
+    static void InvalidateRunFolderCache();
+
+    // Gets the saved telemetry runs and converts them into Blueprint-friendly structs.
     UFUNCTION(BlueprintCallable, Category = "RoadMap Telemetry")
     static bool GetSavedRuns(
         const FString& ActiveMapName,

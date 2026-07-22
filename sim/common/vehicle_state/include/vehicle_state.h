@@ -21,6 +21,7 @@ struct IDMParameters {
     float speedFactor = 1.0f;       // desired speed as a multiple of the road limit
     float reactionTime = 0.0f;      // s of lag before pulling away from a stop
     float launchBoostFactor = 2.0f; // standing-start accel multiplier (see getLaunchBoost)
+    float latAccel = 6.5f;          // lateral accel budget (m/s^2) for cornering (see CornerSpeed)
 };
 
 class VehicleState {
@@ -33,6 +34,12 @@ class VehicleState {
         void setLeader(VehicleState* newLeader);
         void setLane(int newLane);
         void setDesiredSpeed(float new_des_speed);
+        // Physical desired-speed target with NO speedFactor scaling. Used for
+        // geometry-derived corner speeds, which are a physical lateral-accel
+        // cap that already carries the driver's personality via latAccel --
+        // running them back through setDesiredSpeed's speedFactor would scale
+        // them twice.
+        void setDesiredSpeedRaw(float new_des_speed);
 
         // Progressive lane changing: setLane() snaps instantly (used for lane
         // clamping at edge transitions); startLaneChange() begins a timed
@@ -100,6 +107,7 @@ class VehicleState {
         inline const char* getProfileName() const { return m_profileName; }
         inline float getSpeedFactor() const       { return m_speedFactor; }
         inline float getReactionTime() const      { return m_reactionTime; }
+        inline float getLatAccel() const          { return m_latAccel; }
 
         // Lane transition state (m_lane is always the committed target lane)
         inline bool  isChangingLanes() const      { return m_laneChangeElapsed < m_laneChangeDuration; }
@@ -154,6 +162,7 @@ class VehicleState {
         float m_speedFactor = 1.0f;       // scales every desired-speed target
         float m_reactionTime = 0.0f;      // s (see applyReactionDelay)
         float m_launchBoostFactor = 2.0f; // per-driver standing-start kick
+        float m_latAccel = 6.5f;          // lateral accel budget for cornering (m/s^2)
         float m_reactionElapsed = 0.0f;   // s the current go condition has persisted
 
         // Wrong-lane hold state (see hasServedWrongLaneHold); cleared by

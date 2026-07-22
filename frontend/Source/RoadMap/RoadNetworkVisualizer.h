@@ -282,10 +282,22 @@ private:
     // the split point. All other fields (highway, turn:lanes, ...) are kept.
     bool SplitEdgeInFile(int64 U, int64 V, int64 NewNodeId, FVector2D SplitJsonCoords);
 
-    // Rewrites the U->V line's lanes / speed_mps / turn:lanes / layer in
-    // place. The layer is always written explicitly so it overrides any
-    // legacy bridge/tunnel tag fallback when a road is grounded again.
-    bool UpdateEdgeInFile(int64 U, int64 V, int32 Lanes, float SpeedMps, const FString& TurnLanes, int32 Layer);
+    // One pending JSONL edge rewrite. Lanes / speed / layer are shared by
+    // both directions of an edit; turn:lanes is per-direction (the reverse
+    // edge carries the mirrored string).
+    struct FEdgeFileUpdate
+    {
+        int64 U = 0;
+        int64 V = 0;
+        FString TurnLanes;
+    };
+
+    // Rewrites the lines for all Updates' lanes / speed_mps / turn:lanes /
+    // layer in ONE file load + ONE save (a two-way edit used to rewrite the
+    // whole file twice). The layer is always written explicitly so it
+    // overrides any legacy bridge/tunnel tag fallback when a road is
+    // grounded again. Returns true if every requested edge was found.
+    bool UpdateEdgesInFile(const TArray<FEdgeFileUpdate>& Updates, int32 Lanes, float SpeedMps, int32 Layer);
 
     // Drops the U->V line from the edges JSONL.
     bool RemoveEdgeInFile(int64 U, int64 V);
@@ -307,6 +319,12 @@ private:
     // The world origin is computed from the first build's bounds and then
     // locked, so runtime rebuilds never shift existing geometry.
     bool bOriginLocked = false;
+
+    // Road-instance count of the previous RefreshRoadVisuals build. Sizes the
+    // next build's scratch reserves near-exactly (edits shift the count only
+    // slightly), so rebuilds neither spike a fixed worst-case allocation nor
+    // pay repeated growth.
+    int32 LastRoadInstanceCount = 0;
 
     // Maps HISM Instance ID (int32) to the simulator's Edge ID (uint64_t)
     TMap<int32, uint64_t> InstanceIndexToEdgeId;

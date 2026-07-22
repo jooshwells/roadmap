@@ -1216,6 +1216,16 @@ void Network::resetPathfindingState() {
     }
 }
 
+double Network::getTotalLaneMeters() const {
+    double total = 0.0;
+    for (const auto& pair : nodes) {
+        for (const Road& edge : pair.second.outgoingEdges) {
+            total += static_cast<double>(edge.getLanes()) * edge.getLength();
+        }
+    }
+    return total;
+}
+
 Network::Network(){ numNodes = 0; }
 
 Network::~Network() {}
