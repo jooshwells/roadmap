@@ -272,6 +272,8 @@ void URoadEditorWidget::HandleLayerComboChanged(FString SelectedItem, ESelectInf
 
 UWidget* URoadEditorWidget::MakeTurnLaneEntry(FString Item)
 {
+    if (!WidgetTree) return nullptr; // combo falls back to a plain text entry
+
     UTextBlock* Entry = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
     Entry->SetText(FText::FromString(Item));
     Entry->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 10));
@@ -324,10 +326,21 @@ void URoadEditorWidget::RebuildTurnLaneCombos()
     TArray<FString> Existing;
     CurrentTurnLanes.ParseIntoArray(Existing, TEXT("|"), /*CullEmpty*/ false);
 
-    TurnLaneRows->ClearChildren();
-    TurnLaneCombos.Reset();
-
-    for (int32 LaneIdx = 0; LaneIdx < CurrentLanes; LaneIdx++)
+    // Grow/shrink the per-lane dropdown list to match the lane count, REUSING
+    // the rows already present. This panel is retargeted on every road click,
+    // and tearing the whole subtree down + rebuilding it each time churned
+    // Slate's global-invalidation widget list; a later window prepass (e.g.
+    // opening the Road Tools panel) would then walk a stale INDEX_NONE widget
+    // index and crash with an access violation. Reusing rows keeps the widget
+    // tree stable across the common case of retargeting between roads with the
+    // same lane count (zero add/remove operations).
+    while (TurnLaneCombos.Num() > CurrentLanes)
+    {
+        const int32 Last = TurnLaneCombos.Num() - 1;
+        TurnLaneRows->RemoveChildAt(Last); // drops the whole "Lane N" row
+        TurnLaneCombos.RemoveAt(Last);
+    }
+    while (TurnLaneCombos.Num() < CurrentLanes)
     {
         UComboBoxString* Combo = WidgetTree->ConstructWidget<UComboBoxString>(UComboBoxString::StaticClass());
         RoadPanelStyle::StyleTurnLaneCombo(Combo);
@@ -336,6 +349,17 @@ void URoadEditorWidget::RebuildTurnLaneCombos()
         {
             Combo->AddOption(Option);
         }
+        Combo->OnSelectionChanged.AddUniqueDynamic(this, &URoadEditorWidget::HandleTurnLaneComboChanged);
+
+        TurnLaneCombos.Add(Combo);
+        AddRow(TurnLaneRows, FText::FromString(FString::Printf(TEXT("Lane %d"), TurnLaneCombos.Num())), Combo);
+    }
+
+    // Re-seed every lane's current selection and read-only state.
+    for (int32 LaneIdx = 0; LaneIdx < TurnLaneCombos.Num(); LaneIdx++)
+    {
+        UComboBoxString* Combo = TurnLaneCombos[LaneIdx];
+        if (!Combo) continue;
 
         FString Wanted = TEXT("(none)");
         if (Existing.IsValidIndex(LaneIdx))
@@ -346,12 +370,8 @@ void URoadEditorWidget::RebuildTurnLaneCombos()
         {
             Combo->AddOption(Wanted); // value the dropdown list doesn't cover, e.g. "slight_right"
         }
-        Combo->SetSelectedOption(Wanted);
-        Combo->OnSelectionChanged.AddUniqueDynamic(this, &URoadEditorWidget::HandleTurnLaneComboChanged);
+        Combo->SetSelectedOption(Wanted); // ESelectInfo::Direct -> HandleTurnLaneComboChanged ignores it
         Combo->SetIsEnabled(!bReadOnly);
-
-        TurnLaneCombos.Add(Combo);
-        AddRow(TurnLaneRows, FText::FromString(FString::Printf(TEXT("Lane %d"), LaneIdx + 1)), Combo);
     }
 }
 
