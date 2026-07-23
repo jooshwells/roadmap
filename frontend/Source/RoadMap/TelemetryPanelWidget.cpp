@@ -214,6 +214,17 @@ void UTelemetryPanelWidget::NativeTick(const FGeometry& MyGeometry, float InDelt
         UpdateHeatmapExtremeMarker();
         --HeatmapMarkerLayoutFramesRemaining;
     }
+
+    // Deferred from HandleRefreshClicked. Rescanning destroys and recreates
+    // every run row, which must not happen inside a Slate input callback --
+    // tree churn during event dispatch is what corrupts Slate's widget list
+    // and faults a later prepass. The async task completions that also call
+    // RefreshRunList already run outside input dispatch.
+    if (bRunListRefreshPending)
+    {
+        bRunListRefreshPending = false;
+        RefreshRunList();
+    }
 }
 
 // Stops camera movement while still allowing the user to click the panel.
@@ -418,14 +429,6 @@ UTextBlock* UTelemetryPanelWidget::MakeText(
     Block->SetText(FText::FromString(Text));
     Block->SetColorAndOpacity(FSlateColor(Color));
     return Block;
-}
-
-// Creates one readable item for a drop-down menu.
-UWidget* UTelemetryPanelWidget::MakeComboEntry(FString Item)
-{
-    UTextBlock* Entry = MakeText(Item, 11, RoadPanelStyle::ControlText);
-    Entry->SetAutoWrapText(false);
-    return Entry;
 }
 
 // Creates either an amber main button or a dark normal button.
@@ -708,8 +711,7 @@ void UTelemetryPanelWidget::BuildWidgetTree()
 
     // Let the user choose what road value the colors represent.
     MetricComboBox = WidgetTree->ConstructWidget<UComboBoxString>();
-    RoadPanelStyle::StyleTurnLaneCombo(MetricComboBox);
-    MetricComboBox->OnGenerateWidgetEvent.BindUFunction(this, FName("MakeComboEntry"));
+    RoadPanelStyle::StyleTurnLaneCombo(MetricComboBox, 11);
     MetricComboBox->AddOption(TEXT("RoadMap Bottleneck Index"));
     MetricComboBox->AddOption(TEXT("Estimated Hourly Traffic Flow"));
     MetricComboBox->AddOption(TEXT("Average Recorded Speed"));
@@ -737,8 +739,7 @@ void UTelemetryPanelWidget::BuildWidgetTree()
 
     // Let the user reduce clutter by showing only the worst roads.
     FocusComboBox = WidgetTree->ConstructWidget<UComboBoxString>();
-    RoadPanelStyle::StyleTurnLaneCombo(FocusComboBox);
-    FocusComboBox->OnGenerateWidgetEvent.BindUFunction(this, FName("MakeComboEntry"));
+    RoadPanelStyle::StyleTurnLaneCombo(FocusComboBox, 11);
     FocusComboBox->AddOption(TEXT("All Roads"));
     FocusComboBox->AddOption(TEXT("Focused 25%"));
     FocusComboBox->AddOption(TEXT("Focused 10%"));
@@ -854,8 +855,7 @@ void UTelemetryPanelWidget::BuildWidgetTree()
 
     // Only runs from this map are added to the second-run list.
     ComparisonRunComboBox = WidgetTree->ConstructWidget<UComboBoxString>();
-    RoadPanelStyle::StyleTurnLaneCombo(ComparisonRunComboBox);
-    ComparisonRunComboBox->OnGenerateWidgetEvent.BindUFunction(this, FName("MakeComboEntry"));
+    RoadPanelStyle::StyleTurnLaneCombo(ComparisonRunComboBox, 11);
     ComparisonRunComboBox->OnSelectionChanged.AddDynamic(
         this,
         &UTelemetryPanelWidget::HandleComparisonRunChanged
@@ -889,8 +889,7 @@ void UTelemetryPanelWidget::BuildWidgetTree()
     }
 
     ComparisonMetricComboBox = WidgetTree->ConstructWidget<UComboBoxString>();
-    RoadPanelStyle::StyleTurnLaneCombo(ComparisonMetricComboBox);
-    ComparisonMetricComboBox->OnGenerateWidgetEvent.BindUFunction(this, FName("MakeComboEntry"));
+    RoadPanelStyle::StyleTurnLaneCombo(ComparisonMetricComboBox, 11);
     for (const FString& Option : {TEXT("RoadMap Bottleneck Index"), TEXT("Estimated Hourly Traffic Flow"), TEXT("Average Recorded Speed"), TEXT("Average Stopped Time per Vehicle Entry")})
     {
         ComparisonMetricComboBox->AddOption(Option);
@@ -900,8 +899,7 @@ void UTelemetryPanelWidget::BuildWidgetTree()
     ComparisonPanel->AddChildToVerticalBox(ComparisonMetricComboBox);
 
     ComparisonFocusComboBox = WidgetTree->ConstructWidget<UComboBoxString>();
-    RoadPanelStyle::StyleTurnLaneCombo(ComparisonFocusComboBox);
-    ComparisonFocusComboBox->OnGenerateWidgetEvent.BindUFunction(this, FName("MakeComboEntry"));
+    RoadPanelStyle::StyleTurnLaneCombo(ComparisonFocusComboBox, 11);
     for (const FString& Option : {TEXT("All Roads"), TEXT("Focused 25%"), TEXT("Focused 10%"), TEXT("Focused 5%")})
     {
         ComparisonFocusComboBox->AddOption(Option);
@@ -2384,7 +2382,8 @@ void UTelemetryPanelWidget::HandleRefreshClicked()
         return;
     }
 
-    RefreshRunList();
+    // Rebuilt on the next tick, not inside this click; see NativeTick.
+    bRunListRefreshPending = true;
 }
 
 // Opens the run summary tab.

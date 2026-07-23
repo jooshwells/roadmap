@@ -26,10 +26,8 @@
 
 void URoadEditorWidget::InitWithEdgeInfo(const FRoadEdgeInfo& Info)
 {
-    if (MainContainerBox)
-    {
-        MainContainerBox->ClearChildren(); // Prevents stacking controls on top of each other
-    }
+    // Retargeting at another road cancels a close that was queued this frame.
+    bPendingClose = false;
 
     EdgeInfo = Info;
     CurrentLanes = FMath::Clamp(EdgeInfo.Lanes, MinLanes, MaxLanes);
@@ -103,7 +101,6 @@ TSharedRef<SWidget> URoadEditorWidget::RebuildWidget()
         // bridge/underpass in place (ramps, deck, and pillars included).
         LayerCombo = WidgetTree->ConstructWidget<UComboBoxString>(UComboBoxString::StaticClass(), TEXT("LayerCombo"));
         RoadPanelStyle::StyleTurnLaneCombo(LayerCombo);
-        LayerCombo->OnGenerateWidgetEvent.BindUFunction(this, FName("MakeTurnLaneEntry"));
         for (const TCHAR* Option : RoadLayerOptions::Options)
         {
             LayerCombo->AddOption(Option);
@@ -185,6 +182,27 @@ void URoadEditorWidget::NativeConstruct()
     RefreshFields();
 }
 
+void URoadEditorWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
+{
+    Super::NativeTick(MyGeometry, InDeltaTime);
+
+    // Deferred from HandleLanesCommitted: safe to touch the widget tree here.
+    if (bTurnLaneRowsDirty)
+    {
+        bTurnLaneRowsDirty = false;
+        RebuildTurnLaneCombos();
+        CurrentTurnLanes = ComposeTurnLanesFromCombos();
+    }
+
+    // Deferred from Apply / Cancel / Delete: a widget must not tear its own
+    // Slate subtree down while that subtree is still dispatching the click.
+    if (bPendingClose)
+    {
+        bPendingClose = false;
+        RemoveFromParent();
+    }
+}
+
 void URoadEditorWidget::RefreshFields()
 {
     // Called both from InitWithEdgeInfo (which can run before the tree is
@@ -241,9 +259,11 @@ void URoadEditorWidget::HandleLanesCommitted(const FText& Text, ETextCommit::Typ
     CurrentLanes = FMath::Clamp(Parsed, MinLanes, MaxLanes);
     if (LanesBox) LanesBox->SetText(FText::AsNumber(CurrentLanes));
 
-    // Lane count changed: the per-lane dropdown list must match it.
-    RebuildTurnLaneCombos();
-    CurrentTurnLanes = ComposeTurnLanesFromCombos();
+    // Lane count changed: the per-lane dropdown list must match it. Rows are
+    // added/removed in NativeTick rather than here -- this runs from inside the
+    // text box's commit (and focus-lost) handling, and mutating the widget tree
+    // while Slate is dispatching an event is what corrupts its widget list.
+    bTurnLaneRowsDirty = true;
 }
 
 void URoadEditorWidget::HandleSpeedCommitted(const FText& Text, ETextCommit::Type CommitMethod)
@@ -268,17 +288,6 @@ void URoadEditorWidget::HandleLayerComboChanged(FString SelectedItem, ESelectInf
     if (SelectionType == ESelectInfo::Direct) return; // programmatic; avoids feedback loops
 
     CurrentLayer = RoadLayerOptions::OptionToLayer(SelectedItem);
-}
-
-UWidget* URoadEditorWidget::MakeTurnLaneEntry(FString Item)
-{
-    if (!WidgetTree) return nullptr; // combo falls back to a plain text entry
-
-    UTextBlock* Entry = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-    Entry->SetText(FText::FromString(Item));
-    Entry->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 10));
-    Entry->SetColorAndOpacity(FSlateColor(RoadPanelStyle::ControlText));
-    return Entry;
 }
 
 FEventReply URoadEditorWidget::HandleTitleBarMouseDown(FGeometry /*MyGeometry*/, const FPointerEvent& MouseEvent)
@@ -344,7 +353,6 @@ void URoadEditorWidget::RebuildTurnLaneCombos()
     {
         UComboBoxString* Combo = WidgetTree->ConstructWidget<UComboBoxString>(UComboBoxString::StaticClass());
         RoadPanelStyle::StyleTurnLaneCombo(Combo);
-        Combo->OnGenerateWidgetEvent.BindUFunction(this, FName("MakeTurnLaneEntry"));
         for (const TCHAR* Option : RoadTurnLaneOptions::Options)
         {
             Combo->AddOption(Option);
@@ -416,6 +424,8 @@ void URoadEditorWidget::AddRow(UVerticalBox* Parent, const FText& Label, UWidget
 
 void URoadEditorWidget::HandleApplyClicked()
 {
+    if (bPendingClose) return; // already applied this frame; ignore the repeat
+
     FRoadEdgeInfo Edited = EdgeInfo;
     Edited.Lanes = CurrentLanes;
     Edited.SpeedLimitMps = static_cast<float>(CurrentSpeedMph) / MpsToMph;
@@ -426,7 +436,7 @@ void URoadEditorWidget::HandleApplyClicked()
     {
         if (PC->ApplyRoadEdit(Edited, BothDirectionsCheck->IsChecked()))
         {
-            RemoveFromParent();
+            bPendingClose = true; // closed on the next tick, not mid-click
             return;
         }
     }
@@ -434,11 +444,13 @@ void URoadEditorWidget::HandleApplyClicked()
 
 void URoadEditorWidget::HandleCancelClicked()
 {
-    RemoveFromParent();
+    bPendingClose = true; // closed on the next tick, not mid-click
 }
 
 void URoadEditorWidget::HandleDeleteClicked()
 {
+    if (bPendingClose) return; // already deleted this frame; ignore the repeat
+
     if (!bDeleteArmed)
     {
         bDeleteArmed = true;
@@ -451,7 +463,7 @@ void URoadEditorWidget::HandleDeleteClicked()
         // The checkbox doubles as "delete both directions" for two-way roads.
         if (PC->DeleteRoad(EdgeInfo, BothDirectionsCheck && BothDirectionsCheck->IsChecked()))
         {
-            RemoveFromParent();
+            bPendingClose = true; // closed on the next tick, not mid-click
             return;
         }
     }

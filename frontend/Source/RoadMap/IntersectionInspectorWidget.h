@@ -80,8 +80,16 @@ private:
     UPROPERTY() UTextBlock* SetbackValue = nullptr;    // junction box radius
     UPROPERTY() UTextBlock* MaxLanesValue = nullptr;
 
-    // Per-approach rows are rebuilt on every retarget (count varies).
+    // Per-approach rows. The count varies by intersection, so rows are reused
+    // across retargets -- grown on demand, collapsed when surplus, never
+    // removed. See RefreshStaticFields for why they are not rebuilt.
     UPROPERTY() UVerticalBox* ApproachBox = nullptr;
+    UPROPERTY() TArray<UTextBlock*> ApproachRows;
+    UPROPERTY() UTextBlock* NoApproachesText = nullptr;
+
+    // Set by the X button so the panel closes on the next tick instead of
+    // removing itself while its own click is still being routed.
+    bool bPendingClose = false;
 
     static constexpr float MpsToMph = 2.23694f;
 };

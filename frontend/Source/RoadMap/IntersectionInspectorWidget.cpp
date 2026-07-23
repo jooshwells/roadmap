@@ -23,6 +23,9 @@ namespace
 
 void UIntersectionInspectorWidget::InitWithInfo(ASimulationManager* InSimManager, const FIntersectionNodeInfo& InInfo)
 {
+    // Retargeting at another intersection cancels a close queued this frame.
+    bPendingClose = false;
+
     SimManager = InSimManager;
     Info = InInfo;
 
@@ -131,6 +134,14 @@ void UIntersectionInspectorWidget::NativeTick(const FGeometry& MyGeometry, float
     {
         SimManager->DrawIntersectionDebug(Info.NodeId);
     }
+
+    // Deferred from the X button: a widget must not tear its own Slate subtree
+    // down while that subtree is still dispatching the click.
+    if (bPendingClose)
+    {
+        bPendingClose = false;
+        RemoveFromParent();
+    }
 }
 
 void UIntersectionInspectorWidget::RefreshStaticFields()
@@ -163,29 +174,61 @@ void UIntersectionInspectorWidget::RefreshStaticFields()
     MaxLanesValue->SetText(FText::FromString(FString::Printf(TEXT("%d lanes"), Info.MaxLanesAtNode)));
     SetbackValue->SetText(FText::FromString(FString::Printf(TEXT("%.1f m"), Info.SetbackMeters)));
 
-    // Rebuild the per-road block: one line per feeding road -- just its
-    // number, lane count, and speed limit. Anything deeper (turn maps, stop
-    // lines) lives in the road editor panel and the world overlay.
-    ApproachBox->ClearChildren();
-    for (const FIntersectionApproachInfo& A : Info.Approaches)
+    // The per-road block: one line per feeding road -- just its number, lane
+    // count, and speed limit. Anything deeper (turn maps, stop lines) lives in
+    // the road editor panel and the world overlay.
+    //
+    // Rows are REUSED, never cleared and rebuilt. This panel is retargeted on
+    // every intersection click, and tearing the subtree down each time churns
+    // Slate's widget list -- the fault commit 0bfc072 fixed in the road panels'
+    // RebuildTurnLaneCombos, which shows up as an access violation in a later
+    // window prepass (e.g. when the Road Tools panel is opened). Rows are only
+    // ever added, never removed: surplus ones are collapsed, so retargeting
+    // between intersections is zero add/remove operations.
+    const int32 WantedRows = Info.Approaches.Num();
+    while (ApproachRows.Num() < WantedRows)
     {
         UTextBlock* Row = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
         Row->SetFont(FCoreStyle::GetDefaultFontStyle("Bold", 11));
         Row->SetColorAndOpacity(FSlateColor(RoadPanelStyle::ControlText));
-        Row->SetText(FText::FromString(FString::Printf(TEXT("Road %lld   -   %d lane%s @ %.0f mph"),
-            A.RoadId, A.Lanes, A.Lanes == 1 ? TEXT("") : TEXT("s"),
-            A.SpeedLimitMps * MpsToMph)));
-        UVerticalBoxSlot* RowSlot = ApproachBox->AddChildToVerticalBox(Row);
-        RowSlot->SetPadding(FMargin(0.0f, 5.0f, 0.0f, 0.0f));
+        if (UVerticalBoxSlot* RowSlot = ApproachBox->AddChildToVerticalBox(Row))
+        {
+            RowSlot->SetPadding(FMargin(0.0f, 5.0f, 0.0f, 0.0f));
+        }
+        ApproachRows.Add(Row);
     }
 
-    if (Info.Approaches.Num() == 0)
+    for (int32 RowIdx = 0; RowIdx < ApproachRows.Num(); RowIdx++)
     {
-        UTextBlock* None = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-        None->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 10));
-        None->SetColorAndOpacity(FSlateColor(RoadPanelStyle::RowLabel));
-        None->SetText(NSLOCTEXT("IntersectionInspector", "NoApproaches", "No incoming roads."));
-        ApproachBox->AddChildToVerticalBox(None);
+        UTextBlock* Row = ApproachRows[RowIdx];
+        if (!Row) continue;
+
+        if (RowIdx < WantedRows)
+        {
+            const FIntersectionApproachInfo& A = Info.Approaches[RowIdx];
+            Row->SetText(FText::FromString(FString::Printf(TEXT("Road %lld   -   %d lane%s @ %.0f mph"),
+                A.RoadId, A.Lanes, A.Lanes == 1 ? TEXT("") : TEXT("s"),
+                A.SpeedLimitMps * MpsToMph)));
+            Row->SetVisibility(ESlateVisibility::Visible);
+        }
+        else
+        {
+            Row->SetVisibility(ESlateVisibility::Collapsed);
+        }
+    }
+
+    // Built once on the first junction that has no approaches, then reused.
+    if (WantedRows == 0 && !NoApproachesText)
+    {
+        NoApproachesText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+        NoApproachesText->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 10));
+        NoApproachesText->SetColorAndOpacity(FSlateColor(RoadPanelStyle::RowLabel));
+        NoApproachesText->SetText(NSLOCTEXT("IntersectionInspector", "NoApproaches", "No incoming roads."));
+        ApproachBox->AddChildToVerticalBox(NoApproachesText);
+    }
+    if (NoApproachesText)
+    {
+        NoApproachesText->SetVisibility(WantedRows == 0 ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
     }
 }
 
@@ -231,7 +274,7 @@ void UIntersectionInspectorWidget::AddSectionHeader(UVerticalBox* Parent, const 
 void UIntersectionInspectorWidget::HandleCloseClicked()
 {
     OnClosed.Broadcast();
-    RemoveFromParent();
+    bPendingClose = true; // closed on the next tick, not mid-click
 }
 
 FEventReply UIntersectionInspectorWidget::HandleTitleBarMouseDown(FGeometry /*MyGeometry*/, const FPointerEvent& MouseEvent)

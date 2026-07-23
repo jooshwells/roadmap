@@ -163,7 +163,6 @@ TSharedRef<SWidget> URoadToolbarWidget::RebuildWidget()
         // vertical-layer pass (ramps, deck slabs, and pillars come free).
         LayerCombo = WidgetTree->ConstructWidget<UComboBoxString>(UComboBoxString::StaticClass(), TEXT("LayerCombo"));
         RoadPanelStyle::StyleTurnLaneCombo(LayerCombo);
-        LayerCombo->OnGenerateWidgetEvent.BindUFunction(this, FName("MakeTurnLaneEntry"));
         for (const TCHAR* Option : RoadLayerOptions::Options)
         {
             LayerCombo->AddOption(Option);
@@ -206,6 +205,20 @@ void URoadToolbarWidget::NativeConstruct()
 
     RebuildTurnLaneCombos();
     RefreshDrawStateVisuals();
+}
+
+void URoadToolbarWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
+{
+    Super::NativeTick(MyGeometry, InDeltaTime);
+
+    // Deferred from HandleLanesCommitted: safe to touch the widget tree here.
+    if (bTurnLaneRowsDirty)
+    {
+        bTurnLaneRowsDirty = false;
+        RebuildTurnLaneCombos();
+        CurrentTurnLanes = ComposeTurnLanesFromCombos();
+        if (bDrawing) PushDrawParams();
+    }
 }
 
 void URoadToolbarWidget::HandleToggleWindowClicked()
@@ -253,10 +266,11 @@ void URoadToolbarWidget::HandleLanesCommitted(const FText& Text, ETextCommit::Ty
     CurrentLanes = FMath::Clamp(Parsed, MinLanes, MaxLanes);
     if (LanesBox) LanesBox->SetText(FText::AsNumber(CurrentLanes));
 
-    // Lane count changed: the per-lane dropdown list must match it.
-    RebuildTurnLaneCombos();
-    CurrentTurnLanes = ComposeTurnLanesFromCombos();
-    if (bDrawing) PushDrawParams();
+    // Lane count changed: the per-lane dropdown list must match it. Rows are
+    // added/removed in NativeTick rather than here -- this runs from inside the
+    // text box's commit (and focus-lost) handling, and mutating the widget tree
+    // while Slate is dispatching an event is what corrupts its widget list.
+    bTurnLaneRowsDirty = true;
 }
 
 void URoadToolbarWidget::HandleSpeedCommitted(const FText& Text, ETextCommit::Type CommitMethod)
@@ -290,17 +304,6 @@ void URoadToolbarWidget::HandleTurnLaneComboChanged(FString /*SelectedItem*/, ES
 
     CurrentTurnLanes = ComposeTurnLanesFromCombos();
     if (bDrawing) PushDrawParams();
-}
-
-UWidget* URoadToolbarWidget::MakeTurnLaneEntry(FString Item)
-{
-    if (!WidgetTree) return nullptr; // combo falls back to a plain text entry
-
-    UTextBlock* Entry = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-    Entry->SetText(FText::FromString(Item));
-    Entry->SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 10));
-    Entry->SetColorAndOpacity(FSlateColor(RoadPanelStyle::ControlText));
-    return Entry;
 }
 
 FEventReply URoadToolbarWidget::HandleTitleBarMouseDown(FGeometry /*MyGeometry*/, const FPointerEvent& MouseEvent)
@@ -379,7 +382,6 @@ void URoadToolbarWidget::RebuildTurnLaneCombos()
     {
         UComboBoxString* Combo = WidgetTree->ConstructWidget<UComboBoxString>(UComboBoxString::StaticClass());
         RoadPanelStyle::StyleTurnLaneCombo(Combo);
-        Combo->OnGenerateWidgetEvent.BindUFunction(this, FName("MakeTurnLaneEntry"));
         for (const TCHAR* Option : RoadTurnLaneOptions::Options)
         {
             Combo->AddOption(Option);
