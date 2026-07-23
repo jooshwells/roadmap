@@ -310,6 +310,10 @@ protected:
     UFUNCTION(BlueprintCallable, Category = "Road Network|Foliage")
     bool IsLocationOnRoad(const FVector& Location, float Buffer) const;
 
+    // Clears only the foliage that overlaps a newly drawn road. This avoids
+    // rebuilding every tree and grass instance after a small road edit.
+    void RemoveFoliageNearSegment(const FVector& Start, const FVector& End, int32 Lanes);
+
     // Returns the area used when placing the ground and foliage.
     FBox GetNetworkOrTerrainBounds() const;
 
