@@ -8,6 +8,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.heatmaps.visualize_telemetry_heatmap import (
+    add_average_wait_metric,
     build_interactive_road_data,
     filter_metrics_for_focus,
     normalize_focus,
@@ -64,6 +65,18 @@ def test_summary_names_the_exact_directed_segment():
 def test_unknown_focus_is_rejected():
     with pytest.raises(ValueError):
         normalize_focus("worst_3")
+
+
+def test_old_run_wait_data_builds_average_without_crashing():
+    """Older runs should still work when the saved average-wait column is missing."""
+    metrics = pd.DataFrame({
+        "total_wait_added_s": [12.0, 5.0],
+        "edge_entry_count": [3, 0],
+    })
+
+    result = add_average_wait_metric(metrics)
+
+    assert result["avg_wait_per_vehicle_s"].tolist() == [4.0, 0.0]
 
 
 def test_interactive_roads_are_normalized_and_keep_important_direction():
