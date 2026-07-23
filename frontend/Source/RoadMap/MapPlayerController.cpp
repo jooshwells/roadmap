@@ -124,7 +124,6 @@ void AMapPlayerController::CancelRoadDrawing()
 		bHasStartNode = false;
 		PreviewChainPoints.Reset();
 		PreviewNewIntersections.Reset();
-		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Yellow, TEXT("Road placement cancelled."));
 	}
 }
 
@@ -318,7 +317,6 @@ bool AMapPlayerController::ApplyRoadEdit(const FRoadEdgeInfo& EditedInfo, bool b
 {
 	if (!IsRoadEditingAllowed())
 	{
-		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Orange, TEXT("Stop the simulation to edit roads."));
 		return false;
 	}
 
@@ -350,7 +348,6 @@ bool AMapPlayerController::ApplyRoadEdit(const FRoadEdgeInfo& EditedInfo, bool b
 		}
 	}
 
-	if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Green, TEXT("Road properties updated!"));
 	return true;
 }
 
@@ -358,7 +355,6 @@ bool AMapPlayerController::DeleteRoad(const FRoadEdgeInfo& EdgeInfo, bool bBothD
 {
 	if (!IsRoadEditingAllowed())
 	{
-		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Orange, TEXT("Stop the simulation to edit roads."));
 		return false;
 	}
 
@@ -398,7 +394,6 @@ bool AMapPlayerController::DeleteRoad(const FRoadEdgeInfo& EdgeInfo, bool bBothD
 		SimManager->RequestBackendReroutes(Mid, RadiusM);
 	}
 
-	if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Green, TEXT("Road deleted."));
 	return true;
 }
 
@@ -422,7 +417,6 @@ void AMapPlayerController::SetDrawMode(bool bEnable, int32 InLanes, bool bTwoWay
 {
 	if (bEnable && !IsRoadEditingAllowed())
 	{
-		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Orange, TEXT("Stop the simulation to edit roads."));
 		bEnable = false;
 	}
 
@@ -558,7 +552,6 @@ void AMapPlayerController::OnLeftMouseClick()
         if (!IsRoadEditingAllowed())
         {
             NotifySimulationStarted();
-            if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Orange, TEXT("Stop the simulation to edit roads."));
             return;
         }
 
@@ -580,7 +573,6 @@ void AMapPlayerController::OnLeftMouseClick()
                     StartNodeId = SnappedNodeId;
                     StartNodeLocation = SnappedLoc;
                     bHasStartNode = true;
-                    if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("Start Node Locked: %lld"), StartNodeId));
                 }
                 else if (CachedVisualizer->FindClosestEdge(ClickedLocation, SnapRadius, EdgePoint, EdgeU, EdgeV))
                 {
@@ -591,12 +583,7 @@ void AMapPlayerController::OnLeftMouseClick()
                         StartNodeId = NewNodeId;
                         StartNodeLocation = EdgePoint;
                         bHasStartNode = true;
-                        if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("Road split - Start Node created: %lld"), StartNodeId));
                     }
-                }
-                else
-                {
-                    if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Red, TEXT("Error: You must start drawing from an existing road or intersection!"));
                 }
             }
             else
@@ -627,7 +614,6 @@ void AMapPlayerController::OnLeftMouseClick()
 
                 if (EndNodeId != -1 && EndNodeId == StartNodeId)
                 {
-                    if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Red, TEXT("Error: Road must end somewhere else!"));
                     return;
                 }
 
@@ -693,14 +679,6 @@ void AMapPlayerController::OnLeftMouseClick()
                     const FVector EditCenter = (StartNodeLocation + EndNodeLoc) * 0.5f;
                     const float EditRadiusM = FVector::Dist2D(StartNodeLocation, EndNodeLoc) / 100.0f * 0.5f + 300.0f;
                     SimManager->RequestBackendReroutes(EditCenter, EditRadiusM);
-                }
-
-                if (GEngine)
-                {
-                    const FString Msg = CrossingsMade > 0
-                        ? FString::Printf(TEXT("Road Created & Saved! (%d intersection%s formed)"), CrossingsMade, CrossingsMade == 1 ? TEXT("") : TEXT("s"))
-                        : FString(TEXT("Road Created & Saved!"));
-                    GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Green, Msg);
                 }
 
                 // Reset for the next road segment
