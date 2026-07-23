@@ -75,6 +75,40 @@ and `.pytest_cache` so only source and bundled default map data are shipped.
 > source. It only ever runs against the `src/` and `data/` subdirs, never the
 > telemetry root, so unrelated frontend files are left untouched.
 
+### 4. Prune before packaging (opt-in)
+
+`DefaultGame.ini` stages `Content/ThirdParty` wholesale via
+`DirectoriesToAlwaysStageAsNonUFS`, so **anything sitting in that tree at package
+time ships inside the build**. Because the sync in step 3 mirrors only `src/` and
+`data/`, leftovers at the telemetry root are never cleaned up on their own and
+accumulate into packaged builds.
+
+```powershell
+pwsh -File scripts/build_all.ps1 -PrunePackaging            # drop build-only leftovers
+pwsh -File scripts/build_all.ps1 -PrunePackaging -PruneRuns # also drop saved telemetry runs
+```
+
+`-PrunePackaging` removes, all of it untracked and unreferenced by the runtime:
+
+| Removed                    | Why it is safe                                                                                                     |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `telemetry/.venv/`         | `run_pipeline.exe` is a frozen PyInstaller onefile with its own interpreter; no C++ path invokes `python.exe`         |
+| `telemetry/build/`, `dist/`| PyInstaller scratch output                                                                                           |
+| `__pycache__`, `.pytest_cache` | Bytecode caches                                                                                                  |
+| `ThirdParty/Telemetry/`    | Orphaned older `run_pipeline.exe`; every call site resolves `python_pipeline/telemetry/run_pipeline.exe`              |
+
+`-PruneRuns` additionally removes `telemetry/outputs/`, the saved run history.
+It is the largest single contributor to package size. `run_pipeline.py` recreates
+`outputs/` on the next run and `UTelemetryPanelBridge` treats a missing runs
+folder as "no saved runs yet", so this is safe — but it is real local data, which
+is why it needs its own flag.
+
+> The venv PyInstaller builds against lives at `python_pipeline/telemetry/.venv`,
+> **outside** the frontend tree, and is never touched by the prune.
+
+Both flags are off by default: a plain `build_all.ps1` run behaves exactly as
+before. Neither flag touches a git-tracked file.
+
 ## Options
 
 ```powershell
@@ -83,6 +117,8 @@ pwsh -File scripts/build_all.ps1 -BuildType Debug       # sim build config (defa
 pwsh -File scripts/build_all.ps1 -SkipSim               # skip the CMake phase
 pwsh -File scripts/build_all.ps1 -SkipPipeline          # skip the PyInstaller phase
 pwsh -File scripts/build_all.ps1 -SkipSync              # skip the frontend sync
+pwsh -File scripts/build_all.ps1 -PrunePackaging        # strip build-only leftovers from the staged tree
+pwsh -File scripts/build_all.ps1 -PrunePackaging -PruneRuns  # ...and the saved telemetry runs
 ```
 
 ## Generated artifacts (git-ignored)
