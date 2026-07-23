@@ -225,41 +225,47 @@ void AMapPlayerController::UpdateRoadPreview(float DeltaTime)
 
 void AMapPlayerController::OpenRoadEditor(const FRoadEdgeInfo& EdgeInfo, const FString& RoadName)
 {
-    // Retarget an already-open panel instead of stacking a second one.
-    if (ActiveRoadEditor && ActiveRoadEditor->IsInViewport())
+    // Retarget an already-open panel instead of stacking a second one. A closed
+    // panel is reopened rather than replaced: spawning a fresh widget per click
+    // left the old one for the GC, and orphaned UMG widgets are a crash source.
+    if (!ActiveRoadEditor)
     {
-        ActiveRoadEditor->UpdateRoadDisplay(EdgeInfo, RoadName);
-        return;
+        ActiveRoadEditor = CreateWidget<URoadEditorWidget>(this);
     }
-
-    ActiveRoadEditor = CreateWidget<URoadEditorWidget>(this);
     if (ActiveRoadEditor)
     {
         ActiveRoadEditor->UpdateRoadDisplay(EdgeInfo, RoadName);
-        ActiveRoadEditor->AddToViewport(10);
+        if (!ActiveRoadEditor->IsInViewport())
+        {
+            ActiveRoadEditor->AddToViewport(10);
+        }
     }
 }
 
 void AMapPlayerController::OpenVehicleStats(ASimulationManager* SimManager, const FVehicleIDMStats& Stats)
 {
-    // Retarget an already-open panel instead of stacking a second one.
-    if (ActiveVehicleStats && ActiveVehicleStats->IsInViewport())
+    // Reopen the one panel rather than spawning a replacement per click; see
+    // OpenRoadEditor.
+    if (!ActiveVehicleStats)
     {
-        ActiveVehicleStats->InitWithStats(SimManager, Stats);
-        return;
+        ActiveVehicleStats = CreateWidget<UVehicleStatsWidget>(this);
+        if (ActiveVehicleStats)
+        {
+            // Relay the panel's X button to Blueprints so a follow-camera can
+            // unlock when the panel closes, not only on spacebar.
+            ActiveVehicleStats->OnClosed.AddWeakLambda(this, [this]()
+            {
+                OnVehicleStatsClosed.Broadcast();
+            });
+        }
     }
-
-    ActiveVehicleStats = CreateWidget<UVehicleStatsWidget>(this);
     if (ActiveVehicleStats)
     {
-        // Relay the panel's X button to Blueprints so a follow-camera can
-        // unlock when the panel closes, not only on spacebar.
-        ActiveVehicleStats->OnClosed.AddWeakLambda(this, [this]()
-        {
-            OnVehicleStatsClosed.Broadcast();
-        });
         ActiveVehicleStats->InitWithStats(SimManager, Stats);
-        ActiveVehicleStats->AddToViewport(10);
+        if (!ActiveVehicleStats->IsInViewport())
+        {
+            ActiveVehicleStats->AddToViewport(10);
+        }
     }
 }
 
@@ -298,18 +304,19 @@ bool AMapPlayerController::TryOpenIntersectionAt(const FVector& ClickLoc, float 
 
 void AMapPlayerController::OpenIntersectionInspector(ASimulationManager* SimManager, const FIntersectionNodeInfo& NodeInfo)
 {
-    // Retarget an already-open panel instead of stacking a second one.
-    if (ActiveIntersectionInspector && ActiveIntersectionInspector->IsInViewport())
+    // Reopen the one panel rather than spawning a replacement per click; see
+    // OpenRoadEditor.
+    if (!ActiveIntersectionInspector)
     {
-        ActiveIntersectionInspector->InitWithInfo(SimManager, NodeInfo);
-        return;
+        ActiveIntersectionInspector = CreateWidget<UIntersectionInspectorWidget>(this);
     }
-
-    ActiveIntersectionInspector = CreateWidget<UIntersectionInspectorWidget>(this);
     if (ActiveIntersectionInspector)
     {
         ActiveIntersectionInspector->InitWithInfo(SimManager, NodeInfo);
-        ActiveIntersectionInspector->AddToViewport(10);
+        if (!ActiveIntersectionInspector->IsInViewport())
+        {
+            ActiveIntersectionInspector->AddToViewport(10);
+        }
     }
 }
 

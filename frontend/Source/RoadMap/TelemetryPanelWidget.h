@@ -190,9 +190,6 @@ private:
         const FString& ErrorMessage
     );
 
-    // Creates one item for a drop-down menu.
-    UFUNCTION()
-    UWidget* MakeComboEntry(FString Item);
     // Handles the result of a run comparison.
     void FinishRunComparison(
         const FString& BaselineRunId,
@@ -365,6 +362,9 @@ private:
     int32 ExtremeHeatmapRoadIndex = INDEX_NONE;
     // Only update the automatic marker for a few layout frames after opening a map.
     int32 HeatmapMarkerLayoutFramesRemaining = 0;
+    // Set by the Refresh button, consumed by NativeTick: the run rows are
+    // destroyed and recreated, so it must not run inside the click.
+    bool bRunListRefreshPending = false;
     FTelemetryHeatmapDisplayInfo CurrentHeatmapDisplayInfo;
 
     // Saved-run widgets.

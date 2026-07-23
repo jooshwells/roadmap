@@ -37,6 +37,7 @@ public:
 protected:
     virtual TSharedRef<SWidget> RebuildWidget() override;
     virtual void NativeConstruct() override;
+    virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 
 private:
     UFUNCTION()
@@ -59,11 +60,6 @@ private:
 
     UFUNCTION()
     void HandleTurnLaneComboChanged(FString SelectedItem, ESelectInfo::Type SelectionType);
-
-    // Builds the light-text widget for one turn-lane combo entry, used for both
-    // the closed button content and the dropdown rows.
-    UFUNCTION()
-    UWidget* MakeTurnLaneEntry(FString Item);
 
     // Title-bar drag: press starts, move repositions the window, release ends.
     UFUNCTION()
@@ -95,6 +91,11 @@ private:
 
     bool bDrawing = false;
     bool bWindowOpen = false;
+
+    // Set when the lane count changes, consumed by NativeTick. The rebuild adds
+    // and removes widgets, which must not happen inside a Slate input callback
+    // (HandleLanesCommitted runs from the text box's commit/focus-lost path).
+    bool bTurnLaneRowsDirty = false;
 
     // Current (already clamped) input values; the text boxes are re-synced to
     // these whenever an entry is committed.
