@@ -111,6 +111,10 @@ void ARoadNetworkVisualizer::BuildVisualNetwork(Network* RoadNetwork, FString In
     bOriginLocked = false;
 
     RefreshRoadVisuals();
+
+    // The full environment only needs to be made when a map is first loaded.
+    // Runtime road edits clear nearby foliage without rebuilding the map.
+    ScatterFoliage();
 }
 
 void ARoadNetworkVisualizer::RefreshRoadVisuals()
@@ -856,7 +860,6 @@ void ARoadNetworkVisualizer::RefreshRoadVisuals()
 
     RoadHISM->MarkRenderStateDirty();
 
-    ScatterFoliage();
 }
 
 // Position + unit tangent at 'ArcM' meters along an edge's raw shape polyline
@@ -1305,6 +1308,11 @@ int64 ARoadNetworkVisualizer::ExportNewRoadSegment(int64 StartNodeId, int64 EndN
         // fixture rebuild after the draw has something to plant.
         CachedNetwork->refreshTrafficControlAt(StartNodeId);
         CachedNetwork->refreshTrafficControlAt(FinalEndNodeId);
+
+        // Make room for this road without clearing and rebuilding every tree
+        // and grass instance on the map. Drawn road pieces are straight, so
+        // their two endpoints are enough for this local check.
+        RemoveFoliageNearSegment(StartNodeUnrealLoc, EndNodeUnrealLoc, Lanes);
     }
 
     return FinalEndNodeId;
@@ -2133,6 +2141,44 @@ bool ARoadNetworkVisualizer::IsLocationOnRoad(const FVector& Location, float Buf
     }
 
     return false;
+}
+
+void ARoadNetworkVisualizer::RemoveFoliageNearSegment(const FVector& Start, const FVector& End, int32 Lanes)
+{
+    const FVector FlatStart(Start.X, Start.Y, 0.0f);
+    const FVector FlatEnd(End.X, End.Y, 0.0f);
+    const float RoadHalfWidthCm = FMath::Max(1, Lanes) * 350.0f * 0.5f;
+
+    for (const FFoliageTypeConfig& Config : FoliageTypes)
+    {
+        UHierarchicalInstancedStaticMeshComponent* Component = Config.InstancedMeshComponent;
+        if (!Component) continue;
+
+        const float ClearanceCm = RoadHalfWidthCm + Config.RoadClearanceBuffer;
+        const float ClearanceSq = FMath::Square(ClearanceCm);
+        TArray<int32> InstancesToRemove;
+
+        // Work backward so the indices are already in the order expected by
+        // RemoveInstances when it updates the HISM instance array.
+        for (int32 InstanceIndex = Component->GetInstanceCount() - 1; InstanceIndex >= 0; --InstanceIndex)
+        {
+            FTransform InstanceTransform;
+            if (!Component->GetInstanceTransform(InstanceIndex, InstanceTransform, true)) continue;
+
+            const FVector InstanceLocation = InstanceTransform.GetLocation();
+            const FVector FlatLocation(InstanceLocation.X, InstanceLocation.Y, 0.0f);
+            const float DistanceSq = FMath::PointDistToSegmentSquared(FlatLocation, FlatStart, FlatEnd);
+            if (DistanceSq < ClearanceSq)
+            {
+                InstancesToRemove.Add(InstanceIndex);
+            }
+        }
+
+        if (InstancesToRemove.Num() > 0)
+        {
+            Component->RemoveInstances(InstancesToRemove, true);
+        }
+    }
 }
 
 void ARoadNetworkVisualizer::ClearFoliage()
