@@ -80,8 +80,6 @@ void ASimulationManager::BeginPlay()
 		GenerateRoadsInEditor();
 	}
 
-	if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Yellow, TEXT("Initializing Traffic Simulation Backend..."));
-
 	// 1. Allocate the memory for the backend
 	TrafficSimEngine = new TrafficSimulation();
 
@@ -89,8 +87,6 @@ void ASimulationManager::BeginPlay()
 	FString NodesPath, EdgesPath;
 	ResolveActiveMapPaths(NodesPath, EdgesPath);
 	TrafficSimEngine->Initialize(TCHAR_TO_UTF8(*NodesPath), TCHAR_TO_UTF8(*EdgesPath));
-
-	if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Green, TEXT("Traffic Simulation Initialized successfully!"));
 }
 
 void ASimulationManager::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -211,13 +207,7 @@ void ASimulationManager::GenerateRoadsInEditor()
 				TrafficControlVisualizer->BuildTrafficControls(MyRoadNetwork,
 					NetworkVisualizer->OriginOffsetX, NetworkVisualizer->OriginOffsetY);
 			}
-
-			if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Green, TEXT("Roads Generated Successfully!"));
 		}
-	}
-	else
-	{
-		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, TEXT("WARNING: Visualizer Blueprint not assigned in SimulationManager!"));
 	}
 }
 
@@ -313,12 +303,6 @@ void ASimulationManager::Tick(float DeltaTime)
 	{
 		TrafficControlVisualizer->UpdateLightStates(TrafficSimEngine->GetTrafficLightRenderStates());
 	}
-
-	// Debug
-	if (bShowDebugStats && GEngine)
-	{
-		GEngine->AddOnScreenDebugMessage(-1, 0.0f, FColor::Green, FString::Printf(TEXT("Steps this frame: %d"), StepsThisFrame));
-	}
 }
 
 void ASimulationManager::StartSimulation()
@@ -340,8 +324,6 @@ void ASimulationManager::StartSimulation()
     {
         PC->NotifySimulationStarted();
     }
-
-    if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Green, TEXT("Simulation Started!"));
 }
 void ASimulationManager::SetSimulationPaused(bool bPaused)
 {
@@ -456,15 +438,12 @@ void ASimulationManager::StopSimulation()
 	InterpolationData.Empty();
 	// TrafficSimEngine = new TrafficSimulation();
 	// TrafficSimEngine->Initialize();
-
-	if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Red, TEXT("Simulation Stopped & Reset!"));
 }
 
 void ASimulationManager::UpdateVehicleVisuals(float Alpha, bool bDidPhysicsStep)
 {
 	if (!TrafficSimEngine)
 	{
-		if (GEngine) GEngine->AddOnScreenDebugMessage(1, 0.1f, FColor::Red, TEXT("CRITICAL: Backend Engine is NULL!"));
 		return;
 	}
 
@@ -473,10 +452,6 @@ void ASimulationManager::UpdateVehicleVisuals(float Alpha, bool bDidPhysicsStep)
 	if (bDidPhysicsStep)
 	{
 		TrafficSimEngine->GetVehicleRenderStates(RenderStateBuffer);
-		if (bShowDebugStats && GEngine)
-		{
-			GEngine->AddOnScreenDebugMessage(2, 0.1f, FColor::Green, FString::Printf(TEXT("Backend Active Cars: %d"), (int32)RenderStateBuffer.size()));
-		}
 		ActiveVehicleIDScratch.Reset();
 
 		for (const auto& State : RenderStateBuffer)
@@ -794,10 +769,6 @@ void ASimulationManager::NotifyBackendOfNewRoad(int64 StartNodeId, int64 EndNode
 
         // Push to the live simulation with the new SpeedLimit
         TrafficSimEngine->AddRuntimeRoad(StartNodeId, EndNodeId, BackendX, BackendY, LengthMeters, Lanes, SpeedLimit);
-        
-        if (GEngine) {
-            GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, TEXT("Live Graph Updated!"));
-        }
     }
 }
 

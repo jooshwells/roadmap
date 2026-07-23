@@ -430,8 +430,6 @@ void URoadEditorWidget::HandleApplyClicked()
             return;
         }
     }
-
-    if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Red, TEXT("Road edit failed to apply."));
 }
 
 void URoadEditorWidget::HandleCancelClicked()
@@ -460,7 +458,6 @@ void URoadEditorWidget::HandleDeleteClicked()
 
     bDeleteArmed = false;
     if (DeleteButtonText) DeleteButtonText->SetText(NSLOCTEXT("RoadEditor", "Delete", "  Delete road  "));
-    if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Red, TEXT("Road delete failed."));
 }
 
 void URoadEditorWidget::UpdateRoadDisplay(const FRoadEdgeInfo& InEdgeInfo, const FString& InRoadName)
